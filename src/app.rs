@@ -6,7 +6,7 @@ use crate::ui::desktop_nav::{render_desktop_sidebar, DesktopNavState, NavSection
 use crate::ui::mobile_nav::{
     render_mobile_bottom_bar, render_mobile_header, render_mobile_pipeline_grid, MobileNavState,
 };
-use egui::{CentralPanel, Color32, Context, Frame, RichText, ScrollArea, Stroke, TopBottomPanel, Ui};
+use egui::{CentralPanel, Context, Frame, RichText, ScrollArea, Stroke, TopBottomPanel, Ui};
 
 pub struct SignalsSdrApp {
     pub config: AppConfig,
@@ -50,7 +50,7 @@ impl eframe::App for SignalsSdrApp {
 
         theme.apply_to_context(ctx);
 
-        let screen_width = ctx.screen_rect().width();
+        let screen_width = ctx.viewport_rect().width();
         let is_mobile = screen_width < 720.0;
 
         if is_mobile {
@@ -65,7 +65,7 @@ impl SignalsSdrApp {
     fn render_mobile_ui(&mut self, ctx: &Context, theme: &AppTheme) {
         // Barra superior móvil
         TopBottomPanel::top("mobile_header")
-            .frame(Frame::none())
+            .frame(Frame::new())
             .show(ctx, |ui| {
                 render_mobile_header(
                     ui,
@@ -79,7 +79,7 @@ impl SignalsSdrApp {
 
         // Barra inferior móvil
         TopBottomPanel::bottom("mobile_bottom")
-            .frame(Frame::none())
+            .frame(Frame::new())
             .show(ctx, |ui| {
                 render_mobile_bottom_bar(
                     ui,
@@ -91,7 +91,7 @@ impl SignalsSdrApp {
 
         // Contenido central móvil
         CentralPanel::default()
-            .frame(Frame::none().fill(theme.bg_canvas()).inner_margin(10.0))
+            .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(10.0))
             .show(ctx, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
                     match self.desktop_nav.active_section {
@@ -115,7 +115,7 @@ impl SignalsSdrApp {
 
     fn render_desktop_ui(&mut self, ctx: &Context, theme: &AppTheme) {
         CentralPanel::default()
-            .frame(Frame::none().fill(theme.bg_canvas()))
+            .frame(Frame::new().fill(theme.bg_canvas()))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Barra de navegación lateral escritorio
@@ -128,7 +128,7 @@ impl SignalsSdrApp {
                     );
 
                     // Contenido central de escritorio
-                    Frame::none()
+                    Frame::new()
                         .fill(theme.bg_canvas())
                         .inner_margin(16.0)
                         .show(ui, |ui| {
@@ -183,10 +183,10 @@ impl SignalsSdrApp {
             ui.add_space(14.0);
 
             // Tarjeta de almacenamiento
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -237,10 +237,10 @@ impl SignalsSdrApp {
             ui.add_space(14.0);
 
             // Tarjeta de aspectos legales y didácticos de transmisión SDR
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {

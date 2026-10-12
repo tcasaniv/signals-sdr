@@ -2,7 +2,7 @@ use crate::icons;
 use crate::pipelines::PipelineId;
 use crate::theme::AppTheme;
 use crate::ui::desktop_nav::NavSection;
-use egui::{Color32, Frame, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 pub struct MobileNavState {
     pub showing_detail: bool,
@@ -25,9 +25,9 @@ pub fn render_mobile_header(
     selected_pipeline: PipelineId,
     dark_mode: &mut bool,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.surface_subtle())
-        .stroke(Stroke::new(1.0, theme.card_border()))
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
         .inner_margin(8.0)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -69,9 +69,9 @@ pub fn render_mobile_bottom_bar(
     active_section: &mut NavSection,
     mobile_state: &mut MobileNavState,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.surface_subtle())
-        .stroke(Stroke::new(1.0, theme.card_border()))
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
         .inner_margin(6.0)
         .show(ui, |ui| {
             ui.set_height(52.0);
@@ -152,10 +152,10 @@ pub fn render_mobile_pipeline_grid(
         let pipelines = PipelineId::all();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for &pipe in pipelines {
-                let card_frame = Frame::none()
+                let card_frame = Frame::new()
                     .fill(theme.card_bg())
-                    .stroke(Stroke::new(1.0, theme.card_border()))
-                    .rounding(8.0)
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .corner_radius(8.0)
                     .inner_margin(12.0);
 
                 let card_resp = card_frame.show(ui, |ui| {

@@ -63,10 +63,10 @@ impl HrptPipeline {
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -91,10 +91,10 @@ impl HrptPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -109,7 +109,7 @@ impl HrptPipeline {
                                 RichText::new("Sintetizar Señal BPSK HRPT").strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .rounding(6.0);
+                            .corner_radius(6.0);
 
                             if ui.add(gen_btn).clicked() {
                                 self.generate_synthetic_bpsk();

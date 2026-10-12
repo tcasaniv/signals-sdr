@@ -2,7 +2,7 @@ use crate::config::AppConfig;
 use crate::export::formats::{export_iq_file, IqExportFormat};
 use crate::sdr::{SdrDeviceOption, SdrTransmissionController, TransmissionStatus, TxConfig};
 use crate::theme::AppTheme;
-use egui::{Color32, Frame, Response, RichText, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,10 +124,10 @@ fn render_sdr_panel(
     samples: &[(f32, f32)],
     sample_rate: u32,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.card_bg())
-        .stroke(Stroke::new(1.0, theme.card_border()))
-        .rounding(8.0)
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -214,7 +214,7 @@ fn render_sdr_panel(
                             RichText::new("Detener Transmisión").strong().color(Color32::WHITE),
                         )
                         .fill(Color32::from_rgb(220, 38, 38))
-                        .rounding(6.0);
+                        .corner_radius(6.0);
 
                         if ui.add(stop_btn).clicked() {
                             sdr_controller.stop();
@@ -224,7 +224,7 @@ fn render_sdr_panel(
                             RichText::new("Transmitir con SDR").strong().color(Color32::WHITE),
                         )
                         .fill(theme.accent_blue())
-                        .rounding(6.0);
+                        .corner_radius(6.0);
 
                         let enabled = !samples.is_empty();
                         if ui.add_enabled(enabled, tx_btn).clicked() {
@@ -281,10 +281,10 @@ fn render_file_panel(
     samples: &[(f32, f32)],
     sample_rate: u32,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.card_bg())
-        .stroke(Stroke::new(1.0, theme.card_border()))
-        .rounding(8.0)
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -345,7 +345,7 @@ fn render_file_panel(
                     RichText::new("Guardar Archivo I/Q").strong().color(Color32::WHITE),
                 )
                 .fill(theme.accent_blue())
-                .rounding(6.0);
+                .corner_radius(6.0);
 
                 let can_save = !samples.is_empty();
                 if ui.add_enabled(can_save, save_btn).clicked() {

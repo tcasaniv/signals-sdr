@@ -1,6 +1,5 @@
 use crate::theme::AppTheme;
-use egui::{Color32, Frame, Pos2, Rect, RichText, Stroke, Ui, Vec2};
-use std::f32::consts::PI;
+use egui::{Color32, Frame, Pos2, RichText, Stroke, Ui, Vec2};
 
 /// Visualizador gráfico de forma de onda (osciloscopio) y espectro de señal
 pub fn render_signal_visualizer(
@@ -9,10 +8,10 @@ pub fn render_signal_visualizer(
     samples: &[(f32, f32)],
     sample_rate: u32,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.card_bg())
-        .stroke(Stroke::new(1.0, theme.card_border()))
-        .rounding(8.0)
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
         .inner_margin(10.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -51,7 +50,7 @@ pub fn render_signal_visualizer(
                     Color32::from_rgb(238, 244, 252)
                 };
                 ui.painter().rect_filled(rect, 4.0, bg_fill);
-                ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0, theme.card_border()), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0_f32, theme.card_border()), egui::StrokeKind::Inside);
 
                 if samples.is_empty() {
                     ui.painter().text(
@@ -68,7 +67,7 @@ pub fn render_signal_visualizer(
                 let center_y = rect.center().y;
                 ui.painter().line_segment(
                     [Pos2::new(rect.left(), center_y), Pos2::new(rect.right(), center_y)],
-                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(128, 128, 128, 60)),
+                    Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(128, 128, 128, 60)),
                 );
 
                 // Dibujar forma de onda de I y Q
@@ -92,10 +91,10 @@ pub fn render_signal_visualizer(
                     let curr_q_pt = Pos2::new(x_pos, y_q);
 
                     if let Some(prev) = prev_i_pt {
-                        ui.painter().line_segment([prev, curr_i_pt], Stroke::new(1.2, i_color));
+                        ui.painter().line_segment([prev, curr_i_pt], Stroke::new(1.2_f32, i_color));
                     }
                     if let Some(prev) = prev_q_pt {
-                        ui.painter().line_segment([prev, curr_q_pt], Stroke::new(1.0, q_color));
+                        ui.painter().line_segment([prev, curr_q_pt], Stroke::new(1.0_f32, q_color));
                     }
 
                     prev_i_pt = Some(curr_i_pt);

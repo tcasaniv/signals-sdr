@@ -1,6 +1,6 @@
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

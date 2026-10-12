@@ -1,12 +1,12 @@
 use crate::theme::AppTheme;
-use egui::{Color32, Frame, Response, RichText, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 
 /// Tarjeta informativa y pedagógica para explicar el protocolo/sistema de modulación
 pub fn info_card(ui: &mut Ui, theme: &AppTheme, title: &str, description: &str) {
-    Frame::none()
+    Frame::new()
         .fill(theme.info_card_bg())
-        .stroke(Stroke::new(1.0, theme.info_card_border()))
-        .rounding(8.0)
+        .stroke(Stroke::new(1.0_f32, theme.info_card_border()))
+        .corner_radius(8.0)
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -64,11 +64,11 @@ pub fn step_bar(
             )
             .fill(bg_color)
             .stroke(if is_selected {
-                Stroke::new(1.0, theme.accent_blue())
+                Stroke::new(1.0_f32, theme.accent_blue())
             } else {
                 Stroke::NONE
             })
-            .rounding(6.0);
+            .corner_radius(6.0);
 
             if ui.add(btn).clicked() {
                 *current_step = idx;
@@ -81,7 +81,7 @@ pub fn step_bar(
     let line_rect = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [line_rect.left_top(), egui::Pos2::new(line_rect.right(), line_rect.top())],
-        Stroke::new(1.0, theme.card_border()),
+        Stroke::new(1.0_f32, theme.card_border()),
     );
     ui.add_space(6.0);
 }
@@ -94,10 +94,10 @@ pub fn image_input_card(
     current_path: &mut Option<String>,
     url_input: &mut String,
 ) {
-    Frame::none()
+    Frame::new()
         .fill(theme.card_bg())
-        .stroke(Stroke::new(1.0, theme.card_border()))
-        .rounding(8.0)
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
         .inner_margin(10.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {

@@ -1,7 +1,7 @@
 use crate::icons;
 use crate::pipelines::PipelineId;
 use crate::theme::AppTheme;
-use egui::{Color32, Frame, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Sense, Stroke, Ui, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavSection {
@@ -33,9 +33,9 @@ pub fn render_desktop_sidebar(
 ) {
     ui.horizontal(|ui| {
         // 1. Icon Rail estrecho (ancho fijo 64px)
-        Frame::none()
+        Frame::new()
             .fill(theme.surface_subtle())
-            .stroke(Stroke::new(1.0, theme.card_border()))
+            .stroke(Stroke::new(1.0_f32, theme.card_border()))
             .show(ui, |ui| {
                 ui.set_width(64.0);
                 ui.vertical_centered(|ui| {
@@ -61,7 +61,7 @@ pub fn render_desktop_sidebar(
                     };
                     ui.painter().rect_filled(rect_pipe, 8.0, pipe_bg);
                     if is_pipe {
-                        ui.painter().rect_stroke(rect_pipe, 8.0, Stroke::new(1.5, theme.accent_blue()), egui::StrokeKind::Inside);
+                        ui.painter().rect_stroke(rect_pipe, 8.0, Stroke::new(1.5_f32, theme.accent_blue()), egui::StrokeKind::Inside);
                     }
                     let pipe_color = if is_pipe { theme.accent_blue() } else { theme.text_secondary() };
                     icons::draw_satellite_icon(ui, rect_pipe.shrink(10.0), pipe_color);
@@ -85,7 +85,7 @@ pub fn render_desktop_sidebar(
                     };
                     ui.painter().rect_filled(rect_sett, 8.0, sett_bg);
                     if is_sett {
-                        ui.painter().rect_stroke(rect_sett, 8.0, Stroke::new(1.5, theme.accent_blue()), egui::StrokeKind::Inside);
+                        ui.painter().rect_stroke(rect_sett, 8.0, Stroke::new(1.5_f32, theme.accent_blue()), egui::StrokeKind::Inside);
                     }
                     let sett_color = if is_sett { theme.accent_blue() } else { theme.text_secondary() };
                     icons::draw_settings_icon(ui, rect_sett.shrink(10.0), sett_color);
@@ -105,9 +105,9 @@ pub fn render_desktop_sidebar(
 
         // 2. Panel intermedio con buscador y lista de pipelines (solo si está en Pipelines)
         if state.active_section == NavSection::Pipelines {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.set_width(260.0);
@@ -155,17 +155,17 @@ pub fn render_desktop_sidebar(
                                 }
 
                                 let is_active = *selected_pipeline == pipe;
-                                let btn_frame = Frame::none()
+                                let btn_frame = Frame::new()
                                     .fill(if is_active {
                                         theme.accent_blue().gamma_multiply(0.15)
                                     } else {
                                         theme.surface_subtle()
                                     })
                                     .stroke(Stroke::new(
-                                        if is_active { 1.5 } else { 1.0 },
+                                        if is_active { 1.5_f32 } else { 1.0_f32 },
                                         if is_active { theme.accent_blue() } else { theme.card_border() },
                                     ))
-                                    .rounding(6.0)
+                                    .corner_radius(6.0)
                                     .inner_margin(8.0);
 
                                 let card_resp = btn_frame.show(ui, |ui| {

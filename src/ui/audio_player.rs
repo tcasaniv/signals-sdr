@@ -1,6 +1,6 @@
 use crate::icons;
 use crate::theme::AppTheme;
-use egui::{Color32, Frame, Pos2, Rect, Response, RichText, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Pos2, Rect, RichText, Stroke, Ui, Vec2};
 
 #[derive(Debug, Clone, Default)]
 pub struct AudioPlayerWidget {
@@ -19,10 +19,10 @@ impl AudioPlayerWidget {
     }
 
     pub fn render(&mut self, ui: &mut Ui, theme: &AppTheme, audio_path: Option<&str>) {
-        Frame::none()
+        Frame::new()
             .fill(theme.card_bg())
-            .stroke(Stroke::new(1.0, theme.card_border()))
-            .rounding(8.0)
+            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+            .corner_radius(8.0)
             .inner_margin(10.0)
             .show(ui, |ui| {
                 ui.vertical(|ui| {
@@ -99,12 +99,12 @@ impl AudioPlayerWidget {
                             Color32::TRANSPARENT
                         };
                         ui.painter().rect_filled(play_rect, 4.0, play_fill);
-                        ui.painter().rect_stroke(play_rect, 4.0, Stroke::new(1.0, theme.card_border()), egui::StrokeKind::Inside);
+                        ui.painter().rect_stroke(play_rect, 4.0, Stroke::new(1.0_f32, theme.card_border()), egui::StrokeKind::Inside);
 
                         if self.is_playing {
                             // Pausa
                             let c = play_rect.center();
-                            let s = Stroke::new(2.0, theme.accent_blue());
+                            let s = Stroke::new(2.0_f32, theme.accent_blue());
                             ui.painter().line_segment([Pos2::new(c.x - 4.0, c.y - 7.0), Pos2::new(c.x - 4.0, c.y + 7.0)], s);
                             ui.painter().line_segment([Pos2::new(c.x + 4.0, c.y - 7.0), Pos2::new(c.x + 4.0, c.y + 7.0)], s);
                         } else {
@@ -123,7 +123,7 @@ impl AudioPlayerWidget {
                             Color32::TRANSPARENT
                         };
                         ui.painter().rect_filled(stop_rect, 4.0, stop_fill);
-                        ui.painter().rect_stroke(stop_rect, 4.0, Stroke::new(1.0, theme.card_border()), egui::StrokeKind::Inside);
+                        ui.painter().rect_stroke(stop_rect, 4.0, Stroke::new(1.0_f32, theme.card_border()), egui::StrokeKind::Inside);
                         icons::draw_stop_icon(ui, stop_rect, theme.text_secondary());
 
                         if stop_resp.clicked() {

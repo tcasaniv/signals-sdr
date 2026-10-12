@@ -6,7 +6,7 @@ use crate::ui::components::{info_card, step_bar};
 use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct GenericIqPipeline {
     pub current_step: usize,
@@ -89,10 +89,10 @@ impl GenericIqPipeline {
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -102,7 +102,7 @@ impl GenericIqPipeline {
                         ui.horizontal(|ui| {
                             let pick_btn = egui::Button::new("Examinar Archivo I/Q...")
                                 .fill(theme.surface_subtle())
-                                .stroke(Stroke::new(1.0, theme.card_border()));
+                                .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
                                 if let Some(path) = rfd::FileDialog::new()
@@ -180,10 +180,10 @@ impl GenericIqPipeline {
 
     fn render_step_processing(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -216,7 +216,7 @@ impl GenericIqPipeline {
                                 RichText::new("Aplicar Procesamiento").strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .rounding(6.0);
+                            .corner_radius(6.0);
 
                             if ui.add(apply_btn).clicked() {
                                 self.process_samples();

@@ -93,10 +93,10 @@ impl GenericFmPipeline {
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -106,7 +106,7 @@ impl GenericFmPipeline {
                         ui.horizontal(|ui| {
                             let pick_btn = egui::Button::new("Examinar Audio (WAV, MP3)...")
                                 .fill(theme.surface_subtle())
-                                .stroke(Stroke::new(1.0, theme.card_border()));
+                                .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
                                 if let Some(path) = rfd::FileDialog::new()
@@ -160,10 +160,10 @@ impl GenericFmPipeline {
 
     fn render_step_modulate(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -268,7 +268,7 @@ impl GenericFmPipeline {
                                 RichText::new("Modular Señal FM").strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .rounding(6.0);
+                            .corner_radius(6.0);
 
                             if ui.add(mod_btn).clicked() {
                                 self.execute_modulation();

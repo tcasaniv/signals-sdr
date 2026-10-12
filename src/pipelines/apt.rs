@@ -5,9 +5,8 @@ use crate::ui::components::{image_input_card, info_card, step_bar};
 use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use apt_encoder::{crop_to_matching_height, encode_apt, fm_modulate, modulate_apt, preprocess_image, CHANNEL_WIDTH};
-use egui::{Color32, Frame, ProgressBar, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 use image::{DynamicImage, GrayImage, ImageReader};
-use std::path::PathBuf;
 
 pub struct AptPipeline {
     pub current_step: usize,
@@ -122,10 +121,10 @@ impl AptPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -169,7 +168,7 @@ impl AptPipeline {
                                 RichText::new(btn_text).strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .rounding(6.0);
+                            .corner_radius(6.0);
 
                             if ui.add(start_btn).clicked() {
                                 self.execute_pipeline(config);

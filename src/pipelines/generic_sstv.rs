@@ -86,10 +86,10 @@ impl GenericSstvPipeline {
             ui.add_space(12.0);
 
             if let Some(path) = &self.img_path {
-                Frame::none()
+                Frame::new()
                     .fill(theme.card_bg())
-                    .stroke(Stroke::new(1.0, theme.card_border()))
-                    .rounding(8.0)
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .corner_radius(8.0)
                     .inner_margin(12.0)
                     .show(ui, |ui| {
                         ui.label(RichText::new("Imagen seleccionada:").strong().color(theme.accent_blue()));
@@ -139,10 +139,10 @@ impl GenericSstvPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::none()
+            Frame::new()
                 .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .rounding(8.0)
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
@@ -198,7 +198,7 @@ impl GenericSstvPipeline {
                                 RichText::new("Codificar SSTV y Modular en FM").strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .rounding(6.0);
+                            .corner_radius(6.0);
 
                             if ui.add(start_btn).clicked() {
                                 self.execute_pipeline();
