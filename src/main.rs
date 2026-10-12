@@ -11,6 +11,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([1100.0, 780.0])
             .with_min_inner_size([380.0, 500.0])
             .with_title("Signals SDR - Generador Didáctico de Señales de Radio"),
+        renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
 
