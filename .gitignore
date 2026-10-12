@@ -1,0 +1,11 @@
+/target
+Cargo.lock
+*.wav
+*.mp3
+*.raw
+*.bin
+*.iq
+*.png
+*.jpg
+*.jpeg
+dist/

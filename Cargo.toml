@@ -1,0 +1,51 @@
+[package]
+name = "signals-sdr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Signals SDR Contributors"]
+description = "Educational SDR signal generator and modulator suite for satellites (APT, LRPT, SSTV) and analog radio (FM, AM)"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/apt-tx/signals-sdr"
+readme = "README.md"
+keywords = ["sdr", "satellite", "noaa-apt", "meteor-lrpt", "sstv"]
+categories = ["science", "multimedia"]
+
+[dependencies]
+# GUI Framework
+eframe = { version = "0.33.0", default-features = false, features = ["default_fonts", "glow", "wgpu", "persistence"] }
+egui = { version = "0.33", features = ["serde"] }
+egui_extras = { version = "0.33", features = ["image"] }
+
+# Codificadores y moduladores locales
+apt-encoder = { path = "../apt-encoder-rs" }
+lrpt-encoder = { path = "../lrpt-encoder-rs" }
+sstv-encoder = { path = "../sstv-encoder-rs" }
+fm-modulator = { path = "../fm-modulator-rs" }
+am-modulator = { path = "../am-modulator-rs" }
+
+# SDR Hardware Abstraction
+seify = { path = "../seify", default-features = false, features = ["dummy"] }
+
+# Procesamiento de audio, imagen y datos
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
+hound = "3.5"
+symphonia = { version = "0.5.4", features = ["mp3", "wav"] }
+num-complex = "0.4"
+rfd = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+dirs = "6.0"
+log = "0.4"
+env_logger = "0.11"
+
+[features]
+default = []
+hackrf = ["seify/hackrf"]
+bladerf = ["seify/bladerf1"]
+usrp = ["seify/uhd"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
