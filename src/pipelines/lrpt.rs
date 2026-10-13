@@ -3,7 +3,7 @@ use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use lrpt_encoder::{encode_lrpt_channels, imaging, LrptConfig};
 
 pub struct LrptPipeline {
@@ -162,10 +162,20 @@ impl LrptPipeline {
                 }
             }
 
-            ui.add_space(10.0);
+            ui.add_space(16.0);
             if self.img1_path.is_some() {
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Continuar a Codificación").strong()).clicked() {
+                    let next_btn = egui::Button::new(
+                        RichText::new("Continuar a Codificación  ➜")
+                            .strong()
+                            .size(13.5)
+                            .color(Color32::WHITE),
+                    )
+                    .fill(theme.accent_blue())
+                    .corner_radius(8.0)
+                    .min_size(Vec2::new(240.0, 38.0));
+
+                    if ui.add(next_btn).clicked() {
                         self.current_step = 1;
                     }
                 });

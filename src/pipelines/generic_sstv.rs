@@ -3,7 +3,7 @@ use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use fm_modulator::fm_modulate;
 use image::{DynamicImage, ImageReader, RgbImage};
 use sstv_encoder::{encode_sstv, Mode};
@@ -98,24 +98,39 @@ impl GenericSstvPipeline {
                         ui.label(RichText::new(path).monospace().size(12.0));
                     });
 
-                ui.add_space(8.0);
-                if ui
-                    .button(RichText::new("Continuar a Selección de Modo ->").strong())
-                    .clicked()
-                {
+                ui.add_space(16.0);
+                let next_btn = egui::Button::new(
+                    RichText::new("Continuar a Selección de Modo  ➜")
+                        .strong()
+                        .size(13.5)
+                        .color(Color32::WHITE),
+                )
+                .fill(theme.accent_blue())
+                .corner_radius(8.0)
+                .min_size(Vec2::new(260.0, 38.0));
+
+                if ui.add(next_btn).clicked() {
                     self.current_step = 1;
                 }
             } else {
                 ui.label(
-                    RichText::new("Seleccione una imagen o presione Continuar para usar un patrón de prueba sintético.")
+                    RichText::new("Selecciona una imagen o presiona Continuar para usar un patrón de prueba sintético.")
                         .size(12.0)
                         .color(theme.text_secondary()),
                 );
-                ui.add_space(6.0);
-                if ui
-                    .button(RichText::new("Continuar con imagen sintética ->").strong())
-                    .clicked()
-                {
+                ui.add_space(10.0);
+
+                let dummy_btn = egui::Button::new(
+                    RichText::new("Continuar con patrón de prueba  ➜")
+                        .strong()
+                        .size(13.5)
+                        .color(Color32::WHITE),
+                )
+                .fill(theme.accent_blue())
+                .corner_radius(8.0)
+                .min_size(Vec2::new(260.0, 38.0));
+
+                if ui.add(dummy_btn).clicked() {
                     self.current_step = 1;
                 }
             }

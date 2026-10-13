@@ -36,6 +36,16 @@ impl AppTheme {
                 ctx.set_visuals(visuals);
             }
         }
+
+        ctx.style_mut(|style| {
+            style.spacing.button_padding = egui::vec2(12.0, 7.0);
+            style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+            style.visuals.widgets.noninteractive.corner_radius = 8.0.into();
+            style.visuals.widgets.inactive.corner_radius = 8.0.into();
+            style.visuals.widgets.hovered.corner_radius = 8.0.into();
+            style.visuals.widgets.active.corner_radius = 8.0.into();
+            style.visuals.widgets.open.corner_radius = 8.0.into();
+        });
     }
 
     pub fn card_bg(&self) -> Color32 {

@@ -4,7 +4,7 @@ use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, intermediate_preview_card, step_bar, ChannelColor};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use apt_encoder::{crop_to_matching_height, encode_apt, fm_modulate, modulate_apt, preprocess_image, CHANNEL_WIDTH};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use image::{DynamicImage, GrayImage, ImageReader};
 use std::path::PathBuf;
 
@@ -141,10 +141,20 @@ impl AptPipeline {
                 );
             }
 
-            ui.add_space(10.0);
+            ui.add_space(16.0);
             if self.img_a_path.is_some() || self.img_b_path.is_some() {
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Continuar a Codificación ->").strong()).clicked() {
+                    let next_btn = egui::Button::new(
+                        RichText::new("Continuar a Codificación  ➜")
+                            .strong()
+                            .size(13.5)
+                            .color(Color32::WHITE),
+                    )
+                    .fill(theme.accent_blue())
+                    .corner_radius(8.0)
+                    .min_size(Vec2::new(240.0, 38.0));
+
+                    if ui.add(next_btn).clicked() {
                         self.current_step = 1;
                     }
                 });
@@ -160,13 +170,14 @@ impl AptPipeline {
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
+                .corner_radius(10.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Flujo Didáctico Paso a Paso de Codificación NOAA APT").strong().size(14.5).color(theme.accent_blue()));
+                        ui.label(RichText::new("Flujo Didáctico Paso a Paso de Codificación NOAA APT").strong().size(15.0).color(theme.accent_blue()));
                         ui.add_space(12.0);
-                        let auto_btn = egui::Button::new(RichText::new("⚡ Ejecutar Todo el Proceso").strong().size(12.0));
+                        let auto_btn = egui::Button::new(RichText::new("⚡ Ejecutar Todo el Proceso").strong().size(12.5))
+                            .min_size(Vec2::new(180.0, 32.0));
                         if ui.add(auto_btn).clicked() {
                             self.step_preprocess(config);
                             self.step_encode_apt(config);
@@ -174,11 +185,11 @@ impl AptPipeline {
                             self.step_modulate_fm();
                         }
                     });
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(&self.status_message).size(12.5).color(theme.text_secondary()));
                 });
 
-            ui.add_space(10.0);
+            ui.add_space(14.0);
 
             // ==========================================
             // FASE 1: PREPROCESAMIENTO DE IMÁGENES
@@ -186,12 +197,12 @@ impl AptPipeline {
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
+                .corner_radius(10.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 1: Preprocesamiento de Imágenes (Canales A y B)").strong().size(14.0).color(theme.text_primary()));
+                            ui.label(RichText::new("Fase 1: Preprocesamiento de Imágenes (Canales A y B)").strong().size(14.5).color(theme.text_primary()));
                             let status_text = if self.preprocessed_a.is_some() && self.preprocessed_b.is_some() {
                                 "LISTO"
                             } else {
@@ -207,20 +218,21 @@ impl AptPipeline {
                             });
                         });
 
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
                         ui.label(
                             RichText::new("Cada canal del sensor AVHRR satelital requiere exactamente 909 píxeles de ancho en escala de grises de 8 bits (0-255). Además, ambas imágenes deben recortarse simétricamente a la misma altura para sincronizar el barrido orbital.")
-                                .size(11.5)
+                                .size(12.0)
                                 .color(theme.text_secondary()),
                         );
-                        ui.add_space(8.0);
+                        ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
                             let pre_btn = egui::Button::new(
                                 RichText::new("1. Preprocesar Imágenes A y B (909 px)").strong().color(Color32::WHITE),
                             )
                             .fill(theme.accent_blue())
-                            .corner_radius(6.0);
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(0.0, 34.0));
 
                             if ui.add(pre_btn).clicked() {
                                 self.step_preprocess(config);
@@ -286,7 +298,7 @@ impl AptPipeline {
                     });
                 });
 
-            ui.add_space(10.0);
+            ui.add_space(14.0);
 
             // ==========================================
             // FASE 2: CODIFICACIÓN A TRAMA APT (2080 px)
@@ -294,12 +306,12 @@ impl AptPipeline {
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
+                .corner_radius(10.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 2: Codificación a Trama Matricial APT (2080 px por línea)").strong().size(14.0).color(theme.text_primary()));
+                            ui.label(RichText::new("Fase 2: Codificación a Trama Matricial APT (2080 px por línea)").strong().size(14.5).color(theme.text_primary()));
                             let status_text = if self.apt_image.is_some() { "LISTO" } else { "PENDIENTE" };
                             let status_color = if status_text == "LISTO" { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(156, 163, 175) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -307,13 +319,13 @@ impl AptPipeline {
                             });
                         });
 
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
                         ui.label(
                             RichText::new("Ensambla la trama satelital completa a 2 líneas/segundo (2080 palabras/línea): Sincronismo A (39 px, pulsos cuadrados 1040 Hz) + Espacio A (47 px) + Canal A (909 px) + Telemetría A (45 px) + Sincronismo B (39 px) + Espacio B (47 px) + Canal B (909 px) + Telemetría B (45 px).")
-                                .size(11.5)
+                                .size(12.0)
                                 .color(theme.text_secondary()),
                         );
-                        ui.add_space(8.0);
+                        ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
                             let can_encode = self.preprocessed_a.is_some() && self.preprocessed_b.is_some();
@@ -321,7 +333,8 @@ impl AptPipeline {
                                 RichText::new("2. Codificar Trama Matricial APT (2080 px)").strong().color(Color32::WHITE),
                             )
                             .fill(if can_encode { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(6.0);
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(0.0, 34.0));
 
                             if ui.add_enabled(can_encode, encode_btn).clicked() {
                                 self.step_encode_apt(config);
@@ -332,7 +345,7 @@ impl AptPipeline {
                             }
                         });
 
-                        ui.add_space(8.0);
+                        ui.add_space(10.0);
 
                         let apt_desc = if let Some(ref img) = self.apt_image {
                             let dur_sec = (img.height() as f32) * 0.5;
@@ -353,7 +366,7 @@ impl AptPipeline {
                     });
                 });
 
-            ui.add_space(10.0);
+            ui.add_space(14.0);
 
             // ==========================================
             // FASE 3: MODULACIÓN EN SUBPORTADORA AM (2400 Hz)
@@ -361,12 +374,12 @@ impl AptPipeline {
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
+                .corner_radius(10.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 3: Modulación en Subportadora AM (2400 Hz a 11025 Hz)").strong().size(14.0).color(theme.text_primary()));
+                            ui.label(RichText::new("Fase 3: Modulación en Subportadora AM (2400 Hz a 11025 Hz)").strong().size(14.5).color(theme.text_primary()));
                             let status_text = if self.audio_am_samples.is_some() { "LISTO" } else { "PENDIENTE" };
                             let status_color = if status_text == "LISTO" { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(156, 163, 175) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -374,13 +387,13 @@ impl AptPipeline {
                             });
                         });
 
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
                         ui.label(
                             RichText::new("Cada píxel modula en amplitud una subportadora senoidal pura de 2400 Hz. El estándar NOAA utiliza una frecuencia de muestreo de audio de 11,025 Hz (exactamente 4.59375 muestras/ciclo).")
-                                .size(11.5)
+                                .size(12.0)
                                 .color(theme.text_secondary()),
                         );
-                        ui.add_space(8.0);
+                        ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
                             let can_mod = self.apt_image.is_some();
@@ -388,7 +401,8 @@ impl AptPipeline {
                                 RichText::new("3. Modular Subportadora AM (2400 Hz)").strong().color(Color32::WHITE),
                             )
                             .fill(if can_mod { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(6.0);
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(0.0, 34.0));
 
                             if ui.add_enabled(can_mod, mod_btn).clicked() {
                                 self.step_modulate_am(config);
@@ -400,17 +414,19 @@ impl AptPipeline {
                         });
 
                         if let Some(ref samples) = self.audio_am_samples {
-                            ui.add_space(8.0);
+                            ui.add_space(10.0);
                             let dur_sec = samples.len() as f32 / 11025.0;
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new("Métricas de Audio:").strong().size(12.0));
+                                ui.label(RichText::new("Métricas de Audio:").strong().size(12.5));
                                 ui.label(format!("Tasa de muestreo: 11,025 Hz | Portadora AM: 2,400 Hz | Total: {} muestras PCM | Duración: {:.2} s", samples.len(), dur_sec));
                             });
 
-                            ui.add_space(6.0);
+                            ui.add_space(8.0);
                             ui.horizontal_wrapped(|ui| {
                                 if let Some(ref wav_path) = self.path_audio_wav {
-                                    if ui.button(RichText::new("▶ Reproducir / Abrir Audio APT (.wav)").strong()).clicked() {
+                                    let play_btn = egui::Button::new(RichText::new("▶ Reproducir / Abrir Audio APT (.wav)").strong().size(12.5))
+                                        .min_size(Vec2::new(0.0, 32.0));
+                                    if ui.add(play_btn).clicked() {
                                         if let Some(p) = wav_path.to_str() {
                                             crate::utils::open_path_or_url(p);
                                         }
@@ -418,7 +434,9 @@ impl AptPipeline {
                                 }
 
                                 let out_dir = config.get_pipeline_dir("noaa_apt");
-                                if ui.button(RichText::new("📁 Abrir Carpeta de Salida").size(12.0)).clicked() {
+                                let folder_btn = egui::Button::new(RichText::new("📁 Abrir Carpeta de Salida").size(12.5))
+                                    .min_size(Vec2::new(0.0, 32.0));
+                                if ui.add(folder_btn).clicked() {
                                     crate::utils::open_folder(&out_dir);
                                 }
                             });
@@ -426,7 +444,7 @@ impl AptPipeline {
                     });
                 });
 
-            ui.add_space(10.0);
+            ui.add_space(14.0);
 
             // ==========================================
             // FASE 4: MODULACIÓN FM I/Q PARA SDR
@@ -434,12 +452,12 @@ impl AptPipeline {
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
+                .corner_radius(10.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 4: Modulación FM I/Q para SDR (17 kHz Desviación a 288 kHz)").strong().size(14.0).color(theme.text_primary()));
+                            ui.label(RichText::new("Fase 4: Modulación FM I/Q para SDR (17 kHz Desviación a 288 kHz)").strong().size(14.5).color(theme.text_primary()));
                             let status_text = if !self.iq_samples.is_empty() { "LISTO" } else { "PENDIENTE" };
                             let status_color = if status_text == "LISTO" { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(156, 163, 175) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -447,13 +465,13 @@ impl AptPipeline {
                             });
                         });
 
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
                         ui.label(
                             RichText::new("Modula la subportadora AM en FM en banda ancha (WBFM) con 17 kHz de desviación y sobremuestreo a 288 kHz en banda base en cuadratura (I/Q) para transmisión SDR o exportación.")
-                                .size(11.5)
+                                .size(12.0)
                                 .color(theme.text_secondary()),
                         );
-                        ui.add_space(8.0);
+                        ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
                             let can_mod_fm = self.audio_am_samples.is_some();
@@ -461,7 +479,8 @@ impl AptPipeline {
                                 RichText::new("4. Modular Señal FM I/Q a 288 kHz").strong().color(Color32::WHITE),
                             )
                             .fill(if can_mod_fm { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(6.0);
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(0.0, 34.0));
 
                             if ui.add_enabled(can_mod_fm, fm_btn).clicked() {
                                 self.step_modulate_fm();
@@ -469,10 +488,11 @@ impl AptPipeline {
 
                             if !self.iq_samples.is_empty() {
                                 let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Transmisión ->").strong().color(Color32::WHITE),
+                                    RichText::new("Continuar a Transmisión  ➜").strong().size(13.5).color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(34, 197, 94))
-                                .corner_radius(6.0);
+                                .corner_radius(8.0)
+                                .min_size(Vec2::new(240.0, 38.0));
 
                                 if ui.add(tx_btn).clicked() {
                                     self.current_step = 2;
@@ -481,10 +501,10 @@ impl AptPipeline {
                         });
 
                         if !self.iq_samples.is_empty() {
-                            ui.add_space(8.0);
+                            ui.add_space(10.0);
                             let dur_sec = self.iq_samples.len() as f32 / 288_000.0;
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new("Métricas de RF I/Q:").strong().size(12.0));
+                                ui.label(RichText::new("Métricas de RF I/Q:").strong().size(12.5));
                                 ui.label(format!("Tasa I/Q: 288,000 Hz | Desviación: 17,000 Hz | Total: {} muestras I/Q | Duración: {:.2} s", self.iq_samples.len(), dur_sec));
                             });
                         }

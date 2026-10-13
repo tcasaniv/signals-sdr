@@ -18,7 +18,10 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Signals SDR",
         native_options,
-        Box::new(|_cc| Ok(Box::new(SignalsSdrApp::default()))),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Ok(Box::new(SignalsSdrApp::default()))
+        }),
     )
 }
 
@@ -45,7 +48,10 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|_cc| Ok(Box::new(SignalsSdrApp::default()))),
+                Box::new(|cc| {
+                    egui_extras::install_image_loaders(&cc.egui_ctx);
+                    Ok(Box::new(SignalsSdrApp::default()))
+                }),
             )
             .await
             .expect("Error al iniciar eframe en WebAssembly");
