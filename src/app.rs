@@ -39,6 +39,21 @@ impl Default for SignalsSdrApp {
 }
 
 impl eframe::App for SignalsSdrApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        let theme = if self.dark_mode {
+            AppTheme::Dark
+        } else {
+            AppTheme::Light
+        };
+        let c = theme.bg_canvas();
+        [
+            c.r() as f32 / 255.0,
+            c.g() as f32 / 255.0,
+            c.b() as f32 / 255.0,
+            1.0,
+        ]
+    }
+
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         let theme = if self.dark_mode {
             AppTheme::Dark
@@ -67,9 +82,14 @@ impl eframe::App for SignalsSdrApp {
 
 impl SignalsSdrApp {
     fn render_mobile_ui(&mut self, ctx: &Context, theme: &AppTheme) {
-        // Barra superior móvil
+        // Barra superior móvil con relleno continuo del tema (sin áreas negras)
         TopBottomPanel::top("mobile_header")
-            .frame(Frame::new())
+            .frame(
+                Frame::new()
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .inner_margin(8.0),
+            )
             .show(ctx, |ui| {
                 render_mobile_header(
                     ui,
@@ -80,9 +100,14 @@ impl SignalsSdrApp {
                 );
             });
 
-        // Barra inferior móvil
+        // Barra inferior móvil con relleno continuo del tema
         TopBottomPanel::bottom("mobile_bottom")
-            .frame(Frame::new())
+            .frame(
+                Frame::new()
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .inner_margin(6.0),
+            )
             .show(ctx, |ui| {
                 render_mobile_bottom_bar(
                     ui,
@@ -253,17 +278,24 @@ impl SignalsSdrApp {
                         );
                         ui.add_space(8.0);
 
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(self.config.default_output_dir.display().to_string()).monospace().size(12.0));
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(self.config.default_output_dir.display().to_string())
+                                    .monospace()
+                                    .size(11.5)
+                                    .color(theme.text_primary()),
+                            )
+                            .wrap(),
+                        );
+                        ui.add_space(4.0);
 
-                            if ui.button("Cambiar Carpeta...").clicked() {
-                                if let Some(new_dir) = rfd::FileDialog::new().pick_folder() {
-                                    self.config.default_output_dir = new_dir;
-                                    self.config.ensure_directories_exist();
-                                    self.config.save();
-                                }
+                        if ui.button("Cambiar Carpeta...").clicked() {
+                            if let Some(new_dir) = rfd::FileDialog::new().pick_folder() {
+                                self.config.default_output_dir = new_dir;
+                                self.config.ensure_directories_exist();
+                                self.config.save();
                             }
-                        });
+                        }
 
                         ui.add_space(10.0);
                         ui.label(RichText::new("Estructura de subcarpetas creadas automáticamente:").strong().size(12.0));
@@ -278,10 +310,11 @@ impl SignalsSdrApp {
                         ];
 
                         for (sub, desc) in subdirs {
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(format!("  * {}", sub)).monospace().color(theme.accent_blue()));
-                                ui.label(RichText::new(desc).size(11.0).color(theme.text_secondary()));
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new(format!("* {}", sub)).monospace().strong().color(theme.accent_blue()));
+                                ui.add(egui::Label::new(RichText::new(desc).size(11.5).color(theme.text_secondary())).wrap());
                             });
+                            ui.add_space(2.0);
                         }
                     });
                 });
@@ -298,14 +331,21 @@ impl SignalsSdrApp {
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Aviso Legal y Uso Responsable de Radiofrecuencia").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
-                        ui.label(
-                            "Signals SDR ha sido diseñado exclusivamente para fines formativos, de investigación académica \
-                             y experimentación de radioaficionados autorizados. \
-                             Al transmitir con dispositivos SDR (HackRF, bladeRF, USRP):",
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(
+                                    "Signals SDR ha sido diseñado exclusivamente para fines formativos, de investigación académica \
+                                     y experimentación de radioaficionados autorizados. \
+                                     Al transmitir con dispositivos SDR (HackRF, bladeRF, USRP):",
+                                )
+                                .size(12.0),
+                            )
+                            .wrap(),
                         );
-                        ui.label("- Verifique las regulaciones de telecomunicaciones de su país.");
-                        ui.label("- Para pruebas de laboratorio sin licencia, utilice siempre cargas ficticias (Dummy Load) o atenuadores coaxiales directos.");
-                        ui.label("- No transmita en frecuencias satelitales oficiales sobre el aire sin la debida coordinación.");
+                        ui.add_space(4.0);
+                        ui.add(egui::Label::new(RichText::new("• Verifique las regulaciones de telecomunicaciones de su país.").size(12.0)).wrap());
+                        ui.add(egui::Label::new(RichText::new("• Para pruebas de laboratorio sin licencia, utilice siempre cargas ficticias (Dummy Load) o atenuadores coaxiales directos.").size(12.0)).wrap());
+                        ui.add(egui::Label::new(RichText::new("• No transmita en frecuencias satelitales oficiales sobre el aire sin la debida coordinación.").size(12.0)).wrap());
                     });
                 });
         });

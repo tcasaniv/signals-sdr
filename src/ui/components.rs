@@ -10,17 +10,23 @@ pub fn info_card(ui: &mut Ui, theme: &AppTheme, title: &str, description: &str) 
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(title)
-                        .strong()
-                        .size(15.0)
-                        .color(theme.accent_blue()),
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(title)
+                            .strong()
+                            .size(15.0)
+                            .color(theme.accent_blue()),
+                    )
+                    .wrap(),
                 );
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(description)
-                        .size(13.0)
-                        .color(theme.text_secondary()),
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(description)
+                            .size(12.5)
+                            .color(theme.text_secondary()),
+                    )
+                    .wrap(),
                 );
             });
         });
@@ -35,7 +41,7 @@ pub fn step_bar(
 ) {
     let steps = ["1. Elegir fuente", step_two_label, "3. Transmisión"];
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
 
         for (idx, &label) in steps.iter().enumerate() {
@@ -160,11 +166,11 @@ pub fn image_input_card(
 
                 ui.add_space(8.0);
 
-                // Fila de URL y botón Cargar URL
-                ui.horizontal(|ui| {
-                    let btn_w = 90.0;
+                // Fila de URL y botón Cargar URL con soporte para wrap
+                ui.horizontal_wrapped(|ui| {
+                    let btn_w = 85.0;
                     let avail = ui.available_width();
-                    let edit_w = (avail - btn_w - 8.0).max(80.0);
+                    let edit_w = if avail > 180.0 { avail - btn_w - 8.0 } else { avail - 4.0 };
 
                     ui.add(
                         egui::TextEdit::singleline(url_input)

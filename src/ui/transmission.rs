@@ -63,8 +63,8 @@ pub fn render_transmission_tab(
     state.ensure_devices_probed();
 
     ui.vertical(|ui| {
-        // Selector de destino: Hardware SDR vs Archivo IQ
-        ui.horizontal(|ui| {
+        // Selector de destino: Hardware SDR vs Archivo IQ con soporte de wrap
+        ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Destino de la señal:").strong().size(14.0).color(theme.text_primary()));
             ui.add_space(8.0);
 
@@ -139,8 +139,8 @@ fn render_sdr_panel(
                 );
                 ui.add_space(8.0);
 
-                // Selector de dispositivo
-                ui.horizontal(|ui| {
+                // Selector de dispositivo con soporte wrap
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Dispositivo SDR:");
                     if !state.available_devices.is_empty() {
                         let curr_name = &state.available_devices[state.selected_device_idx].display_name;
@@ -167,7 +167,7 @@ fn render_sdr_panel(
                 }
 
                 let mut freq_mhz = state.tx_config.frequency_hz / 1_000_000.0;
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Frecuencia Central RF (MHz):");
                     if ui.add(egui::DragValue::new(&mut freq_mhz).speed(0.01).range(0.5..=6000.0)).changed() {
                         state.tx_config.frequency_hz = freq_mhz * 1_000_000.0;
@@ -180,7 +180,7 @@ fn render_sdr_panel(
                 ui.add_space(6.0);
 
                 // Tasa de muestreo
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Tasa de Muestreo SDR (Hz):");
                     state.tx_config.sample_rate_hz = sample_rate;
                     ui.label(RichText::new(format!("{} Hz", sample_rate)).strong());
@@ -189,17 +189,17 @@ fn render_sdr_panel(
                 ui.add_space(6.0);
 
                 // Ganancia TX
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Ganancia TX (dB):");
                     ui.add(egui::Slider::new(&mut state.tx_config.gain_db, 0.0..=47.0).text("dB"));
                 });
 
                 ui.add_space(6.0);
 
-                // Interruptor de Amplificador de Potencia (PA)
-                ui.horizontal(|ui| {
-                    ui.label("Amplificador de Potencia RF (PA):");
-                    ui.checkbox(&mut state.tx_config.rf_amp, "Habilitar amplificador de +14 dB (HackRF / hardware compatible)");
+                // Interruptor de Amplificador de Potencia (PA) con texto conciso
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Amplificador PA:");
+                    ui.checkbox(&mut state.tx_config.rf_amp, "Habilitar +14 dB (HackRF / hardware compatible)");
                 });
 
                 ui.add_space(10.0);
@@ -297,7 +297,7 @@ fn render_file_panel(
                 ui.add_space(8.0);
 
                 // Formato de salida
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Formato de salida I/Q:");
                     egui::ComboBox::from_id_salt("export_format_combo")
                         .selected_text(state.export_format.name())
@@ -314,7 +314,7 @@ fn render_file_panel(
                 ui.add_space(6.0);
 
                 // Nombre del archivo
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Nombre del archivo:");
                     ui.text_edit_singleline(&mut state.output_filename);
                     ui.label(format!(".{}", state.export_format.default_extension()));
@@ -328,15 +328,24 @@ fn render_file_panel(
                     .clone()
                     .unwrap_or_else(|| config.get_pipeline_dir(pipeline_slug));
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Carpeta destino:");
-                    ui.label(RichText::new(target_dir.display().to_string()).size(12.0).color(theme.text_secondary()));
-                    if ui.button("Cambiar Carpeta").clicked() {
-                        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                            state.custom_output_dir = Some(folder);
-                        }
-                    }
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(target_dir.display().to_string())
+                                .monospace()
+                                .size(11.0)
+                                .color(theme.text_secondary()),
+                        )
+                        .wrap(),
+                    );
                 });
+                ui.add_space(4.0);
+                if ui.button("Cambiar Carpeta Destino...").clicked() {
+                    if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                        state.custom_output_dir = Some(folder);
+                    }
+                }
 
                 ui.add_space(10.0);
 

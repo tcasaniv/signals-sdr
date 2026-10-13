@@ -162,7 +162,6 @@ impl AptPipeline {
                         } else {
                             "Pendiente"
                         };
-                        ui.label(format!("1. Preprocesamiento de imágenes: {}", pre_status));
 
                         // Fase 2: Codificación a trama APT
                         let apt_status = if self.apt_image.is_some() {
@@ -170,7 +169,6 @@ impl AptPipeline {
                         } else {
                             "Pendiente"
                         };
-                        ui.label(format!("2. Codificación matricial APT: {}", apt_status));
 
                         // Fase 3: Modulación AM y FM I/Q
                         let mod_status = if !self.iq_samples.is_empty() {
@@ -178,11 +176,14 @@ impl AptPipeline {
                         } else {
                             "Pendiente".to_string()
                         };
-                        ui.label(format!("3. Modulación AM (2400 Hz) y FM I/Q (17 kHz dev): {}", mod_status));
+
+                        ui.add(egui::Label::new(RichText::new(format!("1. Preprocesamiento de imágenes: {}", pre_status)).size(12.5)).wrap());
+                        ui.add(egui::Label::new(RichText::new(format!("2. Codificación matricial APT: {}", apt_status)).size(12.5)).wrap());
+                        ui.add(egui::Label::new(RichText::new(format!("3. Modulación AM (2400 Hz) y FM I/Q (17 kHz dev): {}", mod_status)).size(12.5)).wrap());
 
                         ui.add_space(10.0);
 
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             let btn_text = if self.iq_samples.is_empty() {
                                 "Iniciar Codificación Completa APT"
                             } else {
@@ -207,7 +208,7 @@ impl AptPipeline {
                         });
 
                         ui.add_space(6.0);
-                        ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                        ui.add(egui::Label::new(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary())).wrap());
                     });
                 });
 
