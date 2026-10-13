@@ -2,7 +2,6 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, step_bar};
-use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
 use fm_modulator::fm_modulate;
@@ -102,6 +101,7 @@ impl IssSstvPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
+            // Fase 1: Modo Espacial ARISS
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -109,10 +109,10 @@ impl IssSstvPipeline {
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Ajustes del Modo ISS SSTV").strong().size(14.0).color(theme.accent_blue()));
+                        ui.label(RichText::new("Fase 1: Configuración de Protocolo ARISS (ISS SSTV)").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.label("Modo SSTV de la ISS:");
                             let mode_name = match self.selected_mode {
                                 Mode::Robot36 => "Robot 36 (36s, 320x240 YUV - Estándar ISS)",
@@ -130,12 +130,51 @@ impl IssSstvPipeline {
                                 });
                         });
 
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Durante las pasadas de la Estación Espacial Internacional (ISS) en 145.800 MHz, el transceptor Kenwood TM-D710E transmite imágenes conmemorativas en Robot 36 o PD 120.")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                });
+
+            ui.add_space(10.0);
+
+            // Fase 2: Codificación Analógica SSTV a Audio
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 2: Codificación de Trama Analógica SSTV (Audio a 48 kHz)").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Estructura de la señal: Tono de sincronismo a 1200 Hz, Porche negro a 1500 Hz, Escala analógica 1500-2300 Hz. Código VIS digital de 8 bits con bit de paridad.")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                });
+
+            ui.add_space(10.0);
+
+            // Fase 3: Modulación FM RF VHF (145.8 MHz a 288 kHz)
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 3: Modulación FM RF VHF (145.800 MHz, 5 kHz dev)").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
-                        ui.label("Frecuencia portadora de audio: 1200 Hz (Sincro) a 2300 Hz (Blanco) | Modulación FM 5 kHz dev.");
+                        ui.label("Frecuencia portadora de audio: 1200 a 2300 Hz | Modulación FM NFM (5 kHz de desviación estándar) a 288 kHz I/Q.");
+                        ui.add_space(8.0);
 
-                        ui.add_space(10.0);
-
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             let start_btn = egui::Button::new(
                                 RichText::new("Codificar Imagen y Modular en FM").strong().color(Color32::WHITE),
                             )
@@ -147,7 +186,13 @@ impl IssSstvPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión").strong()).clicked() {
+                                let tx_btn = egui::Button::new(
+                                    RichText::new("Continuar a Transmisión ->").strong().color(Color32::WHITE),
+                                )
+                                .fill(Color32::from_rgb(34, 197, 94))
+                                .corner_radius(6.0);
+
+                                if ui.add(tx_btn).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -155,11 +200,14 @@ impl IssSstvPipeline {
 
                         ui.add_space(6.0);
                         ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+
+                        if !self.iq_samples.is_empty() {
+                            ui.add_space(4.0);
+                            let dur_sec = self.iq_samples.len() as f32 / 288_000.0;
+                            ui.label(format!("Muestras complejas I/Q generadas: {} (Duración: {:.2} s a 288 kHz)", self.iq_samples.len(), dur_sec));
+                        }
                     });
                 });
-
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.iq_samples, 288_000);
         });
     }
 

@@ -2,7 +2,6 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, step_bar};
-use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
 use lrpt_encoder::{encode_lrpt_channels, imaging, LrptConfig};
@@ -176,6 +175,7 @@ impl LrptPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme, _config: &AppConfig) {
         ui.vertical(|ui| {
+            // Fase 1: Compresión JPEG de Canales
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -183,20 +183,64 @@ impl LrptPipeline {
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Parámetros de Codificación LRPT").strong().size(14.0).color(theme.accent_blue()));
-                        ui.add_space(6.0);
+                        ui.label(RichText::new("Fase 1: Compresión de Canales y Formato JPEG MCU").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Meteor-M2 comprime cada canal óptico (1568 px de ancho) en bloques de 8x8 píxeles (MCU) usando tablas cuantificadas de luminancia JPEG según el estándar CCSDS.")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                        ui.add_space(8.0);
 
-                        ui.horizontal(|ui| {
-                            ui.label("Calidad de compresión JPEG (1-100):");
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Calidad de compresión JPEG (Factor Q):");
                             ui.add(egui::Slider::new(&mut self.quality, 20..=95));
                         });
+                    });
+                });
 
-                        ui.add_space(6.0);
-                        ui.label("Tasa de símbolos: 72 ksps | Tasa de muestreo I/Q: 288 kHz (4 sps) | Filtro: RRC alfa=0.5");
+            ui.add_space(10.0);
 
-                        ui.add_space(10.0);
+            // Fase 2: Tramas CCSDS y Codificación de Canal FEC
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 2: Protocolo CCSDS y Corrección de Errores FEC").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Los paquetes de paquetes de datos se encapsulan en tramas de transferencia de canal virtual (VCDU) de 1024 bytes con codificación convolucional (K=7, R=1/2) y código Reed-Solomon RS(255, 223) con entrelazado.")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                        ui.add_space(4.0);
+                        ui.label(format!("Canales activos: {} | APIDs: 64{}", self.num_channels, if self.num_channels >= 2 { ", 65" } else { "" }));
+                    });
+                });
 
-                        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+
+            // Fase 3: Modulación Digital OQPSK y Filtro de Conformado RRC
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 3: Modulación Digital OQPSK y Filtro RRC (288 kHz)").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Modulación en cuadratura con desplazamiento (Offset-QPSK) a 72 ksps con un retardo de medio símbolo entre I y Q para minimizar las variaciones de envolvente, conformada por filtro de coseno alzado (RRC, alfa=0.5) y sobremuestreo a 288 kHz.")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                        ui.add_space(8.0);
+
+                        ui.horizontal_wrapped(|ui| {
                             let start_btn = egui::Button::new(
                                 RichText::new("Generar Señal OQPSK LRPT").strong().color(Color32::WHITE),
                             )
@@ -208,7 +252,13 @@ impl LrptPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión").strong()).clicked() {
+                                let tx_btn = egui::Button::new(
+                                    RichText::new("Continuar a Transmisión ->").strong().color(Color32::WHITE),
+                                )
+                                .fill(Color32::from_rgb(34, 197, 94))
+                                .corner_radius(6.0);
+
+                                if ui.add(tx_btn).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -216,11 +266,14 @@ impl LrptPipeline {
 
                         ui.add_space(6.0);
                         ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+
+                        if !self.iq_samples.is_empty() {
+                            ui.add_space(4.0);
+                            let dur_sec = self.iq_samples.len() as f32 / 288_000.0;
+                            ui.label(format!("Total generado: {} muestras I/Q complejas a 288 kHz (Duración: {:.2} s)", self.iq_samples.len(), dur_sec));
+                        }
                     });
                 });
-
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.iq_samples, 288_000);
         });
     }
 

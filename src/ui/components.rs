@@ -121,14 +121,31 @@ pub fn image_input_card(
                 });
                 ui.add_space(8.0);
 
-                // Cuadro de previsualización con color característico (Azul A / Verde B estilo APT-Tx)
+                // Cuadro de previsualización interactivo con color característico (Azul A / Verde B estilo APT-Tx)
                 let preview_height = 120.0;
-                let (rect, _) = ui.allocate_exact_size(
+                let (rect, mut response) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), preview_height),
-                    egui::Sense::hover(),
+                    egui::Sense::click(),
                 );
 
-                let fill = match color {
+                if response.clicked() {
+                    if let Some(ref path) = current_path {
+                        crate::utils::open_path_or_url(path);
+                    }
+                }
+
+                let is_hovered = response.hovered();
+                if is_hovered && current_path.is_some() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    let tip = if let Some(ref p) = current_path {
+                        format!("Clic para abrir '{}' en la aplicación predeterminada", p)
+                    } else {
+                        "Selecciona un archivo local o URL".to_string()
+                    };
+                    response = response.on_hover_text(tip);
+                }
+
+                let mut fill = match color {
                     ChannelColor::Blue => Color32::from_rgb(26, 126, 219),
                     ChannelColor::Green => Color32::from_rgb(46, 150, 68),
                     ChannelColor::Neutral => {
@@ -140,7 +157,15 @@ pub fn image_input_card(
                     }
                 };
 
+                if response.hovered() && current_path.is_some() {
+                    fill = fill.gamma_multiply(1.15);
+                }
+
                 ui.painter().rect_filled(rect, 6.0, fill);
+
+                if response.hovered() && current_path.is_some() {
+                    ui.painter().rect_stroke(rect, 6.0, Stroke::new(2.0_f32, Color32::WHITE), egui::StrokeKind::Inside);
+                }
 
                 let display_text = if let Some(ref path) = current_path {
                     std::path::Path::new(path)
@@ -163,6 +188,16 @@ pub fn image_input_card(
                     egui::FontId::proportional(13.5),
                     text_color,
                 );
+
+                if current_path.is_some() {
+                    ui.painter().text(
+                        rect.left_bottom() + egui::vec2(8.0, -8.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        "↗ Clic para abrir",
+                        egui::FontId::proportional(11.0),
+                        Color32::from_white_alpha(220),
+                    );
+                }
 
                 ui.add_space(8.0);
 
@@ -199,6 +234,131 @@ pub fn image_input_card(
                         .pick_file()
                     {
                         *current_path = Some(file.display().to_string());
+                    }
+                }
+            });
+        });
+}
+
+/// Tarjeta interactiva para productos intermedios del pipeline (Imágenes preprocesadas, APT compuesta, etc.)
+pub fn intermediate_preview_card(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    title: &str,
+    description: &str,
+    file_path: Option<&std::path::Path>,
+    is_ready: bool,
+    color: ChannelColor,
+) {
+    Frame::new()
+        .fill(theme.card_bg())
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
+        .inner_margin(12.0)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                // Cabecera con título e indicador de estado
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(title).strong().size(13.5).color(theme.text_primary()));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (badge_text, badge_color) = if is_ready {
+                            ("LISTO", Color32::from_rgb(34, 197, 94))
+                        } else {
+                            ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+                        };
+                        ui.label(RichText::new(badge_text).size(11.0).strong().color(badge_color));
+                    });
+                });
+
+                ui.add_space(4.0);
+                ui.label(RichText::new(description).size(11.5).color(theme.text_secondary()));
+                ui.add_space(6.0);
+
+                // Cuadro interactivo de previsualización
+                let preview_height = 100.0;
+                let (rect, mut response) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), preview_height),
+                    egui::Sense::click(),
+                );
+
+                if response.clicked() && is_ready {
+                    if let Some(path) = file_path {
+                        if let Some(path_str) = path.to_str() {
+                            crate::utils::open_path_or_url(path_str);
+                        }
+                    }
+                }
+
+                let is_hovered = response.hovered();
+                if is_hovered && is_ready {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    response = response.on_hover_text("Clic para abrir imagen en la aplicación predeterminada");
+                }
+
+                let mut fill = match color {
+                    ChannelColor::Blue => Color32::from_rgb(26, 126, 219),
+                    ChannelColor::Green => Color32::from_rgb(46, 150, 68),
+                    ChannelColor::Neutral => {
+                        if *theme == AppTheme::Dark {
+                            Color32::from_rgb(30, 36, 46)
+                        } else {
+                            Color32::from_rgb(225, 232, 240)
+                        }
+                    }
+                };
+
+                if !is_ready {
+                    fill = fill.gamma_multiply(0.4);
+                } else if response.hovered() {
+                    fill = fill.gamma_multiply(1.15);
+                }
+
+                ui.painter().rect_filled(rect, 6.0, fill);
+
+                if response.hovered() && is_ready {
+                    ui.painter().rect_stroke(rect, 6.0, Stroke::new(2.0_f32, Color32::WHITE), egui::StrokeKind::Inside);
+                }
+
+                let center_text = if is_ready {
+                    if let Some(path) = file_path {
+                        path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Generado".to_string())
+                    } else {
+                        "Generado".to_string()
+                    }
+                } else {
+                    "Sin procesar".to_string()
+                };
+
+                let text_color = if is_ready { Color32::WHITE } else { theme.text_secondary() };
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    center_text,
+                    egui::FontId::proportional(13.0),
+                    text_color,
+                );
+
+                if is_ready {
+                    ui.painter().text(
+                        rect.left_bottom() + egui::vec2(8.0, -6.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        "↗ Clic para abrir",
+                        egui::FontId::proportional(10.5),
+                        Color32::from_white_alpha(220),
+                    );
+                }
+
+                ui.add_space(6.0);
+
+                if is_ready && file_path.is_some() {
+                    let path = file_path.unwrap();
+                    let open_btn = egui::Button::new(RichText::new("Abrir Imagen en Visor").size(11.5))
+                        .fill(theme.surface_subtle())
+                        .stroke(Stroke::new(1.0_f32, theme.card_border()));
+                    if ui.add_sized([ui.available_width(), 24.0], open_btn).clicked() {
+                        if let Some(p) = path.to_str() {
+                            crate::utils::open_path_or_url(p);
+                        }
                     }
                 }
             });

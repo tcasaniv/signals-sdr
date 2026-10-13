@@ -1,5 +1,5 @@
 use num_complex::Complex32;
-use seify::{enumerate_with_args, DynDevice, TxStreamer};
+use seify::{DynDevice, TxStreamer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -9,6 +9,45 @@ use std::time::Instant;
 pub struct SdrDeviceOption {
     pub display_name: String,
     pub args: String,
+}
+
+impl SdrDeviceOption {
+    pub fn all_supported() -> Vec<SdrDeviceOption> {
+        vec![
+            SdrDeviceOption {
+                display_name: "Simulador Dummy (Sin hardware)".to_string(),
+                args: "driver=dummy".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "HackRF One (Transmisión Real)".to_string(),
+                args: "driver=hackrf".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "bladeRF (Transmisión Real)".to_string(),
+                args: "driver=bladerf".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "USRP / UHD (Transmisión Real UHD)".to_string(),
+                args: "driver=usrp".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "PlutoSDR / ADALM-Pluto (Transmisión Real)".to_string(),
+                args: "driver=plutosdr".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "LimeSDR (Transmisión Real)".to_string(),
+                args: "driver=limesdr".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "RTL-SDR (Sólo Recepción / Test)".to_string(),
+                args: "driver=rtlsdr".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "SoapySDR (Detección Automática)".to_string(),
+                args: "".to_string(),
+            },
+        ]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -64,25 +103,9 @@ impl SdrTransmissionController {
         }
     }
 
-    /// Enumera los dispositivos SDR disponibles mediante Seify
+    /// Retorna todos los dispositivos SDR compatibles (HackRF, bladeRF, USRP, PlutoSDR, LimeSDR, Dummy, etc.)
     pub fn probe_devices() -> Vec<SdrDeviceOption> {
-        let mut list = Vec::new();
-        list.push(SdrDeviceOption {
-            display_name: "Simulador Dummy (Sin hardware)".to_string(),
-            args: "driver=dummy".to_string(),
-        });
-
-        if let Ok(devs) = enumerate_with_args("") {
-            for d in devs {
-                let name = format!("Dispositivo SDR ({})", d);
-                list.push(SdrDeviceOption {
-                    display_name: name,
-                    args: d.to_string(),
-                });
-            }
-        }
-
-        list
+        SdrDeviceOption::all_supported()
     }
 
     pub fn status(&self) -> TransmissionStatus {

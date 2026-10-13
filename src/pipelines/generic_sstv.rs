@@ -2,7 +2,6 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{image_input_card, info_card, step_bar};
-use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
 use fm_modulator::fm_modulate;
@@ -141,7 +140,10 @@ impl GenericSstvPipeline {
     }
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        let (current_name, current_res, current_dur) = Self::mode_info_label(self.selected_mode);
+
         ui.vertical(|ui| {
+            // Fase 1: Selección del Modo SSTV
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -149,13 +151,11 @@ impl GenericSstvPipeline {
                 .inner_margin(12.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Configuración del Modo SSTV").strong().size(14.0).color(theme.accent_blue()));
+                        ui.label(RichText::new("Fase 1: Configuración del Modo SSTV").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.label("Modo de Transmisión:");
-                            let (current_name, current_res, current_dur) = Self::mode_info_label(self.selected_mode);
-
                             egui::ComboBox::from_id_salt("generic_sstv_mode_combo")
                                 .selected_text(format!("{} ({} - {})", current_name, current_res, current_dur))
                                 .show_ui(ui, |ui| {
@@ -182,21 +182,55 @@ impl GenericSstvPipeline {
                                 });
                         });
 
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(format!("Resolución requerida: {} | Duración estimada de escaneo: {}", current_res, current_dur))
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                });
+
+            ui.add_space(10.0);
+
+            // Fase 2: Codificación Analógica SSTV a Audio
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 2: Estructura de la Señal SSTV (Audio a 48 kHz)").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("Encabezado VIS: Tono de calibración a 1900 Hz (300 ms), Tono de ruptura a 1200 Hz (10 ms), Código VIS digital de 8 bits con bit de paridad. Líneas de imagen: Tono de sincro a 1200 Hz, Porche negro a 1500 Hz, y barrido analógico de luminancia/color (1500-2300 Hz).")
+                                .size(11.5)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                });
+
+            ui.add_space(10.0);
+
+            // Fase 3: Modulación FM RF para SDR
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Fase 3: Modulación FM RF para Transmisión SDR (288 kHz)").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(6.0);
+
+                        ui.horizontal_wrapped(|ui| {
                             ui.label("Desviación de frecuencia FM:");
                             ui.add(egui::Slider::new(&mut self.fm_deviation_hz, 2_500.0..=25_000.0).suffix(" Hz"));
                         });
 
-                        ui.add_space(6.0);
-                        ui.label(
-                            RichText::new("Estructura de la señal: Tono de sincronismo 1200 Hz (línea y campo), Porche negro 1500 Hz, Escala analógica 1500-2300 Hz. Código VIS digital de 8 bits con paridad.")
-                                .size(11.0)
-                                .color(theme.text_secondary()),
-                        );
-
-                        ui.add_space(10.0);
-                        ui.horizontal(|ui| {
+                        ui.add_space(8.0);
+                        ui.horizontal_wrapped(|ui| {
                             let start_btn = egui::Button::new(
                                 RichText::new("Codificar SSTV y Modular en FM").strong().color(Color32::WHITE),
                             )
@@ -208,7 +242,13 @@ impl GenericSstvPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión ->").strong()).clicked() {
+                                let tx_btn = egui::Button::new(
+                                    RichText::new("Continuar a Transmisión ->").strong().color(Color32::WHITE),
+                                )
+                                .fill(Color32::from_rgb(34, 197, 94))
+                                .corner_radius(6.0);
+
+                                if ui.add(tx_btn).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -216,11 +256,14 @@ impl GenericSstvPipeline {
 
                         ui.add_space(6.0);
                         ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+
+                        if !self.iq_samples.is_empty() {
+                            ui.add_space(4.0);
+                            let dur_sec = self.iq_samples.len() as f32 / 288_000.0;
+                            ui.label(format!("Muestras complejas I/Q generadas: {} a 288 kHz (Duración: {:.2} s)", self.iq_samples.len(), dur_sec));
+                        }
                     });
                 });
-
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.iq_samples, 288_000);
         });
     }
 

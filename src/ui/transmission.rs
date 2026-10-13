@@ -30,7 +30,7 @@ impl Default for TransmissionTabState {
         Self {
             destination: TransmissionDestination::HardwareSdr,
             tx_config: TxConfig::default(),
-            available_devices: Vec::new(),
+            available_devices: SdrDeviceOption::all_supported(),
             selected_device_idx: 0,
             export_format: IqExportFormat::WavIq16,
             output_filename: "senal_iq".to_string(),
@@ -43,7 +43,7 @@ impl Default for TransmissionTabState {
 impl TransmissionTabState {
     pub fn ensure_devices_probed(&mut self) {
         if self.available_devices.is_empty() {
-            self.available_devices = SdrTransmissionController::probe_devices();
+            self.available_devices = SdrDeviceOption::all_supported();
         }
     }
 }
@@ -112,6 +112,9 @@ pub fn render_transmission_tab(
                 );
             }
         }
+
+        ui.add_space(10.0);
+        crate::ui::spectrum::render_signal_visualizer(ui, theme, samples, sample_rate);
     });
 }
 
@@ -153,9 +156,6 @@ fn render_sdr_panel(
                                     }
                                 }
                             });
-                    }
-                    if ui.button("Actualizar Dispositivos").clicked() {
-                        state.available_devices = SdrTransmissionController::probe_devices();
                     }
                 });
 
