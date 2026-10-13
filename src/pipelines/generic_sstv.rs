@@ -43,34 +43,36 @@ impl GenericSstvPipeline {
         config: &AppConfig,
         sdr_controller: &mut SdrTransmissionController,
     ) {
-        info_card(
-            ui,
-            theme,
-            "Generic SSTV (Televisión de Barrido Lento Multiprotocolo)",
-            "Generador de señales SSTV para todos los estándares analógicos de radioaficionados: Martin, Scottie, \
-             Robot, PD y B/W. La imagen se remuestrea a la resolución nativa del modo, se sintetizan los tonos de \
-             sincronismo (1200 Hz), porche (1500 Hz) y luminancia/crominancia (1500 - 2300 Hz) con cabecera VIS y finalmente se modulan en FM.",
-        );
-
-        ui.add_space(8.0);
-        step_bar(ui, theme, &mut self.current_step, "2. Codificar");
-
-        match self.current_step {
-            0 => self.render_step_source(ui, theme),
-            1 => self.render_step_encode(ui, theme),
-            2 => render_transmission_tab(
+        ui.vertical(|ui| {
+            info_card(
                 ui,
                 theme,
-                config,
-                "generic_sstv",
-                14_230_000.0, // 14.230 MHz (Frecuencia internacional SSTV en 20 metros USB/FM)
-                &mut self.transmission_state,
-                sdr_controller,
-                &self.iq_samples,
-                288_000,
-            ),
-            _ => {}
-        }
+                "Generic SSTV (Televisión de Barrido Lento Multiprotocolo)",
+                "Generador de señales SSTV para todos los estándares analógicos de radioaficionados: Martin, Scottie, \
+                 Robot, PD y B/W. La imagen se remuestrea a la resolución nativa del modo, se sintetizan los tonos de \
+                 sincronismo (1200 Hz), porche (1500 Hz) y luminancia/crominancia (1500 - 2300 Hz) con cabecera VIS y finalmente se modulan en FM.",
+            );
+
+            ui.add_space(8.0);
+            step_bar(ui, theme, &mut self.current_step, "2. Codificar");
+
+            match self.current_step {
+                0 => self.render_step_source(ui, theme),
+                1 => self.render_step_encode(ui, theme),
+                2 => render_transmission_tab(
+                    ui,
+                    theme,
+                    config,
+                    "generic_sstv",
+                    14_230_000.0, // 14.230 MHz (Frecuencia internacional SSTV en 20 metros USB/FM)
+                    &mut self.transmission_state,
+                    sdr_controller,
+                    &self.iq_samples,
+                    288_000,
+                ),
+                _ => {}
+            }
+        });
     }
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
@@ -81,6 +83,7 @@ impl GenericSstvPipeline {
                 "Imagen Fuente para SSTV",
                 &mut self.img_path,
                 &mut self.url_input,
+                crate::ui::components::ChannelColor::Blue,
             );
 
             ui.add_space(12.0);

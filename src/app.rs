@@ -2,11 +2,15 @@ use crate::config::AppConfig;
 use crate::pipelines::{PipelineId, PipelinesState};
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
-use crate::ui::desktop_nav::{render_desktop_sidebar, DesktopNavState, NavSection};
+use crate::ui::desktop_nav::{
+    render_desktop_pipeline_list, render_desktop_rail, DesktopNavState, NavSection,
+};
 use crate::ui::mobile_nav::{
     render_mobile_bottom_bar, render_mobile_header, render_mobile_pipeline_grid, MobileNavState,
 };
-use egui::{CentralPanel, Context, Frame, RichText, ScrollArea, Stroke, TopBottomPanel, Ui};
+use egui::{
+    CentralPanel, Context, Frame, RichText, ScrollArea, SidePanel, Stroke, TopBottomPanel, Ui,
+};
 
 pub struct SignalsSdrApp {
     pub config: AppConfig,
@@ -73,7 +77,6 @@ impl SignalsSdrApp {
                     &mut self.mobile_nav,
                     self.desktop_nav.active_section,
                     self.selected_pipeline,
-                    &mut self.dark_mode,
                 );
             });
 
@@ -114,31 +117,50 @@ impl SignalsSdrApp {
     }
 
     fn render_desktop_ui(&mut self, ctx: &Context, theme: &AppTheme) {
-        CentralPanel::default()
-            .frame(Frame::new().fill(theme.bg_canvas()))
+        // 1. Icon Rail estrecho (ancho fijo 64px, ocupa 100% de la altura de la ventana)
+        SidePanel::left("desktop_nav_rail")
+            .resizable(false)
+            .exact_width(64.0)
+            .frame(
+                Frame::new()
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .inner_margin(8.0),
+            )
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    // Barra de navegación lateral escritorio
-                    render_desktop_sidebar(
+                render_desktop_rail(ui, theme, &mut self.desktop_nav);
+            });
+
+        // 2. Panel intermedio de catálogo/pipelines (ancho 260px) solo si la sección activa es Pipelines
+        if self.desktop_nav.active_section == NavSection::Pipelines {
+            SidePanel::left("desktop_catalog")
+                .resizable(false)
+                .exact_width(260.0)
+                .frame(
+                    Frame::new()
+                        .fill(theme.card_bg())
+                        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                        .inner_margin(12.0),
+                )
+                .show(ctx, |ui| {
+                    render_desktop_pipeline_list(
                         ui,
                         theme,
                         &mut self.desktop_nav,
                         &mut self.selected_pipeline,
-                        &mut self.dark_mode,
                     );
+                });
+        }
 
-                    // Contenido central de escritorio
-                    Frame::new()
-                        .fill(theme.bg_canvas())
-                        .inner_margin(16.0)
-                        .show(ui, |ui| {
-                            ScrollArea::vertical().show(ui, |ui| {
-                                match self.desktop_nav.active_section {
-                                    NavSection::Settings => self.render_settings(ui, theme),
-                                    NavSection::Pipelines => self.render_active_pipeline(ui, theme),
-                                }
-                            });
-                        });
+        // 3. Panel central principal (ocupa toda la altura y el ancho restante del viewport)
+        CentralPanel::default()
+            .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(16.0))
+            .show(ctx, |ui| {
+                ScrollArea::vertical().show(ui, |ui| {
+                    match self.desktop_nav.active_section {
+                        NavSection::Settings => self.render_settings(ui, theme),
+                        NavSection::Pipelines => self.render_active_pipeline(ui, theme),
+                    }
                 });
             });
     }
@@ -176,10 +198,40 @@ impl SignalsSdrApp {
         ui.vertical(|ui| {
             ui.label(RichText::new("Ajustes y Configuración Global").strong().size(18.0).color(theme.text_primary()));
             ui.label(
-                RichText::new("Configure las rutas predeterminadas para el almacenamiento de archivos procesados y señales I/Q.")
+                RichText::new("Configure el tema de la aplicación y las rutas predeterminadas para almacenamiento de archivos procesados y señales I/Q.")
                     .size(13.0)
                     .color(theme.text_secondary()),
             );
+            ui.add_space(14.0);
+
+            // Tarjeta de apariencia y tema visual
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Apariencia y Tema Visual").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("Seleccione el modo visual para la aplicación:")
+                                .size(12.0)
+                                .color(theme.text_secondary()),
+                        );
+                        ui.add_space(8.0);
+
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(self.dark_mode, "Modo Oscuro").clicked() {
+                                self.dark_mode = true;
+                            }
+                            if ui.selectable_label(!self.dark_mode, "Modo Claro").clicked() {
+                                self.dark_mode = false;
+                            }
+                        });
+                    });
+                });
+
             ui.add_space(14.0);
 
             // Tarjeta de almacenamiento

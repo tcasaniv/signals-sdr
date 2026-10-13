@@ -86,81 +86,115 @@ pub fn step_bar(
     ui.add_space(6.0);
 }
 
-/// Tarjeta para cargar imagen con botón de archivo local y URL
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelColor {
+    Blue,
+    Green,
+    Neutral,
+}
+
+/// Tarjeta para cargar imagen con vista previa estilizada, fila de URL y botón de archivo local
 pub fn image_input_card(
     ui: &mut Ui,
     theme: &AppTheme,
     title: &str,
     current_path: &mut Option<String>,
     url_input: &mut String,
+    color: ChannelColor,
 ) {
     Frame::new()
         .fill(theme.card_bg())
         .stroke(Stroke::new(1.0_f32, theme.card_border()))
         .corner_radius(8.0)
-        .inner_margin(10.0)
+        .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.label(RichText::new(title).strong().size(14.0).color(theme.text_primary()));
-                ui.add_space(6.0);
+                // Título centrado
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new(title).strong().size(14.0).color(theme.text_primary()));
+                });
+                ui.add_space(8.0);
 
-                // Cuadro de estado / miniatura
-                let preview_height = 80.0;
+                // Cuadro de previsualización con color característico (Azul A / Verde B estilo APT-Tx)
+                let preview_height = 120.0;
                 let (rect, _) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), preview_height),
                     egui::Sense::hover(),
                 );
 
-                let fill = if *theme == AppTheme::Dark {
-                    Color32::from_rgb(35, 42, 54)
-                } else {
-                    Color32::from_rgb(230, 236, 244)
+                let fill = match color {
+                    ChannelColor::Blue => Color32::from_rgb(26, 126, 219),
+                    ChannelColor::Green => Color32::from_rgb(46, 150, 68),
+                    ChannelColor::Neutral => {
+                        if *theme == AppTheme::Dark {
+                            Color32::from_rgb(35, 42, 54)
+                        } else {
+                            Color32::from_rgb(220, 228, 238)
+                        }
+                    }
                 };
 
                 ui.painter().rect_filled(rect, 6.0, fill);
 
-                if let Some(ref path) = current_path {
-                    let display = if path.len() > 35 {
-                        format!("...{}", &path[path.len() - 32..])
-                    } else {
-                        path.clone()
-                    };
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        display,
-                        egui::FontId::proportional(12.0),
-                        theme.text_primary(),
-                    );
+                let display_text = if let Some(ref path) = current_path {
+                    std::path::Path::new(path)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.clone())
                 } else {
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "Sin imagen seleccionada",
-                        egui::FontId::proportional(12.0),
-                        theme.text_secondary(),
-                    );
-                }
+                    format!("{} Original", title)
+                };
 
-                ui.add_space(6.0);
+                let text_color = match color {
+                    ChannelColor::Blue | ChannelColor::Green => Color32::WHITE,
+                    ChannelColor::Neutral => theme.text_primary(),
+                };
 
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    display_text,
+                    egui::FontId::proportional(13.5),
+                    text_color,
+                );
+
+                ui.add_space(8.0);
+
+                // Fila de URL y botón Cargar URL
                 ui.horizontal(|ui| {
-                    if ui.button("Archivo Local").clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
-                            .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
-                            .pick_file()
-                        {
-                            *current_path = Some(file.display().to_string());
-                        }
-                    }
+                    let btn_w = 90.0;
+                    let avail = ui.available_width();
+                    let edit_w = (avail - btn_w - 8.0).max(80.0);
 
-                    ui.text_edit_singleline(url_input);
-                    if ui.button("Cargar URL").clicked() {
-                        if !url_input.is_empty() {
-                            *current_path = Some(url_input.clone());
+                    ui.add(
+                        egui::TextEdit::singleline(url_input)
+                            .hint_text(format!("URL {}", title))
+                            .desired_width(edit_w),
+                    );
+
+                    let url_btn = egui::Button::new(RichText::new("Cargar URL").size(12.0));
+                    if ui.add_sized([btn_w, 24.0], url_btn).clicked() {
+                        if !url_input.trim().is_empty() {
+                            *current_path = Some(url_input.trim().to_string());
                         }
                     }
                 });
+
+                ui.add_space(6.0);
+
+                // Botón de ancho completo para Archivo Local
+                let local_btn = egui::Button::new(RichText::new(format!("Archivo Local {}", title)).strong().size(12.5))
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()));
+
+                if ui.add_sized([ui.available_width(), 26.0], local_btn).clicked() {
+                    if let Some(file) = rfd::FileDialog::new()
+                        .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
+                        .pick_file()
+                    {
+                        *current_path = Some(file.display().to_string());
+                    }
+                }
             });
         });
 }

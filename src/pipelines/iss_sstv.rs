@@ -41,34 +41,36 @@ impl IssSstvPipeline {
         config: &AppConfig,
         sdr_controller: &mut SdrTransmissionController,
     ) {
-        info_card(
-            ui,
-            theme,
-            "ISS SSTV (Estación Espacial Internacional)",
-            "Transmisiones conmemorativas de televisión de barrido lento (SSTV) emitidas periódicamente desde el módulo ruso \
-             de la Estación Espacial Internacional (ISS / ARISS) en la frecuencia oficial de 145.800 MHz FM. \
-             El modo estándar más habitual de la ISS es Robot 36 (36 segundos por imagen) o PD 120.",
-        );
-
-        ui.add_space(8.0);
-        step_bar(ui, theme, &mut self.current_step, "2. Codificar");
-
-        match self.current_step {
-            0 => self.render_step_source(ui, theme),
-            1 => self.render_step_encode(ui, theme),
-            2 => render_transmission_tab(
+        ui.vertical(|ui| {
+            info_card(
                 ui,
                 theme,
-                config,
-                "iss_sstv",
-                145_800_000.0,
-                &mut self.transmission_state,
-                sdr_controller,
-                &self.iq_samples,
-                288_000,
-            ),
-            _ => {}
-        }
+                "ISS SSTV (Estación Espacial Internacional)",
+                "Transmisiones conmemorativas de televisión de barrido lento (SSTV) emitidas periódicamente desde el módulo ruso \
+                 de la Estación Espacial Internacional (ISS / ARISS) en la frecuencia oficial de 145.800 MHz FM. \
+                 El modo estándar más habitual de la ISS es Robot 36 (36 segundos por imagen) o PD 120.",
+            );
+
+            ui.add_space(8.0);
+            step_bar(ui, theme, &mut self.current_step, "2. Codificar");
+
+            match self.current_step {
+                0 => self.render_step_source(ui, theme),
+                1 => self.render_step_encode(ui, theme),
+                2 => render_transmission_tab(
+                    ui,
+                    theme,
+                    config,
+                    "iss_sstv",
+                    145_800_000.0,
+                    &mut self.transmission_state,
+                    sdr_controller,
+                    &self.iq_samples,
+                    288_000,
+                ),
+                _ => {}
+            }
+        });
     }
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
@@ -86,6 +88,7 @@ impl IssSstvPipeline {
                 "Imagen para ISS SSTV",
                 &mut self.img_path,
                 &mut self.url_input,
+                crate::ui::components::ChannelColor::Blue,
             );
 
             ui.add_space(10.0);

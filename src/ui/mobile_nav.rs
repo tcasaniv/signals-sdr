@@ -23,7 +23,6 @@ pub fn render_mobile_header(
     state: &mut MobileNavState,
     active_section: NavSection,
     selected_pipeline: PipelineId,
-    dark_mode: &mut bool,
 ) {
     Frame::new()
         .fill(theme.surface_subtle())
@@ -50,14 +49,6 @@ pub fn render_mobile_header(
                 } else {
                     ui.label(RichText::new("Ajustes y Rutas").strong().size(15.0).color(theme.text_primary()));
                 }
-
-                // Alineación al extremo derecho para el switch de tema
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let theme_label = if *dark_mode { "Luz" } else { "Oscuro" };
-                    if ui.button(RichText::new(theme_label).size(11.0)).clicked() {
-                        *dark_mode = !*dark_mode;
-                    }
-                });
             });
         });
 }

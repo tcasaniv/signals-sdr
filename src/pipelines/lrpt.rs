@@ -49,35 +49,37 @@ impl LrptPipeline {
         config: &AppConfig,
         sdr_controller: &mut SdrTransmissionController,
     ) {
-        info_card(
-            ui,
-            theme,
-            "METEOR LRPT (Low Rate Picture Transmission)",
-            "Protocolo digital de satélites meteorológicos rusos Meteor-M N2-x. \
-             Transmite 3 canales espectrales multiplexados con compresión JPEG DCT por MCU, \
-             paquetes CCSDS, protección Reed-Solomon (255,223), Scrambler y codificación convolucional FEC (r=1/2, K=7), \
-             modulados en OQPSK a 72 ksps sobre 137.1 / 137.9 MHz.",
-        );
-
-        ui.add_space(8.0);
-        step_bar(ui, theme, &mut self.current_step, "2. Codificar");
-
-        match self.current_step {
-            0 => self.render_step_source(ui, theme),
-            1 => self.render_step_encode(ui, theme, config),
-            2 => render_transmission_tab(
+        ui.vertical(|ui| {
+            info_card(
                 ui,
                 theme,
-                config,
-                "meteor_lrpt",
-                137_900_000.0,
-                &mut self.transmission_state,
-                sdr_controller,
-                &self.iq_samples,
-                288_000,
-            ),
-            _ => {}
-        }
+                "METEOR LRPT (Low Rate Picture Transmission)",
+                "Protocolo digital de satélites meteorológicos rusos Meteor-M N2-x. \
+                 Transmite 3 canales espectrales multiplexados con compresión JPEG DCT por MCU, \
+                 paquetes CCSDS, protección Reed-Solomon (255,223), Scrambler y codificación convolucional FEC (r=1/2, K=7), \
+                 modulados en OQPSK a 72 ksps sobre 137.1 / 137.9 MHz.",
+            );
+
+            ui.add_space(8.0);
+            step_bar(ui, theme, &mut self.current_step, "2. Codificar");
+
+            match self.current_step {
+                0 => self.render_step_source(ui, theme),
+                1 => self.render_step_encode(ui, theme, config),
+                2 => render_transmission_tab(
+                    ui,
+                    theme,
+                    config,
+                    "meteor_lrpt",
+                    137_900_000.0,
+                    &mut self.transmission_state,
+                    sdr_controller,
+                    &self.iq_samples,
+                    288_000,
+                ),
+                _ => {}
+            }
+        });
     }
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
@@ -95,21 +97,79 @@ impl LrptPipeline {
 
             ui.add_space(8.0);
 
-            ui.columns(3, |cols| {
-                image_input_card(&mut cols[0], theme, "Canal 1 (APID 64)", &mut self.img1_path, &mut self.url1_input);
+            let avail_w = ui.available_width();
+            if avail_w >= 750.0 {
+                let cols_count = self.num_channels;
+                ui.columns(cols_count, |cols| {
+                    image_input_card(
+                        &mut cols[0],
+                        theme,
+                        "Canal 1 (APID 64)",
+                        &mut self.img1_path,
+                        &mut self.url1_input,
+                        crate::ui::components::ChannelColor::Blue,
+                    );
+                    if self.num_channels >= 2 {
+                        image_input_card(
+                            &mut cols[1],
+                            theme,
+                            "Canal 2 (APID 65)",
+                            &mut self.img2_path,
+                            &mut self.url2_input,
+                            crate::ui::components::ChannelColor::Green,
+                        );
+                    }
+                    if self.num_channels >= 3 {
+                        image_input_card(
+                            &mut cols[2],
+                            theme,
+                            "Canal 3 (APID 66)",
+                            &mut self.img3_path,
+                            &mut self.url3_input,
+                            crate::ui::components::ChannelColor::Neutral,
+                        );
+                    }
+                });
+            } else {
+                image_input_card(
+                    ui,
+                    theme,
+                    "Canal 1 (APID 64)",
+                    &mut self.img1_path,
+                    &mut self.url1_input,
+                    crate::ui::components::ChannelColor::Blue,
+                );
                 if self.num_channels >= 2 {
-                    image_input_card(&mut cols[1], theme, "Canal 2 (APID 65)", &mut self.img2_path, &mut self.url2_input);
+                    ui.add_space(10.0);
+                    image_input_card(
+                        ui,
+                        theme,
+                        "Canal 2 (APID 65)",
+                        &mut self.img2_path,
+                        &mut self.url2_input,
+                        crate::ui::components::ChannelColor::Green,
+                    );
                 }
                 if self.num_channels >= 3 {
-                    image_input_card(&mut cols[2], theme, "Canal 3 (APID 66)", &mut self.img3_path, &mut self.url3_input);
+                    ui.add_space(10.0);
+                    image_input_card(
+                        ui,
+                        theme,
+                        "Canal 3 (APID 66)",
+                        &mut self.img3_path,
+                        &mut self.url3_input,
+                        crate::ui::components::ChannelColor::Neutral,
+                    );
                 }
-            });
+            }
 
             ui.add_space(10.0);
             if self.img1_path.is_some() {
-                if ui.button(RichText::new("Continuar a Codificación").strong()).clicked() {
-                    self.current_step = 1;
-                }
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new("Continuar a Codificación").strong()).clicked() {
+                        self.current_step = 1;
+                    }
+                });
             }
         });
     }

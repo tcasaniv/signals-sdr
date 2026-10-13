@@ -53,33 +53,35 @@ impl AptPipeline {
         config: &AppConfig,
         sdr_controller: &mut SdrTransmissionController,
     ) {
-        info_card(
-            ui,
-            theme,
-            "NOAA APT (Automatic Picture Transmission)",
-            "Sistema de transmisión analógica satelital utilizado por los satélites polares NOAA (NOAA-15, 18, 19). \
-             Transmite dos imágenes (visible e infrarroja) a 2 líneas por segundo usando una subportadora AM a 2400 Hz modulada en FM a 137.1 / 137.9125 MHz.",
-        );
-
-        ui.add_space(8.0);
-        step_bar(ui, theme, &mut self.current_step, "2. Codificar");
-
-        match self.current_step {
-            0 => self.render_step_source(ui, theme),
-            1 => self.render_step_encode(ui, theme, config),
-            2 => render_transmission_tab(
+        ui.vertical(|ui| {
+            info_card(
                 ui,
                 theme,
-                config,
-                "noaa_apt",
-                137_100_000.0,
-                &mut self.transmission_state,
-                sdr_controller,
-                &self.iq_samples,
-                288_000,
-            ),
-            _ => {}
-        }
+                "NOAA APT (Automatic Picture Transmission)",
+                "Sistema de transmisión analógica satelital utilizado por los satélites polares NOAA (NOAA-15, 18, 19). \
+                 Transmite dos imágenes (visible e infrarroja) a 2 líneas por segundo usando una subportadora AM a 2400 Hz modulada en FM a 137.1 / 137.9125 MHz.",
+            );
+
+            ui.add_space(8.0);
+            step_bar(ui, theme, &mut self.current_step, "2. Codificar");
+
+            match self.current_step {
+                0 => self.render_step_source(ui, theme),
+                1 => self.render_step_encode(ui, theme, config),
+                2 => render_transmission_tab(
+                    ui,
+                    theme,
+                    config,
+                    "noaa_apt",
+                    137_100_000.0,
+                    &mut self.transmission_state,
+                    sdr_controller,
+                    &self.iq_samples,
+                    288_000,
+                ),
+                _ => {}
+            }
+        });
     }
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
@@ -91,22 +93,45 @@ impl AptPipeline {
             );
             ui.add_space(8.0);
 
-            ui.columns(2, |cols| {
+            let avail_w = ui.available_width();
+            if avail_w >= 680.0 {
+                ui.columns(2, |cols| {
+                    image_input_card(
+                        &mut cols[0],
+                        theme,
+                        "Imagen A",
+                        &mut self.img_a_path,
+                        &mut self.url_a_input,
+                        crate::ui::components::ChannelColor::Blue,
+                    );
+                    image_input_card(
+                        &mut cols[1],
+                        theme,
+                        "Imagen B",
+                        &mut self.img_b_path,
+                        &mut self.url_b_input,
+                        crate::ui::components::ChannelColor::Green,
+                    );
+                });
+            } else {
                 image_input_card(
-                    &mut cols[0],
+                    ui,
                     theme,
-                    "Imagen A (Canal Visible / Ch1)",
+                    "Imagen A",
                     &mut self.img_a_path,
                     &mut self.url_a_input,
+                    crate::ui::components::ChannelColor::Blue,
                 );
+                ui.add_space(10.0);
                 image_input_card(
-                    &mut cols[1],
+                    ui,
                     theme,
-                    "Imagen B (Canal Infrarrojo / Ch2)",
+                    "Imagen B",
                     &mut self.img_b_path,
                     &mut self.url_b_input,
+                    crate::ui::components::ChannelColor::Green,
                 );
-            });
+            }
 
             ui.add_space(10.0);
             if self.img_a_path.is_some() || self.img_b_path.is_some() {
