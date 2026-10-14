@@ -77,7 +77,6 @@ impl PipelineId {
             PipelineId::GenericFm,
             PipelineId::GenericAm,
             PipelineId::GenericIq,
-            PipelineId::NoaaHrpt,
         ]
     }
 }

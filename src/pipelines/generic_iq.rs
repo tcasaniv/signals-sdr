@@ -3,9 +3,8 @@ use crate::export::formats::{read_iq_file, IqExportFormat};
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::components::{info_card, step_bar};
-use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use std::path::PathBuf;
 
 pub struct GenericIqPipeline {
@@ -20,6 +19,7 @@ pub struct GenericIqPipeline {
     pub freq_shift_hz: f32,
     pub remove_dc: bool,
     pub status_message: String,
+    pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -36,6 +36,7 @@ impl Default for GenericIqPipeline {
             freq_shift_hz: 0.0,
             remove_dc: true,
             status_message: "Listo para cargar archivo de muestras I/Q pregrabadas.".to_string(),
+            spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             transmission_state: TransmissionTabState::default(),
         }
     }
@@ -63,7 +64,7 @@ impl GenericIqPipeline {
 
         match self.current_step {
             0 => self.render_step_source(ui, theme),
-            1 => self.render_step_processing(ui, theme),
+            1 => self.render_step_processing(ui, theme, config),
             2 => {
                 let samples_to_send = if !self.processed_iq_samples.is_empty() {
                     &self.processed_iq_samples
@@ -178,7 +179,7 @@ impl GenericIqPipeline {
         });
     }
 
-    fn render_step_processing(&mut self, ui: &mut Ui, theme: &AppTheme) {
+    fn render_step_processing(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
             Frame::new()
                 .fill(theme.card_bg())
@@ -206,9 +207,25 @@ impl GenericIqPipeline {
                         });
 
                         ui.add_space(6.0);
+                        ui.add_space(6.0);
                         if ui.checkbox(&mut self.remove_dc, "Eliminar componente continua (Cancelación DC Offset)").changed() {
                             self.process_samples();
                         }
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Tasa de Muestreo SDR I/Q:");
+                            egui::ComboBox::from_id_salt("generic_iq_sdr_rate_combo")
+                                .selected_text(format!("{} Sps ({} kHz)", self.sample_rate, self.sample_rate / 1000))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.sample_rate, 288_000, "288 kHz (Estándar)");
+                                    ui.selectable_value(&mut self.sample_rate, 500_000, "500 kHz");
+                                    ui.selectable_value(&mut self.sample_rate, 1_000_000, "1.0 MHz");
+                                    ui.selectable_value(&mut self.sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                    ui.selectable_value(&mut self.sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
+                                });
+                            ui.add(egui::DragValue::new(&mut self.sample_rate).speed(1000).range(8_000..=20_000_000).suffix(" Hz"));
+                        });
 
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
@@ -234,8 +251,54 @@ impl GenericIqPipeline {
                     });
                 });
 
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.processed_iq_samples, self.sample_rate);
+            let active_samples = if !self.processed_iq_samples.is_empty() {
+                &self.processed_iq_samples
+            } else {
+                &self.raw_iq_samples
+            };
+
+            if !active_samples.is_empty() {
+                ui.add_space(10.0);
+                crate::ui::spectrum::render_signal_visualizer(
+                    ui,
+                    theme,
+                    active_samples,
+                    self.sample_rate,
+                );
+
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    let spec_btn_text = if self.spectrogram_state.show {
+                        "Ocultar Espectro"
+                    } else {
+                        "Mostrar Espectro"
+                    };
+                    let spec_btn = egui::Button::new(
+                        RichText::new(spec_btn_text).strong().size(12.5),
+                    )
+                    .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .min_size(Vec2::new(0.0, 32.0));
+
+                    if ui.add(spec_btn).clicked() {
+                        self.spectrogram_state.show = !self.spectrogram_state.show;
+                    }
+                });
+
+                if self.spectrogram_state.show {
+                    ui.add_space(8.0);
+                    let out_dir = config.get_pipeline_dir("generic_iq");
+                    crate::ui::spectrogram::render_spectrogram_widget(
+                        ui,
+                        theme,
+                        &mut self.spectrogram_state,
+                        active_samples,
+                        self.sample_rate,
+                        "generic_iq",
+                        Some(&out_dir),
+                    );
+                }
+            }
         });
     }
 

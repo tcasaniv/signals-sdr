@@ -343,9 +343,9 @@ impl SignalsSdrApp {
                             .wrap(),
                         );
                         ui.add_space(4.0);
-                        ui.add(egui::Label::new(RichText::new("• Verifique las regulaciones de telecomunicaciones de su país.").size(12.0)).wrap());
-                        ui.add(egui::Label::new(RichText::new("• Para pruebas de laboratorio sin licencia, utilice siempre cargas ficticias (Dummy Load) o atenuadores coaxiales directos.").size(12.0)).wrap());
-                        ui.add(egui::Label::new(RichText::new("• No transmita en frecuencias satelitales oficiales sobre el aire sin la debida coordinación.").size(12.0)).wrap());
+                        ui.add(egui::Label::new(RichText::new("- Verifique las regulaciones de telecomunicaciones de su país.").size(12.0)).wrap());
+                        ui.add(egui::Label::new(RichText::new("- Para pruebas de laboratorio sin licencia, utilice siempre cargas ficticias (Dummy Load) o atenuadores coaxiales directos.").size(12.0)).wrap());
+                        ui.add(egui::Label::new(RichText::new("- No transmita en frecuencias satelitales oficiales sobre el aire sin la debida coordinación.").size(12.0)).wrap());
                     });
                 });
         });

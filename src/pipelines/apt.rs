@@ -26,6 +26,8 @@ pub struct AptPipeline {
     pub path_audio_wav: Option<PathBuf>,
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
+    pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub sdr_sample_rate: u32,
     // Paso 3: Transmisión
     pub transmission_state: TransmissionTabState,
 }
@@ -48,6 +50,8 @@ impl Default for AptPipeline {
             path_audio_wav: None,
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imágenes e iniciar el proceso.".to_string(),
+            spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            sdr_sample_rate: 288_000,
             transmission_state: TransmissionTabState::default(),
         }
     }
@@ -67,7 +71,7 @@ impl AptPipeline {
                 theme,
                 "NOAA APT (Automatic Picture Transmission)",
                 "Sistema de transmisión analógica satelital utilizado por los satélites polares NOAA (NOAA-15, 18, 19). \
-                 Transmite dos imágenes (visible e infrarroja) a 2 líneas por segundo usando una subportadora AM a 2400 Hz modulada en FM a 137.1 / 137.9125 MHz.",
+                 Transmite dos imágenes (visible e infrarroja) a 2 líneas por segundo usando una subportadora AM a 2400 Hz modulada en FM a 137.1 / 137.62 MHz / 137.9125 MHz.",
             );
 
             ui.add_space(8.0);
@@ -85,7 +89,7 @@ impl AptPipeline {
                     &mut self.transmission_state,
                     sdr_controller,
                     &self.iq_samples,
-                    288_000,
+                    self.sdr_sample_rate,
                 ),
                 _ => {}
             }
@@ -95,7 +99,7 @@ impl AptPipeline {
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
             ui.label(
-                RichText::new("Selecciona una o dos imágenes para codificar en los canales A y B (haz clic en la vista previa para abrirla):")
+                RichText::new("Selecciona una o dos imágenes para codificar en los canales A y B:")
                     .size(13.0)
                     .color(theme.text_secondary()),
             );
@@ -145,7 +149,7 @@ impl AptPipeline {
             if self.img_a_path.is_some() || self.img_b_path.is_some() {
                 ui.horizontal(|ui| {
                     let next_btn = egui::Button::new(
-                        RichText::new("Continuar a Codificación  ➜")
+                        RichText::new("Continuar a Codificación ->")
                             .strong()
                             .size(13.5)
                             .color(Color32::WHITE),
@@ -174,9 +178,9 @@ impl AptPipeline {
                 .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Flujo Didáctico Paso a Paso de Codificación NOAA APT").strong().size(15.0).color(theme.accent_blue()));
+                        ui.label(RichText::new("Flujo Paso a Paso de Codificación NOAA APT").strong().size(15.0).color(theme.accent_blue()));
                         ui.add_space(12.0);
-                        let auto_btn = egui::Button::new(RichText::new("⚡ Ejecutar Todo el Proceso").strong().size(12.5))
+                        let auto_btn = egui::Button::new(RichText::new("Ejecutar todo el Proceso").strong().size(12.5))
                             .min_size(Vec2::new(180.0, 32.0));
                         if ui.add(auto_btn).clicked() {
                             self.step_preprocess(config);
@@ -248,10 +252,13 @@ impl AptPipeline {
                             "909 px de ancho (pendiente)".to_string()
                         };
                         let desc_b = if let Some(ref img) = self.preprocessed_b {
-                            format!("Dimensiones: {} × {} px | Escala de grises", img.width(), img.height())
+                            format!("Dimensiones: {} x {} px | Escala de grises", img.width(), img.height())
                         } else {
                             "909 px de ancho (pendiente)".to_string()
                         };
+
+                        let color_a = self.preprocessed_a.as_ref().map(crate::ui::components::gray_image_to_color_image);
+                        let color_b = self.preprocessed_b.as_ref().map(crate::ui::components::gray_image_to_color_image);
 
                         if avail_w >= 680.0 {
                             ui.columns(2, |cols| {
@@ -263,6 +270,7 @@ impl AptPipeline {
                                     self.path_preprocessed_a.as_deref(),
                                     self.preprocessed_a.is_some(),
                                     ChannelColor::Blue,
+                                    color_a.as_ref(),
                                 );
                                 intermediate_preview_card(
                                     &mut cols[1],
@@ -272,6 +280,7 @@ impl AptPipeline {
                                     self.path_preprocessed_b.as_deref(),
                                     self.preprocessed_b.is_some(),
                                     ChannelColor::Green,
+                                    color_b.as_ref(),
                                 );
                             });
                         } else {
@@ -283,6 +292,7 @@ impl AptPipeline {
                                 self.path_preprocessed_a.as_deref(),
                                 self.preprocessed_a.is_some(),
                                 ChannelColor::Blue,
+                                color_a.as_ref(),
                             );
                             ui.add_space(6.0);
                             intermediate_preview_card(
@@ -293,6 +303,7 @@ impl AptPipeline {
                                 self.path_preprocessed_b.as_deref(),
                                 self.preprocessed_b.is_some(),
                                 ChannelColor::Green,
+                                color_b.as_ref(),
                             );
                         }
                     });
@@ -328,7 +339,7 @@ impl AptPipeline {
                         ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
-                            let can_encode = self.preprocessed_a.is_some() && self.preprocessed_b.is_some();
+                            let can_encode = self.img_a_path.is_some() || self.img_b_path.is_some() || self.preprocessed_a.is_some();
                             let encode_btn = egui::Button::new(
                                 RichText::new("2. Codificar Trama Matricial APT (2080 px)").strong().color(Color32::WHITE),
                             )
@@ -341,7 +352,7 @@ impl AptPipeline {
                             }
 
                             if !can_encode {
-                                ui.label(RichText::new("(Primero completa el preprocesamiento de la Fase 1)").size(11.5).color(theme.text_secondary()));
+                                ui.label(RichText::new("(Primero selecciona al menos una imagen en el Paso 1)").size(11.5).color(theme.text_secondary()));
                             }
                         });
 
@@ -349,10 +360,12 @@ impl AptPipeline {
 
                         let apt_desc = if let Some(ref img) = self.apt_image {
                             let dur_sec = (img.height() as f32) * 0.5;
-                            format!("Resolución: {} × {} px | Duración de escaneo: {:.1} segundos | Telemetría y marcas de sincronismo incrustadas", img.width(), img.height(), dur_sec)
+                            format!("Resolución: {} x {} px | Duración de escaneo: {:.1} segundos | Telemetría y marcas de sincronismo incrustadas", img.width(), img.height(), dur_sec)
                         } else {
                             "Resolución compuesta: 2080 px de ancho (pendiente)".to_string()
                         };
+
+                        let color_apt = self.apt_image.as_ref().map(crate::ui::components::gray_image_to_color_image);
 
                         intermediate_preview_card(
                             ui,
@@ -362,6 +375,7 @@ impl AptPipeline {
                             self.path_apt_image.as_deref(),
                             self.apt_image.is_some(),
                             ChannelColor::Neutral,
+                            color_apt.as_ref(),
                         );
                     });
                 });
@@ -396,7 +410,7 @@ impl AptPipeline {
                         ui.add_space(10.0);
 
                         ui.horizontal_wrapped(|ui| {
-                            let can_mod = self.apt_image.is_some();
+                            let can_mod = self.apt_image.is_some() || self.img_a_path.is_some();
                             let mod_btn = egui::Button::new(
                                 RichText::new("3. Modular Subportadora AM (2400 Hz)").strong().color(Color32::WHITE),
                             )
@@ -422,9 +436,18 @@ impl AptPipeline {
                             });
 
                             ui.add_space(8.0);
+                            crate::ui::spectrum::render_audio_waveform_i16(
+                                ui,
+                                theme,
+                                samples,
+                                11025,
+                                "Osciloscopio de Subportadora AM NOAA APT (11,025 Hz)",
+                            );
+
+                            ui.add_space(8.0);
                             ui.horizontal_wrapped(|ui| {
                                 if let Some(ref wav_path) = self.path_audio_wav {
-                                    let play_btn = egui::Button::new(RichText::new("▶ Reproducir / Abrir Audio APT (.wav)").strong().size(12.5))
+                                    let play_btn = egui::Button::new(RichText::new("Reproducir / Abrir Audio APT (.wav)").strong().size(12.5))
                                         .min_size(Vec2::new(0.0, 32.0));
                                     if ui.add(play_btn).clicked() {
                                         if let Some(p) = wav_path.to_str() {
@@ -434,7 +457,7 @@ impl AptPipeline {
                                 }
 
                                 let out_dir = config.get_pipeline_dir("noaa_apt");
-                                let folder_btn = egui::Button::new(RichText::new("📁 Abrir Carpeta de Salida").size(12.5))
+                                let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
                                     .min_size(Vec2::new(0.0, 32.0));
                                 if ui.add(folder_btn).clicked() {
                                     crate::utils::open_folder(&out_dir);
@@ -473,10 +496,25 @@ impl AptPipeline {
                         );
                         ui.add_space(10.0);
 
+                        ui.horizontal(|ui| {
+                            ui.label("Tasa de Muestreo SDR I/Q:");
+                            egui::ComboBox::from_id_salt("apt_sdr_rate_combo")
+                                .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar APT)");
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
+                                });
+                        });
+
+                        ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
                             let can_mod_fm = self.audio_am_samples.is_some();
+                            let btn_label = format!("4. Modular Señal FM I/Q a {} kHz", self.sdr_sample_rate / 1000);
                             let fm_btn = egui::Button::new(
-                                RichText::new("4. Modular Señal FM I/Q a 288 kHz").strong().color(Color32::WHITE),
+                                RichText::new(btn_label).strong().color(Color32::WHITE),
                             )
                             .fill(if can_mod_fm { theme.accent_blue() } else { theme.surface_subtle() })
                             .corner_radius(8.0)
@@ -488,7 +526,7 @@ impl AptPipeline {
 
                             if !self.iq_samples.is_empty() {
                                 let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Transmisión  ➜").strong().size(13.5).color(Color32::WHITE),
+                                    RichText::new("Continuar a Transmisión ->").strong().size(13.5).color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(34, 197, 94))
                                 .corner_radius(8.0)
@@ -502,11 +540,52 @@ impl AptPipeline {
 
                         if !self.iq_samples.is_empty() {
                             ui.add_space(10.0);
-                            let dur_sec = self.iq_samples.len() as f32 / 288_000.0;
+                            let dur_sec = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(RichText::new("Métricas de RF I/Q:").strong().size(12.5));
-                                ui.label(format!("Tasa I/Q: 288,000 Hz | Desviación: 17,000 Hz | Total: {} muestras I/Q | Duración: {:.2} s", self.iq_samples.len(), dur_sec));
+                                ui.label(format!("Tasa I/Q: {} Hz | Desviación: 17,000 Hz | Total: {} muestras I/Q | Duración: {:.2} s", self.sdr_sample_rate, self.iq_samples.len(), dur_sec));
                             });
+
+                            ui.add_space(8.0);
+                            crate::ui::spectrum::render_signal_visualizer(
+                                ui,
+                                theme,
+                                &self.iq_samples,
+                                self.sdr_sample_rate,
+                            );
+
+                            ui.add_space(8.0);
+                            ui.horizontal_wrapped(|ui| {
+                                let spec_btn_text = if self.spectrogram_state.show {
+                                    "Ocultar Espectro"
+                                } else {
+                                    "Mostrar Espectro"
+                                };
+                                let spec_btn = egui::Button::new(
+                                    RichText::new(spec_btn_text).strong().size(12.5),
+                                )
+                                .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
+                                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                                .min_size(Vec2::new(0.0, 32.0));
+
+                                if ui.add(spec_btn).clicked() {
+                                    self.spectrogram_state.show = !self.spectrogram_state.show;
+                                }
+                            });
+
+                            if self.spectrogram_state.show {
+                                ui.add_space(8.0);
+                                let out_dir = config.get_pipeline_dir("noaa_apt");
+                                crate::ui::spectrogram::render_spectrogram_widget(
+                                    ui,
+                                    theme,
+                                    &mut self.spectrogram_state,
+                                    &self.iq_samples,
+                                    self.sdr_sample_rate,
+                                    "noaa_apt",
+                                    Some(&out_dir),
+                                );
+                            }
                         }
                     });
                 });
@@ -578,12 +657,13 @@ impl AptPipeline {
         }
     }
 
-    /// Paso 4: Modulación FM I/Q a 288 kHz
+    /// Paso 4: Modulación FM I/Q con tasa SDR seleccionada
     pub fn step_modulate_fm(&mut self) {
         if let Some(ref audio) = self.audio_am_samples {
-            self.iq_samples = fm_modulate(audio, 11025, 288_000, 17_000.0);
+            self.iq_samples = fm_modulate(audio, 11025, self.sdr_sample_rate, 17_000.0);
             self.status_message = format!(
-                "Fase 4 completada: Señal FM I/Q generada a 288 kHz ({} muestras complejas). ¡Listo para transmitir!",
+                "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas). ¡Listo para transmitir!",
+                self.sdr_sample_rate / 1000,
                 self.iq_samples.len()
             );
         }

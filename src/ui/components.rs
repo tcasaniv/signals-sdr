@@ -1,6 +1,19 @@
 use crate::theme::AppTheme;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 
+/// Convierte una imagen en escala de grises de `image` a un `egui::ColorImage`
+pub fn gray_image_to_color_image(img: &image::GrayImage) -> egui::ColorImage {
+    let size = [img.width() as usize, img.height() as usize];
+    egui::ColorImage::from_gray(size, img.as_raw())
+}
+
+/// Convierte una `image::DynamicImage` a un `egui::ColorImage`
+pub fn dynamic_image_to_color_image(img: &image::DynamicImage) -> egui::ColorImage {
+    let rgba = img.to_rgba8();
+    let size = [rgba.width() as usize, rgba.height() as usize];
+    egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw())
+}
+
 /// Convierte una ruta de archivo local o URL web en un URI compatible con egui::Image
 pub fn path_to_uri(path: &str) -> String {
     if path.starts_with("http://") || path.starts_with("https://") || path.starts_with("file://") {
@@ -20,7 +33,8 @@ pub fn info_card(ui: &mut Ui, theme: &AppTheme, title: &str, description: &str) 
         .show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("📡").size(17.0));
+                    let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot_rect.center(), 5.0, theme.accent_blue());
                     ui.add_space(4.0);
                     ui.add(
                         egui::Label::new(
@@ -67,7 +81,7 @@ pub fn step_bar(
 
         for (idx, (num, label)) in steps.iter().enumerate() {
             if idx > 0 {
-                ui.label(RichText::new("➜").size(13.0).color(theme.text_secondary()));
+                ui.label(RichText::new("->").size(13.0).color(theme.text_secondary()));
             }
 
             let is_selected = *current_step == idx;
@@ -86,7 +100,7 @@ pub fn step_bar(
             };
 
             let pill_btn = egui::Button::new(
-                RichText::new(format!("  {} · {}  ", num, label))
+                RichText::new(format!("  {} - {}  ", num, label))
                     .size(13.0)
                     .strong()
                     .color(text_color),
@@ -152,7 +166,7 @@ pub fn image_input_card(
 
                     if current_path.is_some() {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button(RichText::new("✕ Quitar").size(11.5).color(theme.accent_red())).clicked() {
+                            if ui.button(RichText::new("x Quitar").size(11.5).color(theme.accent_red())).clicked() {
                                 *current_path = None;
                             }
                         });
@@ -187,7 +201,7 @@ pub fn image_input_card(
                     }
                     if img_resp.hovered() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        img_resp.on_hover_text("🔍 Clic para abrir imagen en el visor del sistema");
+                        img_resp.on_hover_text("Clic para abrir imagen en el visor del sistema");
                     }
 
                     ui.add_space(6.0);
@@ -205,10 +219,10 @@ pub fn image_input_card(
                             file_name
                         };
 
-                        ui.label(RichText::new(format!("📄 {}", short_name)).size(12.0).color(theme.text_secondary()));
+                        ui.label(RichText::new(format!("Archivo: {}", short_name)).size(12.0).color(theme.text_secondary()));
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let open_btn = egui::Button::new(RichText::new("🔍 Abrir en visor").size(11.5));
+                            let open_btn = egui::Button::new(RichText::new("Abrir en visor").size(11.5));
                             if ui.add(open_btn).clicked() {
                                 crate::utils::open_path_or_url(path);
                             }
@@ -244,24 +258,17 @@ pub fn image_input_card(
                     ui.painter().rect(rect, 8.0, drop_bg, border_stroke, egui::StrokeKind::Inside);
 
                     ui.painter().text(
-                        rect.center() - egui::vec2(0.0, 20.0),
-                        egui::Align2::CENTER_CENTER,
-                        "🖼️",
-                        egui::FontId::proportional(28.0),
-                        theme.text_primary(),
-                    );
-                    ui.painter().text(
-                        rect.center() + egui::vec2(0.0, 8.0),
+                        rect.center() - egui::vec2(0.0, 16.0),
                         egui::Align2::CENTER_CENTER,
                         format!("Seleccionar {}", title),
-                        egui::FontId::proportional(13.5),
+                        egui::FontId::proportional(14.0),
                         if is_hovered { theme.accent_blue() } else { theme.text_primary() },
                     );
                     ui.painter().text(
-                        rect.center() + egui::vec2(0.0, 26.0),
+                        rect.center() + egui::vec2(0.0, 10.0),
                         egui::Align2::CENTER_CENTER,
                         "Haz clic para buscar archivo local",
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(11.5),
                         theme.text_secondary(),
                     );
 
@@ -300,9 +307,9 @@ pub fn image_input_card(
 
                 ui.add_space(6.0);
 
-                // Botón de ancho completo para Archivo Local con altura cómoda y icono
+                // Botón de ancho completo para Archivo Local con altura cómoda
                 let local_btn = egui::Button::new(
-                    RichText::new(format!("📁 Explorar Archivo Local ({})", title)).strong().size(12.5),
+                    RichText::new(format!("Explorar Archivo Local ({})", title)).strong().size(12.5),
                 )
                 .fill(theme.surface_subtle())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -329,6 +336,7 @@ pub fn intermediate_preview_card(
     file_path: Option<&std::path::Path>,
     is_ready: bool,
     color: ChannelColor,
+    color_image: Option<&egui::ColorImage>,
 ) {
     Frame::new()
         .fill(theme.card_bg())
@@ -365,10 +373,8 @@ pub fn intermediate_preview_card(
                 ui.add_space(8.0);
 
                 // Cuadro interactivo con renderizado de imagen real si está generada
-                if is_ready && file_path.is_some() {
-                    let path = file_path.unwrap();
-                    let path_str = path.to_string_lossy().to_string();
-                    let uri = path_to_uri(&path_str);
+                if is_ready && (color_image.is_some() || file_path.is_some()) {
+                    let path_str_opt = file_path.map(|p| p.to_string_lossy().to_string());
                     let preview_height = 140.0;
 
                     let img_box = Frame::new()
@@ -379,31 +385,49 @@ pub fn intermediate_preview_card(
 
                     let img_resp = img_box.show(ui, |ui| {
                         ui.vertical_centered(|ui| {
-                            let img_widget = egui::Image::new(&uri)
-                                .max_height(preview_height)
-                                .corner_radius(6.0)
-                                .sense(egui::Sense::click());
-                            ui.add(img_widget)
+                            if let Some(ci) = color_image {
+                                let texture = ui.ctx().load_texture(
+                                    format!("interm_tex_{}", title),
+                                    ci.clone(),
+                                    egui::TextureOptions::LINEAR,
+                                );
+                                let img_widget = egui::Image::new(&texture)
+                                    .max_height(preview_height)
+                                    .corner_radius(6.0)
+                                    .sense(egui::Sense::click());
+                                ui.add(img_widget)
+                            } else if let Some(ref path_str) = path_str_opt {
+                                let uri = path_to_uri(path_str);
+                                let img_widget = egui::Image::new(&uri)
+                                    .max_height(preview_height)
+                                    .corner_radius(6.0)
+                                    .sense(egui::Sense::click());
+                                ui.add(img_widget)
+                            } else {
+                                ui.label("Imagen disponible")
+                            }
                         }).inner
                     }).inner;
 
-                    if img_resp.clicked() {
-                        crate::utils::open_path_or_url(&path_str);
-                    }
-                    if img_resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        img_resp.on_hover_text("🔍 Clic para abrir imagen en el visor del sistema");
-                    }
+                    if let Some(ref path_str) = path_str_opt {
+                        if img_resp.clicked() {
+                            crate::utils::open_path_or_url(path_str);
+                        }
+                        if img_resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            img_resp.on_hover_text("Clic para abrir imagen en el visor del sistema");
+                        }
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    let open_btn = egui::Button::new(RichText::new("🔍 Abrir Imagen en Visor Predeterminado").size(12.0))
-                        .fill(theme.surface_subtle())
-                        .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                        .min_size(Vec2::new(ui.available_width(), 28.0));
+                        let open_btn = egui::Button::new(RichText::new("Abrir Imagen en Visor Predeterminado").size(12.0))
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .min_size(Vec2::new(ui.available_width(), 28.0));
 
-                    if ui.add(open_btn).clicked() {
-                        crate::utils::open_path_or_url(&path_str);
+                        if ui.add(open_btn).clicked() {
+                            crate::utils::open_path_or_url(path_str);
+                        }
                     }
                 } else {
                     // Placeholder visual cuando la fase aún no se ha ejecutado
@@ -419,7 +443,7 @@ pub fn intermediate_preview_card(
                     ui.painter().text(
                         rect.center() - egui::vec2(0.0, 8.0),
                         egui::Align2::CENTER_CENTER,
-                        "⏳",
+                        "...",
                         egui::FontId::proportional(20.0),
                         theme.text_secondary(),
                     );
@@ -434,3 +458,4 @@ pub fn intermediate_preview_card(
             });
         });
 }
+

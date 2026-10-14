@@ -3,9 +3,8 @@ use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::audio_player::AudioPlayerWidget;
 use crate::ui::components::{info_card, step_bar};
-use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use fm_modulator::{
     apply_pre_emphasis, fm_modulate, load_audio_file, AudioData, FmPreset, PreEmphasisMode,
 };
@@ -23,6 +22,7 @@ pub struct GenericFmPipeline {
     pub sdr_sample_rate: u32,
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
+    pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -40,6 +40,7 @@ impl Default for GenericFmPipeline {
             sdr_sample_rate: 288_000,
             iq_samples: Vec::new(),
             status_message: "Listo para cargar archivo de audio (WAV / MP3) o generar tono sintético.".to_string(),
+            spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             transmission_state: TransmissionTabState::default(),
         }
     }
@@ -66,12 +67,13 @@ impl GenericFmPipeline {
         step_bar(ui, theme, &mut self.current_step, "2. Modular");
 
         match self.current_step {
-            0 => self.render_step_source(ui, theme),
-            1 => self.render_step_modulate(ui, theme),
+            0 => self.render_step_source(ui, theme, config),
+            1 => self.render_step_modulate(ui, theme, config),
             2 => {
                 let default_freq = match self.preset {
                     FmPreset::BroadcastWfm => 100_100_000.0, // 100.1 MHz comercial
                     FmPreset::NarrowbandNfm => 144_800_000.0, // 144.800 MHz radioaficionados
+                    FmPreset::NarrowbandNfm2k5 => 446_006_250.0, // 446.00625 MHz PMR446 Ch 1
                     FmPreset::NoaaApt => 137_100_000.0,      // 137.1 MHz satélite NOAA
                 };
 
@@ -91,7 +93,7 @@ impl GenericFmPipeline {
         }
     }
 
-    fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
+    fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
             Frame::new()
                 .fill(theme.card_bg())
@@ -119,7 +121,7 @@ impl GenericFmPipeline {
                             }
 
                             if ui.button("Generar Tono 1 kHz de Prueba").clicked() {
-                                self.generate_test_tone();
+                                self.generate_test_tone(config);
                             }
                         });
 
@@ -135,6 +137,15 @@ impl GenericFmPipeline {
                                 ))
                                 .size(12.0)
                                 .color(theme.accent_green()),
+                            );
+
+                            ui.add_space(8.0);
+                            crate::ui::spectrum::render_audio_waveform(
+                                ui,
+                                theme,
+                                &audio.samples,
+                                audio.sample_rate,
+                                "Osciloscopio de Audio (Dominio del Tiempo)",
                             );
                         }
                     });
@@ -158,7 +169,7 @@ impl GenericFmPipeline {
         });
     }
 
-    fn render_step_modulate(&mut self, ui: &mut Ui, theme: &AppTheme) {
+    fn render_step_modulate(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
             Frame::new()
                 .fill(theme.card_bg())
@@ -174,8 +185,9 @@ impl GenericFmPipeline {
                         ui.horizontal(|ui| {
                             ui.label("Perfil de Modulación:");
                             let current_preset_name = match self.preset {
-                                FmPreset::BroadcastWfm => "Broadcast Comercial WFM (75 kHz dev, 50 µs pre-énfasis)",
-                                FmPreset::NarrowbandNfm => "VHF/UHF NFM Estrecha (5 kHz dev, sin pre-énfasis)",
+                                FmPreset::BroadcastWfm => "Broadcast Comercial WFM (75 kHz dev, 50 us pre-énfasis)",
+                                FmPreset::NarrowbandNfm => "VHF/UHF NFM Estándar (5 kHz dev, Canales 25 kHz)",
+                                FmPreset::NarrowbandNfm2k5 => "PMR446 / NFM Estrecho (2.5 kHz dev, Canales 12.5 kHz)",
                                 FmPreset::NoaaApt => "Satélite Meteorológico NOAA APT (17 kHz dev)",
                             };
 
@@ -186,7 +198,7 @@ impl GenericFmPipeline {
                                         .selectable_value(
                                             &mut self.preset,
                                             FmPreset::BroadcastWfm,
-                                            "Broadcast Comercial WFM (75 kHz dev, 50 µs)",
+                                            "Broadcast Comercial WFM (75 kHz dev, 50 us)",
                                         )
                                         .clicked()
                                     {
@@ -198,11 +210,23 @@ impl GenericFmPipeline {
                                         .selectable_value(
                                             &mut self.preset,
                                             FmPreset::NarrowbandNfm,
-                                            "VHF/UHF NFM Estrecha (5 kHz dev)",
+                                            "VHF/UHF NFM Estándar (5 kHz dev, Canales 25 kHz)",
                                         )
                                         .clicked()
                                     {
                                         self.custom_deviation = 5_000.0;
+                                        self.pre_emphasis_mode = PreEmphasisMode::None;
+                                    }
+
+                                    if ui
+                                        .selectable_value(
+                                            &mut self.preset,
+                                            FmPreset::NarrowbandNfm2k5,
+                                            "PMR446 / NFM Estrecho (2.5 kHz dev, Canales 12.5 kHz)",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.custom_deviation = 2_500.0;
                                         self.pre_emphasis_mode = PreEmphasisMode::None;
                                     }
 
@@ -259,6 +283,7 @@ impl GenericFmPipeline {
                                     ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
                                     ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
                                     ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
                                 });
                         });
 
@@ -286,8 +311,48 @@ impl GenericFmPipeline {
                     });
                 });
 
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.iq_samples, self.sdr_sample_rate);
+            if !self.iq_samples.is_empty() {
+                ui.add_space(10.0);
+                crate::ui::spectrum::render_signal_visualizer(
+                    ui,
+                    theme,
+                    &self.iq_samples,
+                    self.sdr_sample_rate,
+                );
+
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    let spec_btn_text = if self.spectrogram_state.show {
+                        "Ocultar Espectro"
+                    } else {
+                        "Mostrar Espectro"
+                    };
+                    let spec_btn = egui::Button::new(
+                        RichText::new(spec_btn_text).strong().size(12.5),
+                    )
+                    .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .min_size(Vec2::new(0.0, 32.0));
+
+                    if ui.add(spec_btn).clicked() {
+                        self.spectrogram_state.show = !self.spectrogram_state.show;
+                    }
+                });
+
+                if self.spectrogram_state.show {
+                    ui.add_space(8.0);
+                    let out_dir = config.get_pipeline_dir("generic_fm");
+                    crate::ui::spectrogram::render_spectrogram_widget(
+                        ui,
+                        theme,
+                        &mut self.spectrogram_state,
+                        &self.iq_samples,
+                        self.sdr_sample_rate,
+                        "generic_fm",
+                        Some(&out_dir),
+                    );
+                }
+            }
         });
     }
 
@@ -307,22 +372,41 @@ impl GenericFmPipeline {
         }
     }
 
-    fn generate_test_tone(&mut self) {
+    fn generate_test_tone(&mut self, config: &AppConfig) {
         let sample_rate = 48_000;
         let duration_sec = 3.0;
         let num_samples = (sample_rate as f32 * duration_sec) as usize;
         let mut samples = Vec::with_capacity(num_samples);
+        let mut i16_samples = Vec::with_capacity(num_samples);
 
         for n in 0..num_samples {
             let t = n as f32 / sample_rate as f32;
             let val = (2.0 * std::f32::consts::PI * 1000.0 * t).sin() * 0.8;
             samples.push(val);
+            i16_samples.push((val * 32767.0) as i16);
+        }
+
+        let out_dir = config.get_pipeline_dir("generic_fm");
+        let wav_path = out_dir.join("tono_1khz.wav");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+            for &s in &i16_samples {
+                let _ = writer.write_sample(s);
+            }
+            let _ = writer.finalize();
+            self.audio_path = Some(wav_path.to_string_lossy().to_string());
+        } else {
+            self.audio_path = Some("tono_1khz.wav".to_string());
         }
 
         self.audio_player.total_duration_sec = duration_sec;
         self.audio_player.current_time_sec = 0.0;
-        self.audio_path = Some("Tono sintético sinusoidal 1 kHz".to_string());
-        self.status_message = "Generado tono sintético sinusoidal de 1000 Hz (3 segundos).".to_string();
+        self.status_message = "Generado tono sintético sinusoidal de 1000 Hz (3 segundos, WAV guardado).".to_string();
         self.audio_data = Some(AudioData {
             samples,
             sample_rate,
