@@ -1,7 +1,7 @@
 use crate::channel::*;
 use crate::config::AppConfig;
 use crate::theme::AppTheme;
-use crate::ui::components::info_card;
+use crate::ui::components::{accordion_section, info_card, AccordionOptions};
 use crate::ui::spectrogram::render_spectrogram_widget;
 use crate::ui::spectrum::render_signal_visualizer;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
@@ -140,38 +140,35 @@ fn render_without_effects_view(
         });
 
         ui.add_space(8.0);
-        render_signal_visualizer(ui, theme, original_iq, sample_rate);
+        accordion_section(
+            ui,
+            theme,
+            "without_eff_osc",
+            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+            |ui| {
+                render_signal_visualizer(ui, theme, original_iq, sample_rate);
+            },
+        );
 
         ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            let spec_btn_text = if state.spectrogram_state.show {
-                "Ocultar Espectro"
-            } else {
-                "Mostrar Espectro"
-            };
-            let spec_btn = egui::Button::new(RichText::new(spec_btn_text).strong().size(12.5))
-                .fill(if state.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .min_size(Vec2::new(0.0, 32.0));
-
-            if ui.add(spec_btn).clicked() {
-                state.spectrogram_state.show = !state.spectrogram_state.show;
-            }
-        });
-
-        if state.spectrogram_state.show {
-            ui.add_space(8.0);
-            let out_dir = config.get_pipeline_dir(pipeline_id);
-            render_spectrogram_widget(
-                ui,
-                theme,
-                &mut state.spectrogram_state,
-                original_iq,
-                sample_rate,
-                pipeline_id,
-                Some(&out_dir),
-            );
-        }
+        accordion_section(
+            ui,
+            theme,
+            "without_eff_spec",
+            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+            |ui| {
+                let out_dir = config.get_pipeline_dir(pipeline_id);
+                render_spectrogram_widget(
+                    ui,
+                    theme,
+                    &mut state.spectrogram_state,
+                    original_iq,
+                    sample_rate,
+                    pipeline_id,
+                    Some(&out_dir),
+                );
+            },
+        );
     } else {
         ui.colored_label(
             theme.text_secondary(),
@@ -234,302 +231,335 @@ fn render_with_effects_view(
                 ui.separator();
                 ui.add_space(8.0);
 
-                ui.label(RichText::new("Parámetros Físicos del Canal:").strong().size(13.5).color(theme.text_primary()));
+                ui.label(RichText::new("Efectos Individuales del Canal de Transmisión:").strong().size(13.5).color(theme.text_primary()));
                 ui.add_space(6.0);
 
                 // --- 1. AWGN (Ruido Blanco Gaussiano Aditivo) ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_awgn;
-                        if ui.checkbox(&mut state.params.enable_awgn, RichText::new("Ruido Blanco Gaussiano Térmico (AWGN)").strong()).changed() {
-                            if prev != state.params.enable_awgn {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
+                let prev_awgn = state.params.enable_awgn;
+                let awgn_badge = if state.params.enable_awgn {
+                    let snr = state.params.snr_db;
+                    if snr >= 20.0 {
+                        Some(("Excelente (> 20 dB)", theme.accent_green()))
+                    } else if snr >= 12.0 {
+                        Some(("Buena (12-20 dB)", theme.accent_blue()))
+                    } else if snr >= 6.0 {
+                        Some(("Aceptable (6-12 dB)", Color32::from_rgb(234, 179, 8)))
+                    } else {
+                        Some(("Crítica (< 6 dB)", Color32::from_rgb(239, 68, 68)))
+                    }
+                } else {
+                    None
+                };
 
-                        if state.params.enable_awgn {
-                            let snr = state.params.snr_db;
-                            let (badge_txt, badge_color) = if snr >= 20.0 {
-                                ("Excelente (> 20 dB)", theme.accent_green())
-                            } else if snr >= 12.0 {
-                                ("Buena (12-20 dB)", theme.accent_blue())
-                            } else if snr >= 6.0 {
-                                ("Aceptable (6-12 dB)", Color32::from_rgb(234, 179, 8))
-                            } else {
-                                ("Crítica / Marginal (< 6 dB)", Color32::from_rgb(239, 68, 68))
-                            };
-                            ui.label(RichText::new(format!("[ Calidad: {} ]", badge_txt)).size(11.5).color(badge_color));
-                        }
-                    });
+                let mut awgn_opt = AccordionOptions::new("Ruido Blanco Gaussiano Térmico (AWGN)")
+                    .with_toggle(&mut state.params.enable_awgn)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = awgn_badge {
+                    awgn_opt = awgn_opt.with_badge(b_text, b_col);
+                }
 
+                accordion_section(ui, theme, "ch_eff_awgn", awgn_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Agitación térmica en antena receptora y etapa LNA.\n\
                          • Impacto: Añade piso de ruido constante. Causa 'nieve' en imágenes analógicas o dispersión de constelación y errores de bit en digitales."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_awgn {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Relación Señal/Ruido (SNR):");
-                            if ui.add(egui::Slider::new(&mut state.params.snr_db, -5.0..=40.0).suffix(" dB")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Relación Señal/Ruido (SNR):");
+                        if ui.add(egui::Slider::new(&mut state.params.snr_db, -5.0..=40.0).suffix(" dB")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_awgn != state.params.enable_awgn {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(6.0);
 
                 // --- 2. Efecto Doppler dinámico ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_doppler;
-                        if ui.checkbox(&mut state.params.enable_doppler, RichText::new("Efecto Doppler Dinámico").strong()).changed() {
-                            if prev != state.params.enable_doppler {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
-                    });
+                let prev_doppler = state.params.enable_doppler;
+                let doppler_mode_str = match state.params.doppler_mode {
+                    DopplerMode::LeoPass => "Pase LEO (Curva S)",
+                    DopplerMode::LinearDrift => "Deriva Lineal",
+                    DopplerMode::StaticOffset => "Offset Estático",
+                };
+                let doppler_badge = if state.params.enable_doppler {
+                    Some((doppler_mode_str, theme.accent_blue()))
+                } else {
+                    None
+                };
 
+                let mut doppler_opt = AccordionOptions::new("Efecto Doppler Dinámico")
+                    .with_toggle(&mut state.params.enable_doppler)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = doppler_badge {
+                    doppler_opt = doppler_opt.with_badge(b_text, b_col);
+                }
+
+                accordion_section(ui, theme, "ch_eff_doppler", doppler_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Velocidad relativa entre el transmisor orbital o móvil y la estación receptora.\n\
                          • Impacto: Desplaza la portadora en el espectrograma (curva S). Requiere bucle de enganche AFC/PLL en el receptor para no perder sintonía."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_doppler {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Modo Doppler:");
-                            let current_mode = match state.params.doppler_mode {
-                                DopplerMode::LeoPass => "Pase Satelital LEO (Curva S)",
-                                DopplerMode::LinearDrift => "Deriva Lineal Continua",
-                                DopplerMode::StaticOffset => "Desplazamiento Estático (Offset)",
-                            };
-                            egui::ComboBox::from_id_salt("doppler_mode_combo")
-                                .selected_text(current_mode)
-                                .show_ui(ui, |ui| {
-                                    if ui.selectable_label(state.params.doppler_mode == DopplerMode::LeoPass, "Pase Satelital LEO (Curva S)").clicked() {
-                                        state.params.doppler_mode = DopplerMode::LeoPass;
-                                        state.params.active_preset = ChannelPreset::Custom;
-                                        state.is_dirty = true;
-                                    }
-                                    if ui.selectable_label(state.params.doppler_mode == DopplerMode::LinearDrift, "Deriva Lineal Continua").clicked() {
-                                        state.params.doppler_mode = DopplerMode::LinearDrift;
-                                        state.params.active_preset = ChannelPreset::Custom;
-                                        state.is_dirty = true;
-                                    }
-                                    if ui.selectable_label(state.params.doppler_mode == DopplerMode::StaticOffset, "Desplazamiento Estático (Offset)").clicked() {
-                                        state.params.doppler_mode = DopplerMode::StaticOffset;
-                                        state.params.active_preset = ChannelPreset::Custom;
-                                        state.is_dirty = true;
-                                    }
-                                });
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Modo Doppler:");
+                        let current_mode = match state.params.doppler_mode {
+                            DopplerMode::LeoPass => "Pase Satelital LEO (Curva S)",
+                            DopplerMode::LinearDrift => "Deriva Lineal Continua",
+                            DopplerMode::StaticOffset => "Desplazamiento Estático (Offset)",
+                        };
+                        egui::ComboBox::from_id_salt("doppler_mode_combo")
+                            .selected_text(current_mode)
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(state.params.doppler_mode == DopplerMode::LeoPass, "Pase Satelital LEO (Curva S)").clicked() {
+                                    state.params.doppler_mode = DopplerMode::LeoPass;
+                                    state.params.active_preset = ChannelPreset::Custom;
+                                    state.is_dirty = true;
+                                }
+                                if ui.selectable_label(state.params.doppler_mode == DopplerMode::LinearDrift, "Deriva Lineal Continua").clicked() {
+                                    state.params.doppler_mode = DopplerMode::LinearDrift;
+                                    state.params.active_preset = ChannelPreset::Custom;
+                                    state.is_dirty = true;
+                                }
+                                if ui.selectable_label(state.params.doppler_mode == DopplerMode::StaticOffset, "Desplazamiento Estático (Offset)").clicked() {
+                                    state.params.doppler_mode = DopplerMode::StaticOffset;
+                                    state.params.active_preset = ChannelPreset::Custom;
+                                    state.is_dirty = true;
+                                }
+                            });
 
-                            ui.add_space(10.0);
-                            ui.label("Desviación Máxima (Delta f):");
-                            if ui.add(egui::Slider::new(&mut state.params.max_doppler_hz, 0.0..=50000.0).suffix(" Hz")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                        ui.add_space(10.0);
+                        ui.label("Desviación Máxima (Delta f):");
+                        if ui.add(egui::Slider::new(&mut state.params.max_doppler_hz, 0.0..=50000.0).suffix(" Hz")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_doppler != state.params.enable_doppler {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(6.0);
 
                 // --- 3. Pérdida por Trayectoria (FSPL) y Atenuación ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_path_loss;
-                        if ui.checkbox(&mut state.params.enable_path_loss, RichText::new("Atenuación Geométrica (FSPL) y Atmosférica").strong()).changed() {
-                            if prev != state.params.enable_path_loss {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
+                let prev_path_loss = state.params.enable_path_loss;
+                let fspl_db = 20.0 * state.params.distance_km.log10() + 20.0 * state.params.carrier_freq_mhz.max(1.0).log10() + 32.44;
+                let fspl_str = format!("FSPL: {:.1} dB", fspl_db);
+                let path_loss_badge = if state.params.enable_path_loss {
+                    Some((fspl_str.as_str(), theme.text_secondary()))
+                } else {
+                    None
+                };
 
-                        if state.params.enable_path_loss {
-                            // Cálculo informativo de FSPL
-                            let fspl_db = 20.0 * state.params.distance_km.log10() + 20.0 * state.params.carrier_freq_mhz.max(1.0).log10() + 32.44;
-                            ui.label(RichText::new(format!("[ FSPL teórico: {:.1} dB ]", fspl_db)).size(11.5).color(theme.text_secondary()));
-                        }
-                    });
+                let mut path_loss_opt = AccordionOptions::new("Atenuación Geométrica (FSPL) y Atmosférica")
+                    .with_toggle(&mut state.params.enable_path_loss)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = path_loss_badge {
+                    path_loss_opt = path_loss_opt.with_badge(b_text, b_col);
+                }
 
+                accordion_section(ui, theme, "ch_eff_path_loss", path_loss_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Dispersión geométrica tridimensional de energía en el espacio y absorción por gases y lluvia.\n\
                          • Impacto: Reduce la amplitud de la señal recibida según la distancia y frecuencia portadora."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_path_loss {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Distancia de Enlace:");
-                            if ui.add(egui::Slider::new(&mut state.params.distance_km, 1.0..=3000.0).suffix(" km")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Distancia de Enlace:");
+                        if ui.add(egui::Slider::new(&mut state.params.distance_km, 1.0..=3000.0).suffix(" km")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
 
-                            ui.add_space(10.0);
-                            ui.label("Pérdida Atmosférica:");
-                            if ui.add(egui::Slider::new(&mut state.params.atmospheric_loss_db, 0.0..=10.0).suffix(" dB")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
+                        ui.add_space(10.0);
+                        ui.label("Pérdida Atmosférica:");
+                        if ui.add(egui::Slider::new(&mut state.params.atmospheric_loss_db, 0.0..=10.0).suffix(" dB")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Atenuación Directa Normalizada:");
-                            if ui.add(egui::Slider::new(&mut state.params.direct_attenuation_db, -40.0..=0.0).suffix(" dB")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Atenuación Directa Normalizada:");
+                        if ui.add(egui::Slider::new(&mut state.params.direct_attenuation_db, -40.0..=0.0).suffix(" dB")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_path_loss != state.params.enable_path_loss {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(6.0);
 
                 // --- 4. Desvanecimiento por Multitrayecto (Rician / Rayleigh) ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_fading;
-                        if ui.checkbox(&mut state.params.enable_fading, RichText::new("Desvanecimiento por Multitrayecto (Rician / Rayleigh)").strong()).changed() {
-                            if prev != state.params.enable_fading {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
+                let prev_fading = state.params.enable_fading;
+                let fading_str = if state.params.rician_k_db <= 0.5 {
+                    "Rayleigh (NLOS)"
+                } else if state.params.rician_k_db >= 15.0 {
+                    "Rician (LOS Dominante)"
+                } else {
+                    "Rician Moderado"
+                };
+                let fading_badge = if state.params.enable_fading {
+                    Some((fading_str, theme.accent_blue()))
+                } else {
+                    None
+                };
 
-                        if state.params.enable_fading {
-                            let k = state.params.rician_k_db;
-                            let mode_str = if k <= 0.5 {
-                                "Rayleigh Puro (Sin línea de vista NLOS)"
-                            } else if k >= 15.0 {
-                                "Rician Fuerte (Visión directa dominante LOS)"
-                            } else {
-                                "Rician Moderado"
-                            };
-                            ui.label(RichText::new(format!("[ {} ]", mode_str)).size(11.5).color(theme.text_secondary()));
-                        }
-                    });
+                let mut fading_opt = AccordionOptions::new("Desvanecimiento por Multitrayecto (Rician / Rayleigh)")
+                    .with_toggle(&mut state.params.enable_fading)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = fading_badge {
+                    fading_opt = fading_opt.with_badge(b_text, b_col);
+                }
 
+                accordion_section(ui, theme, "ch_eff_fading", fading_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Ondas que rebotan en edificios, terreno o ionosfera interfiriendo en fase aleatoria.\n\
                          • Impacto: Produce caídas periódicas profundas en la envolvente ('fades') o nulos de portadora."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_fading {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Factor K de Rician:");
-                            if ui.add(egui::Slider::new(&mut state.params.rician_k_db, 0.0..=25.0).suffix(" dB")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Factor K de Rician:");
+                        if ui.add(egui::Slider::new(&mut state.params.rician_k_db, 0.0..=25.0).suffix(" dB")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
 
-                            ui.add_space(10.0);
-                            ui.label("Tasa de Fading (fm):");
-                            if ui.add(egui::Slider::new(&mut state.params.fading_rate_hz, 0.1..=30.0).suffix(" Hz")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                        ui.add_space(10.0);
+                        ui.label("Tasa de Fading (fm):");
+                        if ui.add(egui::Slider::new(&mut state.params.fading_rate_hz, 0.1..=30.0).suffix(" Hz")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_fading != state.params.enable_fading {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(6.0);
 
                 // --- 5. Margen de Ruido (Pre y Post Padding) ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_noise_padding;
-                        if ui.checkbox(&mut state.params.enable_noise_padding, RichText::new("Margen de Ruido de Canal (Pre y Post)").strong()).changed() {
-                            if prev != state.params.enable_noise_padding {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
-                    });
+                let prev_padding = state.params.enable_noise_padding;
+                let padding_badge = if state.params.enable_noise_padding {
+                    Some(("Activo", theme.accent_green()))
+                } else {
+                    None
+                };
 
+                let mut padding_opt = AccordionOptions::new("Margen de Ruido de Canal (Pre y Post Padding)")
+                    .with_toggle(&mut state.params.enable_noise_padding)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = padding_badge {
+                    padding_opt = padding_opt.with_badge(b_text, b_col);
+                }
+
+                accordion_section(ui, theme, "ch_eff_padding", padding_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Ruido ambiental presente antes de encender la portadora y tras apagarse la emisión.\n\
                          • Impacto: Añade segundos de ruido blanco con transición suave (Hann). Ideal para probar silenciamiento (squelch)."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_noise_padding {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Ruido Previo (Apertura):");
-                            if ui.add(egui::Slider::new(&mut state.params.pre_padding_sec, 0.0..=5.0).suffix(" s")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Ruido Previo (Apertura):");
+                        if ui.add(egui::Slider::new(&mut state.params.pre_padding_sec, 0.0..=5.0).suffix(" s")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
 
-                            ui.add_space(10.0);
-                            ui.label("Ruido Posterior (Cierre):");
-                            if ui.add(egui::Slider::new(&mut state.params.post_padding_sec, 0.0..=5.0).suffix(" s")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                        ui.add_space(10.0);
+                        ui.label("Ruido Posterior (Cierre):");
+                        if ui.add(egui::Slider::new(&mut state.params.post_padding_sec, 0.0..=5.0).suffix(" s")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_padding != state.params.enable_noise_padding {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(6.0);
 
                 // --- 6. Imperfecciones de Front-End RF (Opcional) ---
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let prev = state.params.enable_hardware_imp;
-                        if ui.checkbox(&mut state.params.enable_hardware_imp, RichText::new("Imperfecciones de Front-End SDR (Desbalance I/Q y Fuga DC)").strong()).changed() {
-                            if prev != state.params.enable_hardware_imp {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        }
-                    });
+                let prev_hw = state.params.enable_hardware_imp;
+                let hw_badge = if state.params.enable_hardware_imp {
+                    Some(("Desbalance I/Q y DC", theme.accent_blue()))
+                } else {
+                    None
+                };
 
+                let mut hw_opt = AccordionOptions::new("Imperfecciones de Front-End SDR (Desbalance I/Q y Fuga DC)")
+                    .with_toggle(&mut state.params.enable_hardware_imp)
+                    .default_open(true);
+                if let Some((b_text, b_col)) = hw_badge {
+                    hw_opt = hw_opt.with_badge(b_text, b_col);
+                }
+
+                accordion_section(ui, theme, "ch_eff_hw", hw_opt, |ui| {
                     ui.label(RichText::new(
                         "• Origen: Desbalance analógico en mezcladores en cuadratura y fuga de oscilador local (LO leakage).\n\
                          • Impacto: Genera una imagen especular no deseada en -f y un pico parásito en el centro exacto (DC spike)."
                     ).size(11.5).color(theme.text_secondary()));
 
-                    if state.params.enable_hardware_imp {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Desbalance I/Q:");
-                            if ui.add(egui::Slider::new(&mut state.params.iq_imbalance_db, -2.0..=2.0).suffix(" dB")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Desbalance I/Q:");
+                        if ui.add(egui::Slider::new(&mut state.params.iq_imbalance_db, -2.0..=2.0).suffix(" dB")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
 
-                            ui.add_space(10.0);
-                            ui.label("Error de Fase:");
-                            if ui.add(egui::Slider::new(&mut state.params.phase_imbalance_deg, -10.0..=10.0).suffix(" °")).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
+                        ui.add_space(10.0);
+                        ui.label("Error de Fase:");
+                        if ui.add(egui::Slider::new(&mut state.params.phase_imbalance_deg, -10.0..=10.0).suffix(" °")).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Offset DC (I):");
-                            if ui.add(egui::Slider::new(&mut state.params.dc_offset_i, -0.05..=0.05)).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
+                    ui.horizontal(|ui| {
+                        ui.label("Offset DC (I):");
+                        if ui.add(egui::Slider::new(&mut state.params.dc_offset_i, -0.05..=0.05)).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
 
-                            ui.add_space(10.0);
-                            ui.label("Offset DC (Q):");
-                            if ui.add(egui::Slider::new(&mut state.params.dc_offset_q, -0.05..=0.05)).changed() {
-                                state.params.active_preset = ChannelPreset::Custom;
-                                state.is_dirty = true;
-                            }
-                        });
-                    }
+                        ui.add_space(10.0);
+                        ui.label("Offset DC (Q):");
+                        if ui.add(egui::Slider::new(&mut state.params.dc_offset_q, -0.05..=0.05)).changed() {
+                            state.params.active_preset = ChannelPreset::Custom;
+                            state.is_dirty = true;
+                        }
+                    });
                 });
+
+                if prev_hw != state.params.enable_hardware_imp {
+                    state.params.active_preset = ChannelPreset::Custom;
+                    state.is_dirty = true;
+                }
 
                 ui.add_space(12.0);
 
@@ -587,37 +617,34 @@ fn render_with_effects_view(
 
     if !effective_samples.is_empty() {
         ui.add_space(10.0);
-        render_signal_visualizer(ui, theme, effective_samples, sample_rate);
+        accordion_section(
+            ui,
+            theme,
+            "with_eff_osc",
+            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+            |ui| {
+                render_signal_visualizer(ui, theme, effective_samples, sample_rate);
+            },
+        );
 
         ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            let spec_btn_text = if state.spectrogram_state.show {
-                "Ocultar Espectro"
-            } else {
-                "Mostrar Espectro"
-            };
-            let spec_btn = egui::Button::new(RichText::new(spec_btn_text).strong().size(12.5))
-                .fill(if state.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .min_size(Vec2::new(0.0, 32.0));
-
-            if ui.add(spec_btn).clicked() {
-                state.spectrogram_state.show = !state.spectrogram_state.show;
-            }
-        });
-
-        if state.spectrogram_state.show {
-            ui.add_space(8.0);
-            let out_dir = config.get_pipeline_dir(pipeline_id);
-            render_spectrogram_widget(
-                ui,
-                theme,
-                &mut state.spectrogram_state,
-                effective_samples,
-                sample_rate,
-                pipeline_id,
-                Some(&out_dir),
-            );
-        }
+        accordion_section(
+            ui,
+            theme,
+            "with_eff_spec",
+            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+            |ui| {
+                let out_dir = config.get_pipeline_dir(pipeline_id);
+                render_spectrogram_widget(
+                    ui,
+                    theme,
+                    &mut state.spectrogram_state,
+                    effective_samples,
+                    sample_rate,
+                    pipeline_id,
+                    Some(&out_dir),
+                );
+            },
+        );
     }
 }

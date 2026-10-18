@@ -4,12 +4,12 @@ use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::audio_player::AudioPlayerWidget;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{info_card, step_bar};
+use crate::ui::components::{accordion_section, info_card, step_bar, AccordionOptions};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use am_modulator::{
     am_modulate_iq, load_audio_file, AmMode, AudioData,
 };
-use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 
 pub struct GenericAmPipeline {
     pub current_step: usize,
@@ -210,128 +210,119 @@ impl GenericAmPipeline {
 
     fn render_step_modulate(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Parámetros del Modulador AM").strong().size(14.0).color(theme.accent_blue()));
-                        ui.add_space(8.0);
+            accordion_section(
+                ui,
+                theme,
+                "am_params_phase",
+                AccordionOptions::new("Parámetros del Modulador AM / SSB").default_open(true),
+                |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Tipo de Modulación AM:");
+                        let am_mode_name = match self.am_mode {
+                            AmMode::DsbFc => "DSB-FC (Portadora Completa - Broadcast / Aviación)",
+                            AmMode::DsbSc => "DSB-SC (Portadora Suprimida)",
+                            AmMode::SsbUsb => "SSB USB (Banda Lateral Superior)",
+                            AmMode::SsbLsb => "SSB LSB (Banda Lateral Inferior)",
+                        };
 
-                        ui.horizontal(|ui| {
-                            ui.label("Tipo de Modulación AM:");
-                            let am_mode_name = match self.am_mode {
-                                AmMode::DsbFc => "DSB-FC (Portadora Completa - Broadcast / Aviación)",
-                                AmMode::DsbSc => "DSB-SC (Portadora Suprimida)",
-                                AmMode::SsbUsb => "SSB USB (Banda Lateral Superior)",
-                                AmMode::SsbLsb => "SSB LSB (Banda Lateral Inferior)",
-                            };
-
-                            egui::ComboBox::from_id_salt("am_mode_combo")
-                                .selected_text(am_mode_name)
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.am_mode, AmMode::DsbFc, "DSB-FC (Portadora Completa)");
-                                    ui.selectable_value(&mut self.am_mode, AmMode::DsbSc, "DSB-SC (Portadora Suprimida)");
-                                    ui.selectable_value(&mut self.am_mode, AmMode::SsbUsb, "SSB USB (Banda Lateral Superior)");
-                                    ui.selectable_value(&mut self.am_mode, AmMode::SsbLsb, "SSB LSB (Banda Lateral Inferior)");
-                                });
-                        });
-
-                        ui.add_space(6.0);
-                        if self.am_mode == AmMode::DsbFc {
-                            ui.horizontal(|ui| {
-                                ui.label("Índice de modulación (m):");
-                                ui.add(egui::Slider::new(&mut self.modulation_index, 0.05..=1.5).text(" (1.0 = 100%)"));
+                        egui::ComboBox::from_id_salt("am_mode_combo")
+                            .selected_text(am_mode_name)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.am_mode, AmMode::DsbFc, "DSB-FC (Portadora Completa)");
+                                ui.selectable_value(&mut self.am_mode, AmMode::DsbSc, "DSB-SC (Portadora Suprimida)");
+                                ui.selectable_value(&mut self.am_mode, AmMode::SsbUsb, "SSB USB (Banda Lateral Superior)");
+                                ui.selectable_value(&mut self.am_mode, AmMode::SsbLsb, "SSB LSB (Banda Lateral Inferior)");
                             });
+                    });
+
+                    ui.add_space(6.0);
+                    if self.am_mode == AmMode::DsbFc {
+                        ui.horizontal(|ui| {
+                            ui.label("Índice de modulación (m):");
+                            ui.add(egui::Slider::new(&mut self.modulation_index, 0.05..=1.5).text(" (1.0 = 100%)"));
+                        });
+                    }
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Desplazamiento IF Portadora (Offset Hz):");
+                        ui.add(egui::Slider::new(&mut self.if_offset_hz, -50_000.0..=50_000.0).suffix(" Hz"));
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        egui::ComboBox::from_id_salt("am_sdr_rate_combo")
+                            .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
+                            });
+                    });
+
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let mod_btn = egui::Button::new(
+                            RichText::new("Modular Señal AM").strong().color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(6.0);
+
+                        if ui.add(mod_btn).clicked() {
+                            self.execute_modulation();
                         }
 
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Desplazamiento IF Portadora (Offset Hz):");
-                            ui.add(egui::Slider::new(&mut self.if_offset_hz, -50_000.0..=50_000.0).suffix(" Hz"));
-                        });
-
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Tasa de Muestreo SDR I/Q:");
-                            egui::ComboBox::from_id_salt("am_sdr_rate_combo")
-                                .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
-                                });
-                        });
-
-                        ui.add_space(10.0);
-                        ui.horizontal(|ui| {
-                            let mod_btn = egui::Button::new(
-                                RichText::new("Modular Señal AM").strong().color(Color32::WHITE),
-                            )
-                            .fill(theme.accent_blue())
-                            .corner_radius(6.0);
-
-                            if ui.add(mod_btn).clicked() {
-                                self.execute_modulation();
+                        if !self.iq_samples.is_empty() {
+                            if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
+                                self.current_step = 2;
                             }
-
-                            if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
-                                    self.current_step = 2;
-                                }
-                            }
-                        });
-
-                        ui.add_space(6.0);
-                        ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                        }
                     });
-                });
+
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                },
+            );
 
             if !self.iq_samples.is_empty() {
                 ui.add_space(10.0);
-                crate::ui::spectrum::render_signal_visualizer(
+                accordion_section(
                     ui,
                     theme,
-                    &self.iq_samples,
-                    self.sdr_sample_rate,
+                    "am_iq_osc",
+                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                    |ui| {
+                        crate::ui::spectrum::render_signal_visualizer(
+                            ui,
+                            theme,
+                            &self.iq_samples,
+                            self.sdr_sample_rate,
+                        );
+                    },
                 );
 
                 ui.add_space(8.0);
-                ui.horizontal_wrapped(|ui| {
-                    let spec_btn_text = if self.spectrogram_state.show {
-                        "Ocultar Espectro"
-                    } else {
-                        "Mostrar Espectro"
-                    };
-                    let spec_btn = egui::Button::new(
-                        RichText::new(spec_btn_text).strong().size(12.5),
-                    )
-                    .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
-                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                    .min_size(Vec2::new(0.0, 32.0));
-
-                    if ui.add(spec_btn).clicked() {
-                        self.spectrogram_state.show = !self.spectrogram_state.show;
-                    }
-                });
-
-                if self.spectrogram_state.show {
-                    ui.add_space(8.0);
-                    let out_dir = config.get_pipeline_dir("generic_am");
-                    crate::ui::spectrogram::render_spectrogram_widget(
-                        ui,
-                        theme,
-                        &mut self.spectrogram_state,
-                        &self.iq_samples,
-                        self.sdr_sample_rate,
-                        "generic_am",
-                        Some(&out_dir),
-                    );
-                }
+                accordion_section(
+                    ui,
+                    theme,
+                    "am_iq_spec",
+                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                    |ui| {
+                        let out_dir = config.get_pipeline_dir("generic_am");
+                        crate::ui::spectrogram::render_spectrogram_widget(
+                            ui,
+                            theme,
+                            &mut self.spectrogram_state,
+                            &self.iq_samples,
+                            self.sdr_sample_rate,
+                            "generic_am",
+                            Some(&out_dir),
+                        );
+                    },
+                );
             }
         });
     }

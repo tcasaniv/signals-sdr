@@ -3,7 +3,7 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{info_card, step_bar};
+use crate::ui::components::{accordion_section, info_card, step_bar, AccordionOptions};
 use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
@@ -128,44 +128,51 @@ impl HrptPipeline {
 
     fn render_step_encode(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(12.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Modulador Manchester Split-Phase BPSK").strong().size(14.0).color(theme.accent_blue()));
-                        ui.add_space(6.0);
-                        ui.label("Tasa de símbolos: 665,400 baudios | Tasa de muestreo I/Q: 2.6616 MSps (4x sobremuestreo)");
-                        ui.label("Filtro conformado de pulso: Root Raised Cosine (RRC) alpha = 0.5");
+            accordion_section(
+                ui,
+                theme,
+                "hrpt_mod_phase",
+                AccordionOptions::new("Modulador Manchester Split-Phase BPSK").default_open(true),
+                |ui| {
+                    ui.label("Tasa de símbolos: 665,400 baudios | Tasa de muestreo I/Q: 2.6616 MSps (4x sobremuestreo)");
+                    ui.label("Filtro conformado de pulso: Root Raised Cosine (RRC) alpha = 0.5");
 
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            let gen_btn = egui::Button::new(
-                                RichText::new("Sintetizar Señal BPSK HRPT").strong().color(Color32::WHITE),
-                            )
-                            .fill(theme.accent_blue())
-                            .corner_radius(6.0);
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let gen_btn = egui::Button::new(
+                            RichText::new("Sintetizar Señal BPSK HRPT").strong().color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(6.0);
 
-                            if ui.add(gen_btn).clicked() {
-                                self.generate_synthetic_bpsk();
+                        if ui.add(gen_btn).clicked() {
+                            self.generate_synthetic_bpsk();
+                        }
+
+                        if !self.iq_samples.is_empty() {
+                            if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
+                                self.current_step = 2;
                             }
-
-                            if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
-                                    self.current_step = 2;
-                                }
-                            }
-                        });
-
-                        ui.add_space(6.0);
-                        ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                        }
                     });
-                });
 
-            ui.add_space(10.0);
-            render_signal_visualizer(ui, theme, &self.iq_samples, 2_400_000);
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                },
+            );
+
+            if !self.iq_samples.is_empty() {
+                ui.add_space(10.0);
+                accordion_section(
+                    ui,
+                    theme,
+                    "hrpt_iq_osc",
+                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                    |ui| {
+                        render_signal_visualizer(ui, theme, &self.iq_samples, 2_400_000);
+                    },
+                );
+            }
         });
     }
 

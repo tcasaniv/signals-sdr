@@ -3,7 +3,7 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{image_input_card, info_card, step_bar};
+use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions};
 use crate::ui::spectrum::render_audio_waveform_i16;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
@@ -236,263 +236,247 @@ impl GenericSstvPipeline {
             // ==========================================
             // FASE 1: SELECCIÓN DEL MODO SSTV
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 1: Configuración del Modo SSTV").strong().size(14.5).color(theme.text_primary()));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new("CONFIGURADO").strong().size(11.0).color(Color32::from_rgb(34, 197, 94)));
+            accordion_section(
+                ui,
+                theme,
+                "generic_sstv_phase_1",
+                AccordionOptions::new("Fase 1: Configuración del Modo SSTV")
+                    .with_badge("CONFIGURADO", Color32::from_rgb(34, 197, 94))
+                    .default_open(true),
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Modo de Transmisión:");
+                        egui::ComboBox::from_id_salt("generic_sstv_mode_combo")
+                            .selected_text(format!("{} ({} - {})", current_name, current_res, current_dur))
+                            .show_ui(ui, |ui| {
+                                let all_modes = [
+                                    Mode::Martin1,
+                                    Mode::Martin2,
+                                    Mode::Scottie1,
+                                    Mode::Scottie2,
+                                    Mode::ScottieDx,
+                                    Mode::Robot36,
+                                    Mode::Robot72,
+                                    Mode::Pd120,
+                                    Mode::Pd180,
+                                    Mode::Pd290,
+                                    Mode::Bw8,
+                                    Mode::Bw12,
+                                ];
+
+                                for mode in all_modes {
+                                    let (name, res, dur) = Self::mode_info_label(mode);
+                                    let label_text = format!("{} ({} - {})", name, res, dur);
+                                    ui.selectable_value(&mut self.selected_mode, mode, label_text);
+                                }
                             });
-                        });
-                        ui.add_space(6.0);
-
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("Modo de Transmisión:");
-                            egui::ComboBox::from_id_salt("generic_sstv_mode_combo")
-                                .selected_text(format!("{} ({} - {})", current_name, current_res, current_dur))
-                                .show_ui(ui, |ui| {
-                                    let all_modes = [
-                                        Mode::Martin1,
-                                        Mode::Martin2,
-                                        Mode::Scottie1,
-                                        Mode::Scottie2,
-                                        Mode::ScottieDx,
-                                        Mode::Robot36,
-                                        Mode::Robot72,
-                                        Mode::Pd120,
-                                        Mode::Pd180,
-                                        Mode::Pd290,
-                                        Mode::Bw8,
-                                        Mode::Bw12,
-                                    ];
-
-                                    for mode in all_modes {
-                                        let (name, res, dur) = Self::mode_info_label(mode);
-                                        let label_text = format!("{} ({} - {})", name, res, dur);
-                                        ui.selectable_value(&mut self.selected_mode, mode, label_text);
-                                    }
-                                });
-                        });
-
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(format!("Resolución requerida: {} | Duración estimada de escaneo: {}", current_res, current_dur))
-                                .size(11.5)
-                                .color(theme.text_secondary()),
-                        );
                     });
-                });
 
-            ui.add_space(12.0);
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("Resolución requerida: {} | Duración estimada de escaneo: {}", current_res, current_dur))
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                    );
+                },
+            );
+
+            ui.add_space(10.0);
 
             // ==========================================
             // FASE 2: CODIFICACIÓN ANALÓGICA SSTV A AUDIO
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 2: Estructura de la Señal SSTV (Audio a 48 kHz)").strong().size(14.5).color(theme.text_primary()));
-                            let (badge_text, badge_color) = if self.audio_samples.is_some() {
-                                ("LISTO", Color32::from_rgb(34, 197, 94))
-                            } else {
-                                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
-                            };
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(badge_text).strong().size(11.0).color(badge_color));
-                            });
-                        });
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Encabezado VIS: Tono de calibración a 1900 Hz (300 ms), Tono de ruptura a 1200 Hz (10 ms), Código VIS digital de 8 bits con bit de paridad. Líneas de imagen: Tono de sincro a 1200 Hz, Porche negro a 1500 Hz, y barrido analógico de luminancia/color (1500-2300 Hz). Se genera y guarda como archivo WAV a 48 kHz.")
-                                .size(11.5)
-                                .color(theme.text_secondary()),
-                        );
-                        ui.add_space(8.0);
+            let (badge_text_2, badge_color_2) = if self.audio_samples.is_some() {
+                ("LISTO", Color32::from_rgb(34, 197, 94))
+            } else {
+                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+            };
 
-                        ui.horizontal_wrapped(|ui| {
-                            let btn = egui::Button::new(
-                                RichText::new("2. Codificar Audio SSTV (Guardar WAV 48 kHz)").strong().color(Color32::WHITE),
-                            )
-                            .fill(theme.accent_blue())
-                            .corner_radius(8.0)
-                            .min_size(Vec2::new(0.0, 34.0));
+            accordion_section(
+                ui,
+                theme,
+                "generic_sstv_phase_2",
+                AccordionOptions::new("Fase 2: Estructura de la Señal SSTV (Audio a 48 kHz)")
+                    .with_badge(badge_text_2, badge_color_2)
+                    .default_open(true),
+                |ui| {
+                    ui.label(
+                        RichText::new("Encabezado VIS: Tono de calibración a 1900 Hz (300 ms), Tono de ruptura a 1200 Hz (10 ms), Código VIS digital de 8 bits con bit de paridad. Líneas de imagen: Tono de sincro a 1200 Hz, Porche negro a 1500 Hz, y barrido analógico de luminancia/color (1500-2300 Hz). Se genera y guarda como archivo WAV a 48 kHz.")
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
 
-                            if ui.add(btn).clicked() {
-                                self.step_encode_audio(config);
-                            }
-                        });
+                    ui.horizontal_wrapped(|ui| {
+                        let btn = egui::Button::new(
+                            RichText::new("2. Codificar Audio SSTV (Guardar WAV 48 kHz)").strong().color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(8.0)
+                        .min_size(Vec2::new(0.0, 34.0));
 
-                        if let Some(ref audio) = self.audio_samples {
-                            ui.add_space(8.0);
-                            let dur_sec = audio.len() as f32 / 48_000.0;
-                            ui.label(
-                                RichText::new(format!(
-                                    "Métricas de Audio SSTV: Tasa 48,000 Hz | Total {} muestras PCM | Duración estimada: {:.1} segundos",
-                                    audio.len(),
-                                    dur_sec
-                                ))
-                                .size(12.0)
-                                .color(theme.accent_green()),
-                            );
-
-                            ui.add_space(8.0);
-                            render_audio_waveform_i16(
-                                ui,
-                                theme,
-                                audio,
-                                48_000,
-                                "Osciloscopio de Audio SSTV (48 kHz)",
-                            );
-
-                            ui.add_space(8.0);
-                            ui.horizontal_wrapped(|ui| {
-                                if let Some(ref path) = self.audio_wav_path {
-                                    let play_btn = egui::Button::new(RichText::new("Reproducir en Reproductor Predeterminado").strong().size(12.5))
-                                        .min_size(Vec2::new(0.0, 32.0));
-                                    if ui.add(play_btn).clicked() {
-                                        if let Some(p) = path.to_str() {
-                                            crate::utils::open_path_or_url(p);
-                                        }
-                                    }
-                                }
-
-                                let out_dir = config.get_pipeline_dir("generic_sstv");
-                                let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
-                                    .min_size(Vec2::new(0.0, 32.0));
-                                if ui.add(folder_btn).clicked() {
-                                    crate::utils::open_folder(&out_dir);
-                                }
-                            });
+                        if ui.add(btn).clicked() {
+                            self.step_encode_audio(config);
                         }
                     });
-                });
 
-            ui.add_space(12.0);
+                    if let Some(ref audio) = self.audio_samples {
+                        ui.add_space(8.0);
+                        let dur_sec = audio.len() as f32 / 48_000.0;
+                        ui.label(
+                            RichText::new(format!(
+                                "Métricas de Audio SSTV: Tasa 48,000 Hz | Total {} muestras PCM | Duración estimada: {:.1} segundos",
+                                audio.len(),
+                                dur_sec
+                            ))
+                            .size(12.0)
+                            .color(theme.accent_green()),
+                        );
+
+                        ui.add_space(8.0);
+                        accordion_section(
+                            ui,
+                            theme,
+                            "generic_sstv_audio_osc",
+                            AccordionOptions::new("Osciloscopio de Audio SSTV (48 kHz)").default_open(true),
+                            |ui| {
+                                render_audio_waveform_i16(
+                                    ui,
+                                    theme,
+                                    audio,
+                                    48_000,
+                                    "Osciloscopio de Audio SSTV (48 kHz)",
+                                );
+                            },
+                        );
+
+                        ui.add_space(8.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if let Some(ref path) = self.audio_wav_path {
+                                let play_btn = egui::Button::new(RichText::new("Reproducir en Reproductor Predeterminado").strong().size(12.5))
+                                    .min_size(Vec2::new(0.0, 32.0));
+                                if ui.add(play_btn).clicked() {
+                                    if let Some(p) = path.to_str() {
+                                        crate::utils::open_path_or_url(p);
+                                    }
+                                }
+                            }
+
+                            let out_dir = config.get_pipeline_dir("generic_sstv");
+                            let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
+                                .min_size(Vec2::new(0.0, 32.0));
+                            if ui.add(folder_btn).clicked() {
+                                crate::utils::open_folder(&out_dir);
+                            }
+                        });
+                    }
+                },
+            );
+
+            ui.add_space(10.0);
 
             // ==========================================
             // FASE 3: MODULACIÓN FM RF PARA SDR
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 3: Modulación FM RF para Transmisión SDR (288 kHz)").strong().size(14.5).color(theme.text_primary()));
-                            let (badge_text, badge_color) = if !self.iq_samples.is_empty() {
-                                ("LISTO", Color32::from_rgb(34, 197, 94))
-                            } else {
-                                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
-                            };
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(badge_text).strong().size(11.0).color(badge_color));
+            let (badge_text_3, badge_color_3) = if !self.iq_samples.is_empty() {
+                ("LISTO", Color32::from_rgb(34, 197, 94))
+            } else {
+                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+            };
+
+            accordion_section(
+                ui,
+                theme,
+                "generic_sstv_phase_3",
+                AccordionOptions::new("Fase 3: Modulación FM RF para Transmisión SDR (288 kHz)")
+                    .with_badge(badge_text_3, badge_color_3)
+                    .default_open(true),
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Desviación de frecuencia FM:");
+                        ui.add(egui::Slider::new(&mut self.fm_deviation_hz, 2_500.0..=25_000.0).suffix(" Hz"));
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        egui::ComboBox::from_id_salt("generic_sstv_sdr_rate_combo")
+                            .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
                             });
-                        });
-                        ui.add_space(6.0);
+                    });
 
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("Desviación de frecuencia FM:");
-                            ui.add(egui::Slider::new(&mut self.fm_deviation_hz, 2_500.0..=25_000.0).suffix(" Hz"));
-                        });
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let can_mod = self.audio_samples.is_some() || self.img_path.is_some();
+                        let btn_label = format!("3. Modular en FM RF ({} kHz)", self.sdr_sample_rate / 1000);
+                        let start_btn = egui::Button::new(
+                            RichText::new(btn_label).strong().color(Color32::WHITE),
+                        )
+                        .fill(if can_mod { theme.accent_blue() } else { theme.surface_subtle() })
+                        .corner_radius(8.0)
+                        .min_size(Vec2::new(0.0, 34.0));
 
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Tasa de Muestreo SDR I/Q:");
-                            egui::ComboBox::from_id_salt("generic_sstv_sdr_rate_combo")
-                                .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
-                                });
-                        });
-
-                        ui.add_space(8.0);
-                        ui.horizontal_wrapped(|ui| {
-                            let can_mod = self.audio_samples.is_some() || self.img_path.is_some();
-                            let btn_label = format!("3. Modular en FM RF ({} kHz)", self.sdr_sample_rate / 1000);
-                            let start_btn = egui::Button::new(
-                                RichText::new(btn_label).strong().color(Color32::WHITE),
-                            )
-                            .fill(if can_mod { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(8.0)
-                            .min_size(Vec2::new(0.0, 34.0));
-
-                            if ui.add_enabled(can_mod, start_btn).clicked() {
-                                self.step_modulate_fm(config);
-                            }
-
-                            if !self.iq_samples.is_empty() {
-                                let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Efectos de Canal ->").strong().color(Color32::WHITE),
-                                )
-                                .fill(Color32::from_rgb(34, 197, 94))
-                                .corner_radius(8.0)
-                                .min_size(Vec2::new(200.0, 34.0));
-
-                                if ui.add(tx_btn).clicked() {
-                                    self.current_step = 2;
-                                }
-                            }
-                        });
+                        if ui.add_enabled(can_mod, start_btn).clicked() {
+                            self.step_modulate_fm(config);
+                        }
 
                         if !self.iq_samples.is_empty() {
-                            ui.add_space(8.0);
-                            let dur_sec = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
-                            ui.label(
-                                RichText::new(format!(
-                                    "Métricas de Señal I/Q: Tasa {} Sps | Total {} muestras complejas | Duración: {:.2} s",
-                                    self.sdr_sample_rate,
-                                    self.iq_samples.len(),
-                                    dur_sec
-                                ))
-                                .size(12.0)
-                                .color(theme.accent_green()),
-                            );
+                            let tx_btn = egui::Button::new(
+                                RichText::new("Continuar a Efectos de Canal ->").strong().color(Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(34, 197, 94))
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(200.0, 34.0));
 
-                            ui.add_space(8.0);
-                            crate::ui::spectrum::render_signal_visualizer(
-                                ui,
-                                theme,
-                                &self.iq_samples,
+                            if ui.add(tx_btn).clicked() {
+                                self.current_step = 2;
+                            }
+                        }
+                    });
+
+                    if !self.iq_samples.is_empty() {
+                        ui.add_space(8.0);
+                        let dur_sec = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
+                        ui.label(
+                            RichText::new(format!(
+                                "Métricas de Señal I/Q: Tasa {} Sps | Total {} muestras complejas | Duración: {:.2} s",
                                 self.sdr_sample_rate,
-                            );
+                                self.iq_samples.len(),
+                                dur_sec
+                            ))
+                            .size(12.0)
+                            .color(theme.accent_green()),
+                        );
 
-                            ui.add_space(8.0);
-                            ui.horizontal_wrapped(|ui| {
-                                let spec_btn_text = if self.spectrogram_state.show {
-                                    "Ocultar Espectro"
-                                } else {
-                                    "Mostrar Espectro"
-                                };
-                                let spec_btn = egui::Button::new(
-                                    RichText::new(spec_btn_text).strong().size(12.5),
-                                )
-                                .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
-                                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                                .min_size(Vec2::new(0.0, 32.0));
+                        ui.add_space(8.0);
+                        accordion_section(
+                            ui,
+                            theme,
+                            "generic_sstv_iq_osc",
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            |ui| {
+                                crate::ui::spectrum::render_signal_visualizer(
+                                    ui,
+                                    theme,
+                                    &self.iq_samples,
+                                    self.sdr_sample_rate,
+                                );
+                            },
+                        );
 
-                                if ui.add(spec_btn).clicked() {
-                                    self.spectrogram_state.show = !self.spectrogram_state.show;
-                                }
-                            });
-
-                            if self.spectrogram_state.show {
-                                ui.add_space(8.0);
+                        ui.add_space(8.0);
+                        accordion_section(
+                            ui,
+                            theme,
+                            "generic_sstv_iq_spec",
+                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            |ui| {
                                 let out_dir = config.get_pipeline_dir("generic_sstv");
                                 crate::ui::spectrogram::render_spectrogram_widget(
                                     ui,
@@ -503,10 +487,11 @@ impl GenericSstvPipeline {
                                     "generic_sstv",
                                     Some(&out_dir),
                                 );
-                            }
-                        }
-                    });
-                });
+                            },
+                        );
+                    }
+                },
+            );
         });
     }
 

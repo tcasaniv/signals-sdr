@@ -3,7 +3,7 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{image_input_card, info_card, step_bar};
+use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use lrpt_encoder::{
@@ -271,249 +271,225 @@ impl LrptPipeline {
             // ==========================================
             // FASE 1: COMPRESIÓN JPEG DE CANALES MCU
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 1: Compresión de Canales y Formato JPEG MCU (8x8 px)").strong().size(14.5).color(theme.text_primary()));
-                            let (badge_text, badge_color) = if self.phase1_ready {
-                                ("LISTO", Color32::from_rgb(34, 197, 94))
-                            } else {
-                                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
-                            };
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(badge_text).strong().size(11.0).color(badge_color));
-                            });
-                        });
+            let (badge_text_1, badge_color_1) = if self.phase1_ready {
+                ("LISTO", Color32::from_rgb(34, 197, 94))
+            } else {
+                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+            };
 
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Meteor-M2 comprime cada canal óptico (1568 px de ancho, 196 bloques MCU por línea) en bloques de 8x8 píxeles mediante transformada discreta del coseno (DCT) y tablas de cuantificación de luminancia JPEG según el estándar CCSDS.")
-                                .size(12.0)
-                                .color(theme.text_secondary()),
-                        );
-                        ui.add_space(8.0);
+            accordion_section(
+                ui,
+                theme,
+                "lrpt_phase_1",
+                AccordionOptions::new("Fase 1: Compresión de Canales y Formato JPEG MCU (8x8 px)")
+                    .with_badge(badge_text_1, badge_color_1)
+                    .default_open(true),
+                |ui| {
+                    ui.label(
+                        RichText::new("Meteor-M2 comprime cada canal óptico (1568 px de ancho, 196 bloques MCU por línea) en bloques de 8x8 píxeles mediante transformada discreta del coseno (DCT) y tablas de cuantificación de luminancia JPEG según el estándar CCSDS.")
+                            .size(12.0)
+                            .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
 
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label("Calidad de compresión JPEG (Factor Q):");
-                            ui.add(egui::Slider::new(&mut self.quality, 20..=95));
-                        });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Calidad de compresión JPEG (Factor Q):");
+                        ui.add(egui::Slider::new(&mut self.quality, 20..=95));
+                    });
 
-                        ui.add_space(8.0);
-                        ui.horizontal_wrapped(|ui| {
-                            let btn1 = egui::Button::new(
-                                RichText::new("1. Comprimir Canales en Bloques JPEG MCU").strong().color(Color32::WHITE),
-                            )
-                            .fill(theme.accent_blue())
-                            .corner_radius(8.0)
-                            .min_size(Vec2::new(0.0, 34.0));
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let btn1 = egui::Button::new(
+                            RichText::new("1. Comprimir Canales en Bloques JPEG MCU").strong().color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(8.0)
+                        .min_size(Vec2::new(0.0, 34.0));
 
-                            if ui.add(btn1).clicked() {
-                                self.step_1_compress_mcus();
-                            }
-                        });
-
-                        if self.phase1_ready {
-                            ui.add_space(8.0);
-                            ui.label(
-                                RichText::new(format!(
-                                    "Métricas de Fase 1: {} filas MCU procesadas | {} paquetes de datos MSUMR generados (APID 64, 65, 66)",
-                                    self.mcu_rows_count,
-                                    self.source_packets.len()
-                                ))
-                                .size(12.0)
-                                .color(theme.accent_green()),
-                            );
+                        if ui.add(btn1).clicked() {
+                            self.step_1_compress_mcus();
                         }
                     });
-                });
 
-            ui.add_space(12.0);
+                    if self.phase1_ready {
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "Métricas de Fase 1: {} filas MCU procesadas | {} paquetes de datos MSUMR generados (APID 64, 65, 66)",
+                                self.mcu_rows_count,
+                                self.source_packets.len()
+                            ))
+                            .size(12.0)
+                            .color(theme.accent_green()),
+                        );
+                    }
+                },
+            );
+
+            ui.add_space(10.0);
 
             // ==========================================
             // FASE 2: TRAMAS CCSDS (VCDU) Y FEC
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 2: Protocolo CCSDS y Corrección de Errores FEC (Reed-Solomon + Convolucional)").strong().size(14.5).color(theme.text_primary()));
-                            let (badge_text, badge_color) = if self.phase2_ready {
-                                ("LISTO", Color32::from_rgb(34, 197, 94))
-                            } else {
-                                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
-                            };
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(badge_text).strong().size(11.0).color(badge_color));
-                            });
-                        });
+            let (badge_text_2, badge_color_2) = if self.phase2_ready {
+                ("LISTO", Color32::from_rgb(34, 197, 94))
+            } else {
+                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+            };
 
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Los paquetes espaciales se multiplexan en tramas de transferencia de canal virtual (VCDU) de 1024 bytes. Se calcula el código Reed-Solomon RS(255, 223) con entrelazado profundidad 4, se añade palabra sincro ASM 0x1ACFFC1D, codificación diferencial NRZ-M y codificador convolucional (K=7, R=1/2).")
-                                .size(12.0)
-                                .color(theme.text_secondary()),
-                        );
-                        ui.add_space(8.0);
+            accordion_section(
+                ui,
+                theme,
+                "lrpt_phase_2",
+                AccordionOptions::new("Fase 2: Protocolo CCSDS y Corrección de Errores FEC (Reed-Solomon + Convolucional)")
+                    .with_badge(badge_text_2, badge_color_2)
+                    .default_open(true),
+                |ui| {
+                    ui.label(
+                        RichText::new("Los paquetes espaciales se multiplexan en tramas de transferencia de canal virtual (VCDU) de 1024 bytes. Se calcula el código Reed-Solomon RS(255, 223) con entrelazado profundidad 4, se añade palabra sincro ASM 0x1ACFFC1D, codificación diferencial NRZ-M y codificador convolucional (K=7, R=1/2).")
+                            .size(12.0)
+                            .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
 
-                        ui.horizontal_wrapped(|ui| {
-                            let can_fase2 = self.phase1_ready || self.img1_path.is_some();
-                            let btn2 = egui::Button::new(
-                                RichText::new("2. Estructurar Tramas CCSDS (VCDU) y FEC").strong().color(Color32::WHITE),
-                            )
-                            .fill(if can_fase2 { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(8.0)
-                            .min_size(Vec2::new(0.0, 34.0));
+                    ui.horizontal_wrapped(|ui| {
+                        let can_fase2 = self.phase1_ready || self.img1_path.is_some();
+                        let btn2 = egui::Button::new(
+                            RichText::new("2. Estructurar Tramas CCSDS (VCDU) y FEC").strong().color(Color32::WHITE),
+                        )
+                        .fill(if can_fase2 { theme.accent_blue() } else { theme.surface_subtle() })
+                        .corner_radius(8.0)
+                        .min_size(Vec2::new(0.0, 34.0));
 
-                            if ui.add_enabled(can_fase2, btn2).clicked() {
-                                self.step_2_build_ccsds_fec();
-                            }
+                        if ui.add_enabled(can_fase2, btn2).clicked() {
+                            self.step_2_build_ccsds_fec();
+                        }
 
-                            if !can_fase2 {
-                                ui.label(RichText::new("(Primero ejecuta la compresión de la Fase 1)").size(11.5).color(theme.text_secondary()));
-                            }
-                        });
-
-                        if self.phase2_ready {
-                            ui.add_space(8.0);
-                            ui.label(
-                                RichText::new(format!(
-                                    "Métricas de Fase 2: {} tramas VCDU de 1024 bytes | {} tramas CADU con corrección FEC (Tasa 1/2)",
-                                    self.vcdu_count,
-                                    self.encoded_cadus.len()
-                                ))
-                                .size(12.0)
-                                .color(theme.accent_green()),
-                            );
+                        if !can_fase2 {
+                            ui.label(RichText::new("(Primero ejecuta la compresión de la Fase 1)").size(11.5).color(theme.text_secondary()));
                         }
                     });
-                });
 
-            ui.add_space(12.0);
+                    if self.phase2_ready {
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "Métricas de Fase 2: {} tramas VCDU de 1024 bytes | {} tramas CADU con corrección FEC (Tasa 1/2)",
+                                self.vcdu_count,
+                                self.encoded_cadus.len()
+                            ))
+                            .size(12.0)
+                            .color(theme.accent_green()),
+                        );
+                    }
+                },
+            );
+
+            ui.add_space(10.0);
 
             // ==========================================
             // FASE 3: MODULACIÓN DIGITAL OQPSK (288 kHz)
             // ==========================================
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(10.0)
-                .inner_margin(14.0)
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Fase 3: Modulación Digital OQPSK y Filtro RRC (288 kHz)").strong().size(14.5).color(theme.text_primary()));
-                            let (badge_text, badge_color) = if !self.iq_samples.is_empty() {
-                                ("LISTO", Color32::from_rgb(34, 197, 94))
-                            } else {
-                                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
-                            };
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(badge_text).strong().size(11.0).color(badge_color));
+            let (badge_text_3, badge_color_3) = if !self.iq_samples.is_empty() {
+                ("LISTO", Color32::from_rgb(34, 197, 94))
+            } else {
+                ("PENDIENTE", Color32::from_rgb(156, 163, 175))
+            };
+
+            accordion_section(
+                ui,
+                theme,
+                "lrpt_phase_3",
+                AccordionOptions::new("Fase 3: Modulación Digital OQPSK y Filtro RRC (288 kHz)")
+                    .with_badge(badge_text_3, badge_color_3)
+                    .default_open(true),
+                |ui| {
+                    ui.label(
+                        RichText::new("Modulación en cuadratura con desplazamiento (Offset-QPSK) a 72 ksps con retardo de medio símbolo entre I y Q. La señal se conforma con filtro de coseno alzado (RRC, alfa=0.5) y se sobremuestrea a 288 kHz en banda base I/Q.")
+                            .size(12.0)
+                            .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        egui::ComboBox::from_id_salt("lrpt_sdr_rate_combo")
+                            .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar LRPT)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
                             });
-                        });
+                    });
 
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Modulación en cuadratura con desplazamiento (Offset-QPSK) a 72 ksps con retardo de medio símbolo entre I y Q. La señal se conforma con filtro de coseno alzado (RRC, alfa=0.5) y se sobremuestrea a 288 kHz en banda base I/Q.")
-                                .size(12.0)
-                                .color(theme.text_secondary()),
-                        );
-                        ui.add_space(8.0);
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let can_fase3 = self.phase2_ready || self.phase1_ready || self.img1_path.is_some();
+                        let btn_label = format!("3. Modular Señal Digital OQPSK ({} kHz)", self.sdr_sample_rate / 1000);
+                        let btn3 = egui::Button::new(
+                            RichText::new(btn_label).strong().color(Color32::WHITE),
+                        )
+                        .fill(if can_fase3 { theme.accent_blue() } else { theme.surface_subtle() })
+                        .corner_radius(8.0)
+                        .min_size(Vec2::new(0.0, 34.0));
 
-                        ui.horizontal(|ui| {
-                            ui.label("Tasa de Muestreo SDR I/Q:");
-                            egui::ComboBox::from_id_salt("lrpt_sdr_rate_combo")
-                                .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar LRPT)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
-                                    ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
-                                });
-                        });
-
-                        ui.add_space(8.0);
-                        ui.horizontal_wrapped(|ui| {
-                            let can_fase3 = self.phase2_ready || self.phase1_ready || self.img1_path.is_some();
-                            let btn_label = format!("3. Modular Señal Digital OQPSK ({} kHz)", self.sdr_sample_rate / 1000);
-                            let btn3 = egui::Button::new(
-                                RichText::new(btn_label).strong().color(Color32::WHITE),
-                            )
-                            .fill(if can_fase3 { theme.accent_blue() } else { theme.surface_subtle() })
-                            .corner_radius(8.0)
-                            .min_size(Vec2::new(0.0, 34.0));
-
-                            if ui.add_enabled(can_fase3, btn3).clicked() {
-                                self.step_3_modulate_oqpsk();
-                            }
-
-                            if !self.iq_samples.is_empty() {
-                                let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Efectos de Canal ->").strong().size(13.5).color(Color32::WHITE),
-                                )
-                                .fill(Color32::from_rgb(34, 197, 94))
-                                .corner_radius(8.0)
-                                .min_size(Vec2::new(240.0, 38.0));
-
-                                if ui.add(tx_btn).clicked() {
-                                    self.current_step = 2;
-                                }
-                            }
-                        });
+                        if ui.add_enabled(can_fase3, btn3).clicked() {
+                            self.step_3_modulate_oqpsk();
+                        }
 
                         if !self.iq_samples.is_empty() {
-                            ui.add_space(8.0);
-                            let dur_sec = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
-                            ui.label(
-                                RichText::new(format!(
-                                    "Métricas de Señal I/Q: Tasa {} Sps | 72,000 símbolos/s | Total {} muestras I/Q | Duración: {:.2} s",
-                                    self.sdr_sample_rate,
-                                    self.iq_samples.len(),
-                                    dur_sec
-                                ))
-                                .size(12.0)
-                                .color(theme.accent_green()),
-                            );
+                            let tx_btn = egui::Button::new(
+                                RichText::new("Continuar a Efectos de Canal ->").strong().size(13.5).color(Color32::WHITE),
+                            )
+                            .fill(Color32::from_rgb(34, 197, 94))
+                            .corner_radius(8.0)
+                            .min_size(Vec2::new(240.0, 38.0));
 
-                            ui.add_space(8.0);
-                            crate::ui::spectrum::render_signal_visualizer(
-                                ui,
-                                theme,
-                                &self.iq_samples,
+                            if ui.add(tx_btn).clicked() {
+                                self.current_step = 2;
+                            }
+                        }
+                    });
+
+                    if !self.iq_samples.is_empty() {
+                        ui.add_space(8.0);
+                        let dur_sec = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
+                        ui.label(
+                            RichText::new(format!(
+                                "Métricas de Señal I/Q: Tasa {} Sps | 72,000 símbolos/s | Total {} muestras I/Q | Duración: {:.2} s",
                                 self.sdr_sample_rate,
-                            );
+                                self.iq_samples.len(),
+                                dur_sec
+                            ))
+                            .size(12.0)
+                            .color(theme.accent_green()),
+                        );
 
-                            ui.add_space(8.0);
-                            ui.horizontal_wrapped(|ui| {
-                                let spec_btn_text = if self.spectrogram_state.show {
-                                    "Ocultar Espectro"
-                                } else {
-                                    "Mostrar Espectro"
-                                };
-                                let spec_btn = egui::Button::new(
-                                    RichText::new(spec_btn_text).strong().size(12.5),
-                                )
-                                .fill(if self.spectrogram_state.show { theme.card_border() } else { theme.surface_subtle() })
-                                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                                .min_size(Vec2::new(0.0, 32.0));
+                        ui.add_space(8.0);
+                        accordion_section(
+                            ui,
+                            theme,
+                            "lrpt_iq_osc",
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            |ui| {
+                                crate::ui::spectrum::render_signal_visualizer(
+                                    ui,
+                                    theme,
+                                    &self.iq_samples,
+                                    self.sdr_sample_rate,
+                                );
+                            },
+                        );
 
-                                if ui.add(spec_btn).clicked() {
-                                    self.spectrogram_state.show = !self.spectrogram_state.show;
-                                }
-                            });
-
-                            if self.spectrogram_state.show {
-                                ui.add_space(8.0);
+                        ui.add_space(8.0);
+                        accordion_section(
+                            ui,
+                            theme,
+                            "lrpt_iq_spec",
+                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            |ui| {
                                 let out_dir = config.get_pipeline_dir("meteor_lrpt");
                                 crate::ui::spectrogram::render_spectrogram_widget(
                                     ui,
@@ -524,10 +500,11 @@ impl LrptPipeline {
                                     "meteor_lrpt",
                                     Some(&out_dir),
                                 );
-                            }
-                        }
-                    });
-                });
+                            },
+                        );
+                    }
+                },
+            );
         });
     }
 

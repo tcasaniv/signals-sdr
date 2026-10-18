@@ -460,3 +460,198 @@ pub fn intermediate_preview_card(
         });
 }
 
+/// Opciones de configuración para una sección desplegable tipo Google Slides
+pub struct AccordionOptions<'a> {
+    pub title: &'a str,
+    pub badge: Option<(&'a str, Color32)>,
+    pub toggle_enabled: Option<&'a mut bool>,
+    pub default_open: bool,
+}
+
+impl<'a> AccordionOptions<'a> {
+    pub fn new(title: &'a str) -> Self {
+        Self {
+            title,
+            badge: None,
+            toggle_enabled: None,
+            default_open: true,
+        }
+    }
+
+    pub fn with_toggle(mut self, enabled: &'a mut bool) -> Self {
+        self.toggle_enabled = Some(enabled);
+        self
+    }
+
+    pub fn with_badge(mut self, text: &'a str, color: Color32) -> Self {
+        self.badge = Some((text, color));
+        self
+    }
+
+    pub fn default_open(mut self, open: bool) -> Self {
+        self.default_open = open;
+        self
+    }
+}
+
+/// Sección desplegable tipo acordeón con estética de "Opciones de Formato" de Google Slides:
+/// - Chevron a la izquierda (rotación suave al expandir/colapsar)
+/// - Título destacado y badge informativo opcional
+/// - Checkbox independiente a la derecha para activar/desactivar (si aplica)
+/// - Clic en la cabecera abre/cierra; clic en el checkbox activa/desactiva sin forzar colapso
+pub fn accordion_section<R>(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    id_salt: impl std::hash::Hash,
+    options: AccordionOptions,
+    add_contents: impl FnOnce(&mut Ui) -> R,
+) -> Option<R> {
+    let id = ui.make_persistent_id(id_salt);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, options.default_open);
+    let is_open = state.is_open();
+
+    let mut result = None;
+
+    Frame::new()
+        .fill(theme.card_bg())
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
+        .inner_margin(12.0)
+        .show(ui, |ui| {
+            let row_height = 28.0;
+            let full_avail_w = ui.available_width();
+
+            let (header_rect, header_resp) = ui.allocate_exact_size(
+                Vec2::new(full_avail_w, row_height),
+                egui::Sense::click(),
+            );
+
+            let is_hovered = header_resp.hovered();
+            if is_hovered {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                let hover_bg = if *theme == AppTheme::Dark {
+                    Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+                } else {
+                    Color32::from_rgba_unmultiplied(0, 0, 0, 6)
+                };
+                ui.painter().rect_filled(header_rect, 6.0, hover_bg);
+            }
+
+            // Chevron a la izquierda
+            let chevron_center = egui::pos2(header_rect.left() + 12.0, header_rect.center().y);
+            let chevron_stroke = Stroke::new(1.8_f32, if is_hovered { theme.accent_blue() } else { theme.text_secondary() });
+            if is_open {
+                // Chevron hacia abajo '⌵'
+                ui.painter().line_segment([
+                    chevron_center + egui::vec2(-4.5, -2.5),
+                    chevron_center + egui::vec2(0.0, 2.5),
+                ], chevron_stroke);
+                ui.painter().line_segment([
+                    chevron_center + egui::vec2(0.0, 2.5),
+                    chevron_center + egui::vec2(4.5, -2.5),
+                ], chevron_stroke);
+            } else {
+                // Chevron hacia la derecha '›'
+                ui.painter().line_segment([
+                    chevron_center + egui::vec2(-2.5, -4.5),
+                    chevron_center + egui::vec2(2.5, 0.0),
+                ], chevron_stroke);
+                ui.painter().line_segment([
+                    chevron_center + egui::vec2(2.5, 0.0),
+                    chevron_center + egui::vec2(-2.5, 4.5),
+                ], chevron_stroke);
+            }
+
+            // Título
+            let title_pos = egui::pos2(header_rect.left() + 26.0, header_rect.center().y);
+            let title_galley = ui.painter().layout_no_wrap(
+                options.title.to_string(),
+                egui::FontId::proportional(13.5),
+                theme.text_primary(),
+            );
+            let title_w = title_galley.size().x;
+            ui.painter().galley(
+                egui::pos2(title_pos.x, title_pos.y - title_galley.size().y / 2.0),
+                title_galley,
+                theme.text_primary(),
+            );
+
+            // Badge informativo opcional
+            if let Some((badge_text, badge_color)) = options.badge {
+                let badge_pos_x = title_pos.x + title_w + 12.0;
+                let badge_galley = ui.painter().layout_no_wrap(
+                    format!("[ {} ]", badge_text),
+                    egui::FontId::proportional(11.5),
+                    badge_color,
+                );
+                ui.painter().galley(
+                    egui::pos2(badge_pos_x, header_rect.center().y - badge_galley.size().y / 2.0),
+                    badge_galley,
+                    badge_color,
+                );
+            }
+
+            // Checkbox opcional a la derecha
+            let mut checkbox_clicked = false;
+            if let Some(enabled_ref) = options.toggle_enabled {
+                let cb_size = 18.0;
+                let cb_rect = egui::Rect::from_center_size(
+                    egui::pos2(header_rect.right() - 14.0, header_rect.center().y),
+                    Vec2::splat(cb_size),
+                );
+
+                let cb_resp = ui.interact(cb_rect, id.with("cb"), egui::Sense::click());
+                if cb_resp.clicked() {
+                    *enabled_ref = !*enabled_ref;
+                    checkbox_clicked = true;
+                }
+                if cb_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+
+                let is_checked = *enabled_ref;
+                let cb_bg = if is_checked {
+                    Color32::from_rgb(234, 179, 8) // Amarillo/Dorado Google Slides
+                } else if cb_resp.hovered() {
+                    theme.surface_subtle()
+                } else {
+                    Color32::TRANSPARENT
+                };
+
+                let cb_border = if is_checked {
+                    Color32::from_rgb(202, 138, 4)
+                } else {
+                    theme.card_border()
+                };
+
+                ui.painter().rect(cb_rect, 3.5, cb_bg, Stroke::new(1.5_f32, cb_border), egui::StrokeKind::Inside);
+
+                if is_checked {
+                    let check_stroke = Stroke::new(2.2_f32, Color32::WHITE);
+                    ui.painter().line_segment([
+                        cb_rect.center() + egui::vec2(-4.0, 0.0),
+                        cb_rect.center() + egui::vec2(-1.0, 3.5),
+                    ], check_stroke);
+                    ui.painter().line_segment([
+                        cb_rect.center() + egui::vec2(-1.0, 3.5),
+                        cb_rect.center() + egui::vec2(4.5, -3.5),
+                    ], check_stroke);
+                }
+            }
+
+            // Si se hace clic en la cabecera (fuera del checkbox), alternar apertura
+            if header_resp.clicked() && !checkbox_clicked {
+                state.toggle(ui);
+            }
+
+            // Contenido interior si está desplegado
+            state.show_body_unindented(ui, |ui| {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+                result = Some(add_contents(ui));
+            });
+        });
+
+    result
+}
