@@ -1,7 +1,9 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::audio_player::AudioPlayerWidget;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use am_modulator::{
@@ -22,6 +24,7 @@ pub struct GenericAmPipeline {
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -39,12 +42,21 @@ impl Default for GenericAmPipeline {
             iq_samples: Vec::new(),
             status_message: "Listo para cargar archivo de audio o generar tono sintético.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_am", 118.1),
             transmission_state: TransmissionTabState::default(),
         }
     }
 }
 
 impl GenericAmPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -74,6 +86,35 @@ impl GenericAmPipeline {
                     AmMode::SsbUsb => 14_230_000.0, // 14.230 MHz HF USB
                     AmMode::SsbLsb => 7_150_000.0,   // 7.150 MHz 40m LSB
                 };
+                let mut next_step = false;
+                render_channel_effects_tab(
+                    ui,
+                    theme,
+                    config,
+                    "generic_am",
+                    self.sdr_sample_rate,
+                    default_freq,
+                    &self.iq_samples,
+                    &mut self.channel_effects_state,
+                    || next_step = true,
+                );
+                if next_step {
+                    self.current_step = 3;
+                }
+            }
+            3 => {
+                let default_freq = match self.am_mode {
+                    AmMode::DsbFc => 118_100_000.0, // 118.1 MHz Torre de Aviación AM
+                    AmMode::DsbSc => 14_200_000.0,  // 14.2 MHz HF
+                    AmMode::SsbUsb => 14_230_000.0, // 14.230 MHz HF USB
+                    AmMode::SsbLsb => 7_150_000.0,   // 7.150 MHz 40m LSB
+                };
+
+                let effective_iq = crate::channel::select_effective_iq(
+                    self.channel_effects_state.active_tab,
+                    &self.iq_samples,
+                    &self.channel_effects_state.processed_iq,
+                );
 
                 render_transmission_tab(
                     ui,
@@ -83,7 +124,7 @@ impl GenericAmPipeline {
                     default_freq,
                     &mut self.transmission_state,
                     sdr_controller,
-                    &self.iq_samples,
+                    effective_iq,
                     self.sdr_sample_rate,
                 );
             }
@@ -239,7 +280,7 @@ impl GenericAmPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión ->").strong()).clicked() {
+                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -370,6 +411,9 @@ impl GenericAmPipeline {
             self.am_mode,
             self.if_offset_hz,
         );
+
+        self.channel_effects_state.is_dirty = true;
+        self.channel_effects_state.processed_iq.clear();
 
         let mode_desc = match self.am_mode {
             AmMode::DsbFc => "DSB-FC",

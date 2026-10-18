@@ -1,6 +1,8 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{image_input_card, info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
@@ -27,6 +29,7 @@ pub struct LrptPipeline {
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub sdr_sample_rate: u32,
     pub transmission_state: TransmissionTabState,
 }
@@ -52,6 +55,7 @@ impl Default for LrptPipeline {
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imágenes de canales meteorológicos.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("meteor_lrpt", 137.9),
             sdr_sample_rate: 288_000,
             transmission_state: TransmissionTabState::default(),
         }
@@ -59,6 +63,14 @@ impl Default for LrptPipeline {
 }
 
 impl LrptPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -83,17 +95,42 @@ impl LrptPipeline {
             match self.current_step {
                 0 => self.render_step_source(ui, theme),
                 1 => self.render_step_encode(ui, theme, config),
-                2 => render_transmission_tab(
-                    ui,
-                    theme,
-                    config,
-                    "meteor_lrpt",
-                    137_900_000.0,
-                    &mut self.transmission_state,
-                    sdr_controller,
-                    &self.iq_samples,
-                    self.sdr_sample_rate,
-                ),
+                2 => {
+                    let mut next_step = false;
+                    render_channel_effects_tab(
+                        ui,
+                        theme,
+                        config,
+                        "meteor_lrpt",
+                        self.sdr_sample_rate,
+                        137_900_000.0,
+                        &self.iq_samples,
+                        &mut self.channel_effects_state,
+                        || next_step = true,
+                    );
+                    if next_step {
+                        self.current_step = 3;
+                    }
+                }
+                3 => {
+                    let effective_iq = crate::channel::select_effective_iq(
+                        self.channel_effects_state.active_tab,
+                        &self.iq_samples,
+                        &self.channel_effects_state.processed_iq,
+                    );
+
+                    render_transmission_tab(
+                        ui,
+                        theme,
+                        config,
+                        "meteor_lrpt",
+                        137_900_000.0,
+                        &mut self.transmission_state,
+                        sdr_controller,
+                        effective_iq,
+                        self.sdr_sample_rate,
+                    );
+                }
                 _ => {}
             }
         });
@@ -422,7 +459,7 @@ impl LrptPipeline {
 
                             if !self.iq_samples.is_empty() {
                                 let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Transmisión ->").strong().size(13.5).color(Color32::WHITE),
+                                    RichText::new("Continuar a Efectos de Canal ->").strong().size(13.5).color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(34, 197, 94))
                                 .corner_radius(8.0)
@@ -607,6 +644,9 @@ impl LrptPipeline {
         } else {
             self.iq_samples = resample_iq(&base_iq, 288_000, self.sdr_sample_rate);
         }
+
+        self.channel_effects_state.is_dirty = true;
+        self.channel_effects_state.processed_iq.clear();
 
         self.status_message = format!(
             "Fase 3 completada: Modulación digital OQPSK a {} kHz generada con éxito ({} muestras I/Q). ¡Listo para transmitir!",

@@ -1,6 +1,8 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{info_card, step_bar};
 use crate::ui::spectrum::render_signal_visualizer;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
@@ -10,6 +12,7 @@ pub struct HrptPipeline {
     pub current_step: usize,
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
+    pub channel_effects_state: ChannelEffectsState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -19,12 +22,21 @@ impl Default for HrptPipeline {
             current_step: 0,
             iq_samples: Vec::new(),
             status_message: "Módulo educativo HRPT en desarrollo (Consulte ROADMAP.md).".to_string(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("noaa_hrpt", 1698.0),
             transmission_state: TransmissionTabState::default(),
         }
     }
 }
 
 impl HrptPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -46,17 +58,42 @@ impl HrptPipeline {
         match self.current_step {
             0 => self.render_step_source(ui, theme),
             1 => self.render_step_encode(ui, theme),
-            2 => render_transmission_tab(
-                ui,
-                theme,
-                config,
-                "noaa_hrpt",
-                1_698_000_000.0, // 1698.0 MHz Banda L
-                &mut self.transmission_state,
-                sdr_controller,
-                &self.iq_samples,
-                2_400_000,
-            ),
+            2 => {
+                let mut next_step = false;
+                render_channel_effects_tab(
+                    ui,
+                    theme,
+                    config,
+                    "noaa_hrpt",
+                    2_400_000,
+                    1_698_000_000.0,
+                    &self.iq_samples,
+                    &mut self.channel_effects_state,
+                    || next_step = true,
+                );
+                if next_step {
+                    self.current_step = 3;
+                }
+            }
+            3 => {
+                let effective_iq = crate::channel::select_effective_iq(
+                    self.channel_effects_state.active_tab,
+                    &self.iq_samples,
+                    &self.channel_effects_state.processed_iq,
+                );
+
+                render_transmission_tab(
+                    ui,
+                    theme,
+                    config,
+                    "noaa_hrpt",
+                    1_698_000_000.0, // 1698.0 MHz Banda L
+                    &mut self.transmission_state,
+                    sdr_controller,
+                    effective_iq,
+                    2_400_000,
+                );
+            }
             _ => {}
         }
     }
@@ -116,7 +153,7 @@ impl HrptPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión ->").strong()).clicked() {
+                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -157,6 +194,8 @@ impl HrptPipeline {
         }
 
         self.iq_samples = iq;
+        self.channel_effects_state.is_dirty = true;
+        self.channel_effects_state.processed_iq.clear();
         self.status_message = format!(
             "Generadas {} muestras I/Q de señal sintética NOAA HRPT BPSK a {:.3} MSps.",
             self.iq_samples.len(),

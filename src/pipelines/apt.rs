@@ -1,6 +1,8 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{image_input_card, info_card, intermediate_preview_card, step_bar, ChannelColor};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use apt_encoder::{crop_to_matching_height, encode_apt, fm_modulate, modulate_apt, preprocess_image, CHANNEL_WIDTH};
@@ -27,6 +29,7 @@ pub struct AptPipeline {
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub sdr_sample_rate: u32,
     // Paso 3: Transmisión
     pub transmission_state: TransmissionTabState,
@@ -51,6 +54,7 @@ impl Default for AptPipeline {
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imágenes e iniciar el proceso.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("noaa_apt", 137.1),
             sdr_sample_rate: 288_000,
             transmission_state: TransmissionTabState::default(),
         }
@@ -58,6 +62,14 @@ impl Default for AptPipeline {
 }
 
 impl AptPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -80,17 +92,42 @@ impl AptPipeline {
             match self.current_step {
                 0 => self.render_step_source(ui, theme),
                 1 => self.render_step_encode(ui, theme, config),
-                2 => render_transmission_tab(
-                    ui,
-                    theme,
-                    config,
-                    "noaa_apt",
-                    137_100_000.0,
-                    &mut self.transmission_state,
-                    sdr_controller,
-                    &self.iq_samples,
-                    self.sdr_sample_rate,
-                ),
+                2 => {
+                    let mut next_step = false;
+                    render_channel_effects_tab(
+                        ui,
+                        theme,
+                        config,
+                        "noaa_apt",
+                        self.sdr_sample_rate,
+                        137_100_000.0,
+                        &self.iq_samples,
+                        &mut self.channel_effects_state,
+                        || next_step = true,
+                    );
+                    if next_step {
+                        self.current_step = 3;
+                    }
+                }
+                3 => {
+                    let effective_iq = crate::channel::select_effective_iq(
+                        self.channel_effects_state.active_tab,
+                        &self.iq_samples,
+                        &self.channel_effects_state.processed_iq,
+                    );
+
+                    render_transmission_tab(
+                        ui,
+                        theme,
+                        config,
+                        "noaa_apt",
+                        137_100_000.0,
+                        &mut self.transmission_state,
+                        sdr_controller,
+                        effective_iq,
+                        self.sdr_sample_rate,
+                    );
+                }
                 _ => {}
             }
         });
@@ -526,7 +563,7 @@ impl AptPipeline {
 
                             if !self.iq_samples.is_empty() {
                                 let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Transmisión ->").strong().size(13.5).color(Color32::WHITE),
+                                    RichText::new("Continuar a Efectos de Canal ->").strong().size(13.5).color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(34, 197, 94))
                                 .corner_radius(8.0)
@@ -661,6 +698,8 @@ impl AptPipeline {
     pub fn step_modulate_fm(&mut self) {
         if let Some(ref audio) = self.audio_am_samples {
             self.iq_samples = fm_modulate(audio, 11025, self.sdr_sample_rate, 17_000.0);
+            self.channel_effects_state.is_dirty = true;
+            self.channel_effects_state.processed_iq.clear();
             self.status_message = format!(
                 "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas). ¡Listo para transmitir!",
                 self.sdr_sample_rate / 1000,

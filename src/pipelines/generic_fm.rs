@@ -1,7 +1,9 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::audio_player::AudioPlayerWidget;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
@@ -23,6 +25,7 @@ pub struct GenericFmPipeline {
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -41,12 +44,21 @@ impl Default for GenericFmPipeline {
             iq_samples: Vec::new(),
             status_message: "Listo para cargar archivo de audio (WAV / MP3) o generar tono sintético.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_fm", 100.1),
             transmission_state: TransmissionTabState::default(),
         }
     }
 }
 
 impl GenericFmPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -71,11 +83,40 @@ impl GenericFmPipeline {
             1 => self.render_step_modulate(ui, theme, config),
             2 => {
                 let default_freq = match self.preset {
+                    FmPreset::BroadcastWfm => 100_100_000.0,
+                    FmPreset::NarrowbandNfm => 144_800_000.0,
+                    FmPreset::NarrowbandNfm2k5 => 446_006_250.0,
+                    FmPreset::NoaaApt => 137_100_000.0,
+                };
+                let mut next_step = false;
+                render_channel_effects_tab(
+                    ui,
+                    theme,
+                    config,
+                    "generic_fm",
+                    self.sdr_sample_rate,
+                    default_freq,
+                    &self.iq_samples,
+                    &mut self.channel_effects_state,
+                    || next_step = true,
+                );
+                if next_step {
+                    self.current_step = 3;
+                }
+            }
+            3 => {
+                let default_freq = match self.preset {
                     FmPreset::BroadcastWfm => 100_100_000.0, // 100.1 MHz comercial
                     FmPreset::NarrowbandNfm => 144_800_000.0, // 144.800 MHz radioaficionados
                     FmPreset::NarrowbandNfm2k5 => 446_006_250.0, // 446.00625 MHz PMR446 Ch 1
                     FmPreset::NoaaApt => 137_100_000.0,      // 137.1 MHz satélite NOAA
                 };
+
+                let effective_iq = crate::channel::select_effective_iq(
+                    self.channel_effects_state.active_tab,
+                    &self.iq_samples,
+                    &self.channel_effects_state.processed_iq,
+                );
 
                 render_transmission_tab(
                     ui,
@@ -85,7 +126,7 @@ impl GenericFmPipeline {
                     default_freq,
                     &mut self.transmission_state,
                     sdr_controller,
-                    &self.iq_samples,
+                    effective_iq,
                     self.sdr_sample_rate,
                 );
             }
@@ -300,7 +341,7 @@ impl GenericFmPipeline {
                             }
 
                             if !self.iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión ->").strong()).clicked() {
+                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -434,6 +475,9 @@ impl GenericFmPipeline {
             self.custom_deviation,
             self.if_offset_hz,
         );
+
+        self.channel_effects_state.is_dirty = true;
+        self.channel_effects_state.processed_iq.clear();
 
         self.status_message = format!(
             "Modulación FM completada: {} muestras I/Q generadas a {} Sps (Delta f = {:.1} kHz).",

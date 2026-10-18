@@ -1,6 +1,8 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{image_input_card, info_card, step_bar};
 use crate::ui::spectrum::render_audio_waveform_i16;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
@@ -21,6 +23,7 @@ pub struct GenericSstvPipeline {
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub sdr_sample_rate: u32,
     pub transmission_state: TransmissionTabState,
 }
@@ -38,6 +41,7 @@ impl Default for GenericSstvPipeline {
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imagen para modulación SSTV multiprotocolo.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_sstv", 14.23),
             sdr_sample_rate: 288_000,
             transmission_state: TransmissionTabState::default(),
         }
@@ -45,6 +49,14 @@ impl Default for GenericSstvPipeline {
 }
 
 impl GenericSstvPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            &self.iq_samples,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -68,17 +80,42 @@ impl GenericSstvPipeline {
             match self.current_step {
                 0 => self.render_step_source(ui, theme),
                 1 => self.render_step_encode(ui, theme, config),
-                2 => render_transmission_tab(
-                    ui,
-                    theme,
-                    config,
-                    "generic_sstv",
-                    14_230_000.0, // 14.230 MHz (Frecuencia internacional SSTV en 20 metros USB/FM)
-                    &mut self.transmission_state,
-                    sdr_controller,
-                    &self.iq_samples,
-                    self.sdr_sample_rate,
-                ),
+                2 => {
+                    let mut next_step = false;
+                    render_channel_effects_tab(
+                        ui,
+                        theme,
+                        config,
+                        "generic_sstv",
+                        self.sdr_sample_rate,
+                        14_230_000.0,
+                        &self.iq_samples,
+                        &mut self.channel_effects_state,
+                        || next_step = true,
+                    );
+                    if next_step {
+                        self.current_step = 3;
+                    }
+                }
+                3 => {
+                    let effective_iq = crate::channel::select_effective_iq(
+                        self.channel_effects_state.active_tab,
+                        &self.iq_samples,
+                        &self.channel_effects_state.processed_iq,
+                    );
+
+                    render_transmission_tab(
+                        ui,
+                        theme,
+                        config,
+                        "generic_sstv",
+                        14_230_000.0, // 14.230 MHz (Frecuencia internacional SSTV en 20 metros USB/FM)
+                        &mut self.transmission_state,
+                        sdr_controller,
+                        effective_iq,
+                        self.sdr_sample_rate,
+                    );
+                }
                 _ => {}
             }
         });
@@ -401,7 +438,7 @@ impl GenericSstvPipeline {
 
                             if !self.iq_samples.is_empty() {
                                 let tx_btn = egui::Button::new(
-                                    RichText::new("Continuar a Transmisión ->").strong().color(Color32::WHITE),
+                                    RichText::new("Continuar a Efectos de Canal ->").strong().color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(34, 197, 94))
                                 .corner_radius(8.0)
@@ -526,6 +563,8 @@ impl GenericSstvPipeline {
         if let Some(ref samples_i16) = self.audio_samples {
             let audio_f32: Vec<f32> = samples_i16.iter().map(|&s| s as f32 / 32768.0).collect();
             self.iq_samples = fm_modulate(&audio_f32, 48_000, self.sdr_sample_rate, self.fm_deviation_hz, 0.0);
+            self.channel_effects_state.is_dirty = true;
+            self.channel_effects_state.processed_iq.clear();
             self.status_message = format!(
                 "Fase 3 completada: Señal FM RF modulada a {} kHz ({} muestras complejas, Delta f = {:.1} kHz).",
                 self.sdr_sample_rate / 1000,

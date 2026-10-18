@@ -1,7 +1,9 @@
+use crate::channel::ChannelEffectsState;
 use crate::config::AppConfig;
 use crate::export::formats::{read_iq_file, IqExportFormat};
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
+use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{info_card, step_bar};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
@@ -20,6 +22,7 @@ pub struct GenericIqPipeline {
     pub remove_dc: bool,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    pub channel_effects_state: ChannelEffectsState,
     pub transmission_state: TransmissionTabState,
 }
 
@@ -37,12 +40,26 @@ impl Default for GenericIqPipeline {
             remove_dc: true,
             status_message: "Listo para cargar archivo de muestras I/Q pregrabadas.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_iq", 144.8),
             transmission_state: TransmissionTabState::default(),
         }
     }
 }
 
 impl GenericIqPipeline {
+    pub fn get_effective_iq(&self) -> &[(f32, f32)] {
+        let base = if !self.processed_iq_samples.is_empty() {
+            &self.processed_iq_samples
+        } else {
+            &self.raw_iq_samples
+        };
+        crate::channel::select_effective_iq(
+            self.channel_effects_state.active_tab,
+            base,
+            &self.channel_effects_state.processed_iq,
+        )
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -66,11 +83,38 @@ impl GenericIqPipeline {
             0 => self.render_step_source(ui, theme),
             1 => self.render_step_processing(ui, theme, config),
             2 => {
-                let samples_to_send = if !self.processed_iq_samples.is_empty() {
+                let base = if !self.processed_iq_samples.is_empty() {
                     &self.processed_iq_samples
                 } else {
                     &self.raw_iq_samples
                 };
+                let mut next_step = false;
+                render_channel_effects_tab(
+                    ui,
+                    theme,
+                    config,
+                    "generic_iq",
+                    self.sample_rate,
+                    144_800_000.0,
+                    base,
+                    &mut self.channel_effects_state,
+                    || next_step = true,
+                );
+                if next_step {
+                    self.current_step = 3;
+                }
+            }
+            3 => {
+                let base = if !self.processed_iq_samples.is_empty() {
+                    &self.processed_iq_samples
+                } else {
+                    &self.raw_iq_samples
+                };
+                let effective_iq = crate::channel::select_effective_iq(
+                    self.channel_effects_state.active_tab,
+                    base,
+                    &self.channel_effects_state.processed_iq,
+                );
 
                 render_transmission_tab(
                     ui,
@@ -80,7 +124,7 @@ impl GenericIqPipeline {
                     144_800_000.0,
                     &mut self.transmission_state,
                     sdr_controller,
-                    samples_to_send,
+                    effective_iq,
                     self.sample_rate,
                 );
             }
@@ -240,7 +284,7 @@ impl GenericIqPipeline {
                             }
 
                             if !self.processed_iq_samples.is_empty() {
-                                if ui.button(RichText::new("Continuar a Transmisión ->").strong()).clicked() {
+                                if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
                                     self.current_step = 2;
                                 }
                             }
@@ -383,6 +427,8 @@ impl GenericIqPipeline {
         }
 
         self.processed_iq_samples = processed;
+        self.channel_effects_state.is_dirty = true;
+        self.channel_effects_state.processed_iq.clear();
         self.status_message = format!(
             "Procesamiento aplicado: Ganancia {:.2}x, Shift {:.1} Hz, DC Offset {}. Muestras listas: {}",
             self.gain_factor,

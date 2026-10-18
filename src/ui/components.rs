@@ -59,7 +59,7 @@ pub fn info_card(ui: &mut Ui, theme: &AppTheme, title: &str, description: &str) 
         });
 }
 
-/// Selector / Barra de navegación de 3 pasos (1. Elegir fuente, 2. Acción, 3. Transmisión)
+/// Selector / Barra de navegación de 4 pasos (1. Elegir fuente, 2. Acción, 3. Efectos de canal, 4. Transmisión)
 pub fn step_bar(
     ui: &mut Ui,
     theme: &AppTheme,
@@ -73,7 +73,8 @@ pub fn step_bar(
     let steps = [
         ("1", "Elegir fuente"),
         ("2", clean_step_two),
-        ("3", "Transmisión"),
+        ("3", "Efectos de canal"),
+        ("4", "Transmisión"),
     ];
 
     ui.horizontal_wrapped(|ui| {

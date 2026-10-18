@@ -1,4 +1,5 @@
 pub mod audio_player;
+pub mod channel_effects;
 pub mod components;
 pub mod desktop_nav;
 pub mod mobile_nav;
