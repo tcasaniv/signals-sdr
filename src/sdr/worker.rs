@@ -27,7 +27,7 @@ impl SdrDeviceOption {
                 args: "driver=bladerf".to_string(),
             },
             SdrDeviceOption {
-                display_name: "USRP / UHD (Transmisión Real UHD)".to_string(),
+                display_name: "USRP / UHD (Transmisión Real)".to_string(),
                 args: "driver=usrp".to_string(),
             },
             SdrDeviceOption {
@@ -38,10 +38,10 @@ impl SdrDeviceOption {
                 display_name: "LimeSDR (Transmisión Real)".to_string(),
                 args: "driver=limesdr".to_string(),
             },
-            SdrDeviceOption {
-                display_name: "RTL-SDR (Sólo Recepción / Test)".to_string(),
-                args: "driver=rtlsdr".to_string(),
-            },
+            // SdrDeviceOption {
+            //     display_name: "RTL-SDR (Sólo Recepción / Test)".to_string(),
+            //     args: "driver=rtlsdr".to_string(),
+            // },
             SdrDeviceOption {
                 display_name: "SoapySDR (Detección Automática)".to_string(),
                 args: "".to_string(),
