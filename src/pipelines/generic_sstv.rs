@@ -478,7 +478,7 @@ impl GenericSstvPipeline {
                             ui,
                             theme,
                             "generic_sstv_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
+                            AccordionOptions::new("Espectrograma / Cascada RF").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("generic_sstv");
                                 crate::ui::spectrogram::render_spectrogram_widget(

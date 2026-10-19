@@ -373,7 +373,7 @@ impl GenericFmPipeline {
                     ui,
                     theme,
                     "fm_iq_spec",
-                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
+                    AccordionOptions::new("Espectrograma / Cascada RF").default_open(false),
                     |ui| {
                         let out_dir = config.get_pipeline_dir("generic_fm");
                         crate::ui::spectrogram::render_spectrogram_widget(

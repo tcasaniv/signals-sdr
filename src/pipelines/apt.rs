@@ -596,7 +596,7 @@ impl AptPipeline {
                             ui,
                             theme,
                             "apt_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de RF").default_open(false),
+                            AccordionOptions::new("Espectrograma / Cascada RF").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("noaa_apt");
                                 crate::ui::spectrogram::render_spectrogram_widget(
