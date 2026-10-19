@@ -24,7 +24,7 @@ fm-modulator = { path = "../fm-modulator-rs" }
 am-modulator = { path = "../am-modulator-rs" }
 
 # SDR Hardware Abstraction
-seify = { path = "../seify", default-features = false, features = ["dummy"] }
+seify = { path = "../seify", default-features = false, features = ["dummy", "hackrf", "soapy"] }
 
 # Procesamiento de audio, imagen y datos
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
@@ -41,8 +41,9 @@ env_logger = "0.11"
 rodio = "0.23.0"
 
 [features]
-default = []
+default = ["hackrf", "soapy"]
 hackrf = ["seify/hackrf"]
+soapy = ["seify/soapy"]
 bladerf = ["seify/bladerf1"]
 usrp = ["seify/uhd"]
 

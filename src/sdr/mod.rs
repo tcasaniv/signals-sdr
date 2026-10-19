@@ -1,3 +1,6 @@
 pub mod worker;
 
-pub use worker::{SdrDeviceOption, SdrTransmissionController, TransmissionStatus, TxConfig};
+pub use worker::{
+    detect_connected_radios, SdrDeviceOption, SdrHardwareType, SdrTransmissionController,
+    TransmissionStatus, TxConfig,
+};

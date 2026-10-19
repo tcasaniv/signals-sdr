@@ -1,6 +1,9 @@
 use crate::config::AppConfig;
 use crate::export::formats::{export_iq_file, IqExportFormat};
-use crate::sdr::{SdrDeviceOption, SdrTransmissionController, TransmissionStatus, TxConfig};
+use crate::sdr::{
+    detect_connected_radios, SdrDeviceOption, SdrHardwareType, SdrTransmissionController,
+    TransmissionStatus, TxConfig,
+};
 use crate::theme::AppTheme;
 use egui::{Color32, Frame, RichText, Stroke, Ui};
 use std::path::PathBuf;
@@ -18,6 +21,7 @@ pub struct TransmissionTabState {
     pub tx_config: TxConfig,
     pub available_devices: Vec<SdrDeviceOption>,
     pub selected_device_idx: usize,
+    pub detected_radios: Vec<String>,
     // Estado Archivo I/Q
     pub export_format: IqExportFormat,
     pub output_filename: String,
@@ -27,11 +31,13 @@ pub struct TransmissionTabState {
 
 impl Default for TransmissionTabState {
     fn default() -> Self {
+        let devices = SdrDeviceOption::all_supported();
         Self {
             destination: TransmissionDestination::HardwareSdr,
             tx_config: TxConfig::default(),
-            available_devices: SdrDeviceOption::all_supported(),
+            available_devices: devices,
             selected_device_idx: 0,
+            detected_radios: Vec::new(),
             export_format: IqExportFormat::WavIq16,
             output_filename: "senal_iq".to_string(),
             custom_output_dir: None,
@@ -134,12 +140,37 @@ fn render_sdr_panel(
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new("Configuración de Transmisión SDR (Seify)")
-                        .strong()
-                        .size(15.0)
-                        .color(theme.accent_blue()),
-                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new("Configuración de Transmisión SDR (Seify / SoapySDR)")
+                            .strong()
+                            .size(15.0)
+                            .color(theme.accent_blue()),
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(RichText::new("⟳ Detectar SDRs Conectados").size(12.0)).clicked() {
+                            state.detected_radios = detect_connected_radios();
+                        }
+                    });
+                });
+
+                if !state.detected_radios.is_empty() {
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Radios detectados:").size(11.0).color(theme.text_secondary()));
+                        for r in &state.detected_radios {
+                            Frame::new()
+                                .fill(Color32::from_rgb(22, 101, 52))
+                                .corner_radius(4.0)
+                                .inner_margin(egui::Margin::symmetric(6, 2))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(format!("✓ {}", r)).size(11.0).color(Color32::WHITE));
+                                });
+                        }
+                    });
+                }
+
                 ui.add_space(8.0);
 
                 // Selector de dispositivo con soporte wrap
@@ -152,14 +183,21 @@ fn render_sdr_panel(
                             .show_ui(ui, |ui| {
                                 for (idx, dev) in state.available_devices.iter().enumerate() {
                                     if ui.selectable_value(&mut state.selected_device_idx, idx, &dev.display_name).clicked() {
-                                        state.tx_config.device_args = dev.args.clone();
+                                        state.tx_config.hw_type = dev.hw_type;
+                                        state.tx_config.device_args = dev.default_args.clone();
                                     }
                                 }
                             });
                     }
                 });
 
-                ui.add_space(6.0);
+                // Descripción didáctica del SDR seleccionado
+                if state.selected_device_idx < state.available_devices.len() {
+                    let desc = &state.available_devices[state.selected_device_idx].description;
+                    ui.label(RichText::new(desc).size(11.0).color(theme.text_secondary()));
+                }
+
+                ui.add_space(8.0);
 
                 // Frecuencia RF en MHz
                 if state.tx_config.frequency_hz == 0.0 || state.tx_config.frequency_hz == 137_100_000.0 {
@@ -183,24 +221,174 @@ fn render_sdr_panel(
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Tasa de Muestreo SDR (Hz):");
                     state.tx_config.sample_rate_hz = sample_rate;
-                    ui.label(RichText::new(format!("{} Hz", sample_rate)).strong());
+                    ui.label(RichText::new(format!("{} Hz ({:.2} MSps)", sample_rate, sample_rate as f32 / 1e6)).strong());
                 });
+
+                // Advertencia de Tasa de Muestreo si no es compatible con el SDR
+                if (state.tx_config.hw_type == SdrHardwareType::HackRfSoapy || state.tx_config.hw_type == SdrHardwareType::HackRfSeify) && sample_rate < 1_000_000 {
+                    ui.add_space(4.0);
+                    Frame::new()
+                        .fill(Color32::from_rgba_unmultiplied(234, 179, 8, 30))
+                        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(234, 179, 8)))
+                        .corner_radius(6.0)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("⚠️").size(14.0));
+                                ui.label(
+                                    RichText::new(format!(
+                                        "Tasa de muestreo actual ({} Hz) no admitida por HackRF. Requiere al menos 1,000,000 Hz (1 MSps) en Soapy o 2,000,000 Hz en Seify. Ve al paso 2 y ajusta la tasa de muestreo del pipeline.",
+                                        sample_rate
+                                    ))
+                                    .size(11.5)
+                                    .color(Color32::from_rgb(250, 204, 21)),
+                                );
+                            });
+                        });
+                }
+
+                ui.add_space(8.0);
+
+                // --- CONTROLES ESPECÍFICOS SEGÚN EL SDR SELECCIONADO ---
+                match state.tx_config.hw_type {
+                    SdrHardwareType::HackRfSoapy | SdrHardwareType::HackRfSeify => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Opciones de Hardware HackRF One").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Ganancia TX (VGA):");
+                                ui.add(egui::Slider::new(&mut state.tx_config.hackrf_vga_gain, 0.0..=47.0).text("dB (0-47)"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.checkbox(&mut state.tx_config.hackrf_rf_amp, "Amplificador PA (+14 dB)");
+                                ui.label(RichText::new("(¡Precaución! Conectar antena antes de activar)").size(11.0).color(theme.text_secondary()));
+                            });
+
+                            ui.add_space(2.0);
+                            ui.label(RichText::new("Puerto de antena: TX/RX (Conector SMA principal)").size(11.0).color(theme.text_secondary()));
+                        });
+                    }
+                    SdrHardwareType::UsrpSoapy => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Opciones de Hardware USRP / UHD").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Dirección IP o URI:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.usrp_ip).hint_text("ej: 192.168.10.2 (dejar vacío para USB/auto)"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Subdispositivo:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.usrp_subdev).hint_text("ej: A:0"));
+                                ui.add_space(8.0);
+                                ui.label("Antena TX:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.usrp_antenna).hint_text("TX/RX"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Ganancia TX (dB):");
+                                ui.add(egui::Slider::new(&mut state.tx_config.usrp_gain, 0.0..=31.5).text("dB"));
+                            });
+                        });
+                    }
+                    SdrHardwareType::PlutoSdrSoapy => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Opciones de Hardware PlutoSDR (ADALM-Pluto)").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("URI de Conexión:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.pluto_uri).hint_text("ej: ip:192.168.2.1 o usb: o vacío"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Atenuación TX (dB):");
+                                ui.add(egui::Slider::new(&mut state.tx_config.pluto_attenuation, -89.75..=0.0).text("dB"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Puerto Antena TX:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.pluto_antenna).hint_text("A"));
+                            });
+                        });
+                    }
+                    SdrHardwareType::BladeRfSoapy => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Opciones de Hardware bladeRF").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Ganancia TX (dB):");
+                                ui.add(egui::Slider::new(&mut state.tx_config.bladerf_tx_gain, 0.0..=66.0).text("dB"));
+                            });
+                        });
+                    }
+                    SdrHardwareType::LimeSdrSoapy => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Opciones de Hardware LimeSDR").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Ganancia TX (PAD):");
+                                ui.add(egui::Slider::new(&mut state.tx_config.lime_gain, 0.0..=60.0).text("dB"));
+                            });
+
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Antena TX:");
+                                egui::ComboBox::from_id_salt("lime_ant_combo")
+                                    .selected_text(&state.tx_config.lime_antenna)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut state.tx_config.lime_antenna, "BAND1".to_string(), "BAND1");
+                                        ui.selectable_value(&mut state.tx_config.lime_antenna, "BAND2".to_string(), "BAND2");
+                                    });
+                            });
+                        });
+                    }
+                    SdrHardwareType::Dummy => {
+                        Frame::new()
+                            .fill(theme.card_bg())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("ℹ️ Modo Simulación en Memoria").strong().size(12.0).color(theme.text_primary()));
+                                ui.label(RichText::new("No requiere hardware SDR físico. Procesa y emite las muestras a la tasa configurada hacia un sumidero en memoria, ideal para probar la lógica sin radiar RF.").size(11.0).color(theme.text_secondary()));
+                            });
+                    }
+                    SdrHardwareType::SoapyAuto => {
+                        Frame::new()
+                            .fill(theme.card_bg())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("🔍 Detección Automática de Radio").strong().size(12.0).color(theme.accent_blue()));
+                                ui.label(RichText::new("Al pulsar 'Transmitir con SDR', Seify consultará los módulos instalados de SoapySDR y seleccionará automáticamente el primer transceptor de radio conectado (descartando tarjetas de sonido).").size(11.0).color(theme.text_secondary()));
+                            });
+                    }
+                    SdrHardwareType::Custom => {
+                        ui.group(|ui| {
+                            ui.label(RichText::new("Argumentos de Conexión Manuales").strong().size(12.0).color(theme.accent_blue()));
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Cadena de argumentos:");
+                                ui.add(egui::TextEdit::singleline(&mut state.tx_config.custom_args).hint_text("ej: driver=soapy,soapy_driver=hackrf"));
+                            });
+                        });
+                    }
+                }
 
                 ui.add_space(6.0);
-
-                // Ganancia TX
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Ganancia TX (dB):");
-                    ui.add(egui::Slider::new(&mut state.tx_config.gain_db, 0.0..=47.0).text("dB"));
-                });
-
-                ui.add_space(6.0);
-
-                // Interruptor de Amplificador de Potencia (PA) con texto conciso
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Amplificador PA:");
-                    ui.checkbox(&mut state.tx_config.rf_amp, "Habilitar +14 dB (HackRF / hardware compatible)");
-                });
+                ui.checkbox(&mut state.tx_config.repeat, "Repetir transmisión en bucle continuo");
 
                 ui.add_space(10.0);
 
@@ -211,7 +399,7 @@ fn render_sdr_panel(
                 ui.horizontal(|ui| {
                     if is_transmitting {
                         let stop_btn = egui::Button::new(
-                            RichText::new("Detener Transmisión").strong().color(Color32::WHITE),
+                            RichText::new("⏹ Detener Transmisión").strong().color(Color32::WHITE),
                         )
                         .fill(Color32::from_rgb(220, 38, 38))
                         .corner_radius(6.0);
@@ -221,7 +409,7 @@ fn render_sdr_panel(
                         }
                     } else {
                         let tx_btn = egui::Button::new(
-                            RichText::new("Transmitir con SDR").strong().color(Color32::WHITE),
+                            RichText::new("⚡ Transmitir con SDR").strong().color(Color32::WHITE),
                         )
                         .fill(theme.accent_blue())
                         .corner_radius(6.0);
@@ -237,9 +425,9 @@ fn render_sdr_panel(
                     }
                 });
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
-                // Telemetría en vivo de transmisión
+                // Telemetría en vivo y Alertas Didácticas
                 match status {
                     TransmissionStatus::Transmitting { samples_sent, total_samples, elapsed_sec } => {
                         let prog = (samples_sent as f32 / total_samples.max(1) as f32).clamp(0.0, 1.0);
@@ -264,7 +452,35 @@ fn render_sdr_panel(
                         );
                     }
                     TransmissionStatus::Error(err) => {
-                        ui.label(RichText::new(format!("Error en transmisión: {}", err)).size(12.0).color(Color32::from_rgb(239, 68, 68)));
+                        Frame::new()
+                            .fill(Color32::from_rgba_unmultiplied(185, 28, 28, 25))
+                            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(220, 38, 38)))
+                            .corner_radius(8.0)
+                            .inner_margin(10.0)
+                            .show(ui, |ui| {
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new("⛔ Error en Transmisión SDR").strong().size(13.0).color(Color32::from_rgb(248, 113, 113)));
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if ui.button("Descartar").clicked() {
+                                                sdr_controller.clear_error();
+                                            }
+                                        });
+                                    });
+                                    ui.add_space(4.0);
+                                    ui.label(RichText::new(&err).size(12.0).color(Color32::from_rgb(254, 202, 202)));
+                                    ui.add_space(4.0);
+
+                                    // Sugerencia didáctica contextual
+                                    if err.contains("incompatible") || err.contains("Tasa de muestreo") {
+                                        ui.label(RichText::new("💡 Solución sugerida: El hardware HackRF One no soporta tasas de muestreo bajas. Ve al paso '2. Codificar' y genera la señal con una tasa de muestreo de al menos 1,000,000 Hz (1 MSps).").size(11.0).color(Color32::from_rgb(253, 230, 138)));
+                                    } else if err.contains("No se encontró") {
+                                        ui.label(RichText::new("💡 Solución sugerida: Conecta el cable USB del SDR a un puerto directo (evita concentradores sin alimentación) y presiona 'Detectar SDRs Conectados'. En Windows, asegúrate de haber instalado los controladores de SoapySDR o WinUSB/Zadig.").size(11.0).color(Color32::from_rgb(253, 230, 138)));
+                                    } else if err.contains("utilizando") || err.contains("ocupado") {
+                                        ui.label(RichText::new("💡 Solución sugerida: Cierra cualquier otro software que pueda estar accediendo al dispositivo (SDR#, GQRX, CubicSDR, GNU Radio, etc.) y reintenta.").size(11.0).color(Color32::from_rgb(253, 230, 138)));
+                                    }
+                                });
+                            });
                     }
                     TransmissionStatus::Idle => {}
                 }
