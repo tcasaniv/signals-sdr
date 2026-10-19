@@ -403,11 +403,14 @@ impl GenericSstvPipeline {
                         egui::ComboBox::from_id_salt("generic_sstv_sdr_rate_combo")
                             .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 100_000, "100 kHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz");
                                 ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
                                 ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz (HackRF/bladeRF)");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz (RTL-SDR/HackRF)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 8_000_000, "8.0 MHz");
                             });
                     });
 
