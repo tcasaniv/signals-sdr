@@ -185,7 +185,7 @@ fn render_without_effects_view(
             ui,
             theme,
             "without_eff_osc",
-            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
             |ui| {
                 render_signal_visualizer(ui, theme, original_iq, sample_rate);
             },
@@ -196,7 +196,7 @@ fn render_without_effects_view(
             ui,
             theme,
             "without_eff_spec",
-            AccordionOptions::new("Espectrograma / Cascada RF").default_open(true),
+            AccordionOptions::new("Espectrograma / Cascada RF").default_open(false),
             |ui| {
                 let out_dir = config.get_pipeline_dir(pipeline_id);
                 render_spectrogram_widget(
@@ -308,7 +308,7 @@ fn render_with_effects_view(
 
     let mut awgn_opt = AccordionOptions::new("Ruido Blanco Gaussiano Térmico (AWGN)")
         .with_toggle(&mut state.params.enable_awgn)
-        .default_open(true);
+        .default_open(false);
     if let Some((b_text, b_col)) = awgn_badge {
         awgn_opt = awgn_opt.with_badge(b_text, b_col);
     }
@@ -354,7 +354,7 @@ fn render_with_effects_view(
 
     let mut doppler_opt = AccordionOptions::new("Efecto Doppler Dinámico")
         .with_toggle(&mut state.params.enable_doppler)
-        .default_open(true);
+        .default_open(false);
     if let Some((b_text, b_col)) = doppler_badge {
         doppler_opt = doppler_opt.with_badge(b_text, b_col);
     }
@@ -447,7 +447,7 @@ fn render_with_effects_view(
 
     let mut path_loss_opt = AccordionOptions::new("Atenuación Geométrica (FSPL) y Atmosférica")
         .with_toggle(&mut state.params.enable_path_loss)
-        .default_open(true);
+        .default_open(false);
     if let Some((b_text, b_col)) = path_loss_badge {
         path_loss_opt = path_loss_opt.with_badge(b_text, b_col);
     }
@@ -523,7 +523,7 @@ fn render_with_effects_view(
     let mut fading_opt =
         AccordionOptions::new("Desvanecimiento por Multitrayecto (Rician / Rayleigh)")
             .with_toggle(&mut state.params.enable_fading)
-            .default_open(true);
+            .default_open(false);
     if let Some((b_text, b_col)) = fading_badge {
         fading_opt = fading_opt.with_badge(b_text, b_col);
     }
@@ -574,7 +574,7 @@ fn render_with_effects_view(
 
     let mut padding_opt = AccordionOptions::new("Margen de Ruido de Canal (Pre y Post Padding)")
         .with_toggle(&mut state.params.enable_noise_padding)
-        .default_open(true);
+        .default_open(false);
     if let Some((b_text, b_col)) = padding_badge {
         padding_opt = padding_opt.with_badge(b_text, b_col);
     }
@@ -626,7 +626,7 @@ fn render_with_effects_view(
     let mut hw_opt =
         AccordionOptions::new("Imperfecciones de Front-End SDR (Desbalance I/Q y Fuga DC)")
             .with_toggle(&mut state.params.enable_hardware_imp)
-            .default_open(true);
+            .default_open(false);
     if let Some((b_text, b_col)) = hw_badge {
         hw_opt = hw_opt.with_badge(b_text, b_col);
     }
@@ -778,7 +778,7 @@ fn render_with_effects_view(
             ui,
             theme,
             "with_eff_osc",
-            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
             |ui| {
                 render_signal_visualizer(ui, theme, effective_samples, sample_rate);
             },
@@ -789,7 +789,7 @@ fn render_with_effects_view(
             ui,
             theme,
             "with_eff_spec",
-            AccordionOptions::new("Espectrograma / Cascada RF").default_open(true),
+            AccordionOptions::new("Espectrograma / Cascada RF").default_open(false),
             |ui| {
                 let out_dir = config.get_pipeline_dir(pipeline_id);
                 render_spectrogram_widget(

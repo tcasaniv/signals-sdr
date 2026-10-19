@@ -229,7 +229,7 @@ impl GenericIqPipeline {
                 ui,
                 theme,
                 "generic_iq_params_phase",
-                AccordionOptions::new("Ajustes de Acondicionamiento I/Q").default_open(true),
+                AccordionOptions::new("Ajustes de Acondicionamiento I/Q").default_open(false),
                 |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Factor de Escala / Ganancia:");
@@ -305,7 +305,7 @@ impl GenericIqPipeline {
                     ui,
                     theme,
                     "generic_iq_osc",
-                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                     |ui| {
                         crate::ui::spectrum::render_signal_visualizer(
                             ui,
@@ -321,7 +321,7 @@ impl GenericIqPipeline {
                     ui,
                     theme,
                     "generic_iq_spec",
-                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
                     |ui| {
                         let out_dir = config.get_pipeline_dir("generic_iq");
                         crate::ui::spectrogram::render_spectrogram_widget(

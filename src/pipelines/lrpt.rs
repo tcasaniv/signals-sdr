@@ -283,7 +283,7 @@ impl LrptPipeline {
                 "lrpt_phase_1",
                 AccordionOptions::new("Fase 1: Compresión de Canales y Formato JPEG MCU (8x8 px)")
                     .with_badge(badge_text_1, badge_color_1)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Meteor-M2 comprime cada canal óptico (1568 px de ancho, 196 bloques MCU por línea) en bloques de 8x8 píxeles mediante transformada discreta del coseno (DCT) y tablas de cuantificación de luminancia JPEG según el estándar CCSDS.")
@@ -343,7 +343,7 @@ impl LrptPipeline {
                 "lrpt_phase_2",
                 AccordionOptions::new("Fase 2: Protocolo CCSDS y Corrección de Errores FEC (Reed-Solomon + Convolucional)")
                     .with_badge(badge_text_2, badge_color_2)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Los paquetes espaciales se multiplexan en tramas de transferencia de canal virtual (VCDU) de 1024 bytes. Se calcula el código Reed-Solomon RS(255, 223) con entrelazado profundidad 4, se añade palabra sincro ASM 0x1ACFFC1D, codificación diferencial NRZ-M y codificador convolucional (K=7, R=1/2).")
@@ -402,7 +402,7 @@ impl LrptPipeline {
                 "lrpt_phase_3",
                 AccordionOptions::new("Fase 3: Modulación Digital OQPSK y Filtro RRC (288 kHz)")
                     .with_badge(badge_text_3, badge_color_3)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Modulación en cuadratura con desplazamiento (Offset-QPSK) a 72 ksps con retardo de medio símbolo entre I y Q. La señal se conforma con filtro de coseno alzado (RRC, alfa=0.5) y se sobremuestrea a 288 kHz en banda base I/Q.")
@@ -475,7 +475,7 @@ impl LrptPipeline {
                             ui,
                             theme,
                             "lrpt_iq_osc",
-                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                             |ui| {
                                 crate::ui::spectrum::render_signal_visualizer(
                                     ui,
@@ -491,7 +491,7 @@ impl LrptPipeline {
                             ui,
                             theme,
                             "lrpt_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("meteor_lrpt");
                                 crate::ui::spectrogram::render_spectrogram_widget(

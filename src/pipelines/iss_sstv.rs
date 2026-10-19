@@ -195,7 +195,7 @@ impl IssSstvPipeline {
                 "iss_sstv_phase_1",
                 AccordionOptions::new("Fase 1: Configuración de Protocolo ARISS (ISS SSTV)")
                     .with_badge("CONFIGURADO", Color32::from_rgb(34, 197, 94))
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label("Modo SSTV de la ISS:");
@@ -241,7 +241,7 @@ impl IssSstvPipeline {
                 "iss_sstv_phase_2",
                 AccordionOptions::new("Fase 2: Codificación de Trama Analógica SSTV (Audio a 48 kHz)")
                     .with_badge(badge_text_2, badge_color_2)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Estructura de la señal: Tono de sincronismo a 1200 Hz, Porche negro a 1500 Hz, Escala analógica 1500-2300 Hz. Código VIS digital de 8 bits con bit de paridad. Se genera y guarda como archivo WAV a 48,000 Hz.")
@@ -281,7 +281,7 @@ impl IssSstvPipeline {
                             ui,
                             theme,
                             "iss_sstv_audio_osc",
-                            AccordionOptions::new("Osciloscopio de Audio SSTV (48 kHz)").default_open(true),
+                            AccordionOptions::new("Osciloscopio de Audio SSTV (48 kHz)").default_open(false),
                             |ui| {
                                 render_audio_waveform_i16(
                                     ui,
@@ -333,7 +333,7 @@ impl IssSstvPipeline {
                 "iss_sstv_phase_3",
                 AccordionOptions::new("Fase 3: Modulación FM RF VHF (145.800 MHz, 5 kHz dev a 288 kHz)")
                     .with_badge(badge_text_3, badge_color_3)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label("Frecuencia portadora de audio: 1200 a 2300 Hz | Modulación FM NFM (5 kHz de desviación estándar) en banda base I/Q.");
                     ui.add_space(8.0);
@@ -402,7 +402,7 @@ impl IssSstvPipeline {
                             ui,
                             theme,
                             "iss_sstv_iq_osc",
-                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                             |ui| {
                                 crate::ui::spectrum::render_signal_visualizer(
                                     ui,
@@ -418,7 +418,7 @@ impl IssSstvPipeline {
                             ui,
                             theme,
                             "iss_sstv_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("iss_sstv");
                                 crate::ui::spectrogram::render_spectrogram_widget(

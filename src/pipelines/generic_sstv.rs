@@ -242,7 +242,7 @@ impl GenericSstvPipeline {
                 "generic_sstv_phase_1",
                 AccordionOptions::new("Fase 1: Configuración del Modo SSTV")
                     .with_badge("CONFIGURADO", Color32::from_rgb(34, 197, 94))
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label("Modo de Transmisión:");
@@ -298,7 +298,7 @@ impl GenericSstvPipeline {
                 "generic_sstv_phase_2",
                 AccordionOptions::new("Fase 2: Estructura de la Señal SSTV (Audio a 48 kHz)")
                     .with_badge(badge_text_2, badge_color_2)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Encabezado VIS: Tono de calibración a 1900 Hz (300 ms), Tono de ruptura a 1200 Hz (10 ms), Código VIS digital de 8 bits con bit de paridad. Líneas de imagen: Tono de sincro a 1200 Hz, Porche negro a 1500 Hz, y barrido analógico de luminancia/color (1500-2300 Hz). Se genera y guarda como archivo WAV a 48 kHz.")
@@ -338,7 +338,7 @@ impl GenericSstvPipeline {
                             ui,
                             theme,
                             "generic_sstv_audio_osc",
-                            AccordionOptions::new("Osciloscopio de Audio SSTV (48 kHz)").default_open(true),
+                            AccordionOptions::new("Osciloscopio de Audio SSTV (48 kHz)").default_open(false),
                             |ui| {
                                 render_audio_waveform_i16(
                                     ui,
@@ -390,7 +390,7 @@ impl GenericSstvPipeline {
                 "generic_sstv_phase_3",
                 AccordionOptions::new("Fase 3: Modulación FM RF para Transmisión SDR (288 kHz)")
                     .with_badge(badge_text_3, badge_color_3)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label("Desviación de frecuencia FM:");
@@ -462,7 +462,7 @@ impl GenericSstvPipeline {
                             ui,
                             theme,
                             "generic_sstv_iq_osc",
-                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                             |ui| {
                                 crate::ui::spectrum::render_signal_visualizer(
                                     ui,
@@ -478,7 +478,7 @@ impl GenericSstvPipeline {
                             ui,
                             theme,
                             "generic_sstv_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("generic_sstv");
                                 crate::ui::spectrogram::render_spectrogram_widget(

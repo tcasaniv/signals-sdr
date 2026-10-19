@@ -216,7 +216,7 @@ impl GenericFmPipeline {
                 ui,
                 theme,
                 "fm_params_phase",
-                AccordionOptions::new("Parámetros del Modulador FM").default_open(true),
+                AccordionOptions::new("Parámetros del Modulador FM").default_open(false),
                 |ui| {
                     // Presets
                     ui.horizontal(|ui| {
@@ -357,7 +357,7 @@ impl GenericFmPipeline {
                     ui,
                     theme,
                     "fm_iq_osc",
-                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                     |ui| {
                         crate::ui::spectrum::render_signal_visualizer(
                             ui,
@@ -373,7 +373,7 @@ impl GenericFmPipeline {
                     ui,
                     theme,
                     "fm_iq_spec",
-                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                    AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(false),
                     |ui| {
                         let out_dir = config.get_pipeline_dir("generic_fm");
                         crate::ui::spectrogram::render_spectrogram_widget(

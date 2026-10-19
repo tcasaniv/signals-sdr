@@ -132,7 +132,7 @@ impl HrptPipeline {
                 ui,
                 theme,
                 "hrpt_mod_phase",
-                AccordionOptions::new("Modulador Manchester Split-Phase BPSK").default_open(true),
+                AccordionOptions::new("Modulador Manchester Split-Phase BPSK").default_open(false),
                 |ui| {
                     ui.label("Tasa de símbolos: 665,400 baudios | Tasa de muestreo I/Q: 2.6616 MSps (4x sobremuestreo)");
                     ui.label("Filtro conformado de pulso: Root Raised Cosine (RRC) alpha = 0.5");
@@ -167,7 +167,7 @@ impl HrptPipeline {
                     ui,
                     theme,
                     "hrpt_iq_osc",
-                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                    AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                     |ui| {
                         render_signal_visualizer(ui, theme, &self.iq_samples, 2_400_000);
                     },
