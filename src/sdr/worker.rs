@@ -64,9 +64,9 @@ impl Default for TxConfig {
     fn default() -> Self {
         Self {
             device_args: "driver=dummy".to_string(),
-            frequency_hz: 137_100_000.0,
+            frequency_hz: 915_000_000.0,
             sample_rate_hz: 288_000,
-            gain_db: 30.0,
+            gain_db: 0.0,
             rf_amp: false,
             repeat: false,
         }
