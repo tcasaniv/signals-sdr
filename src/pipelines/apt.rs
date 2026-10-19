@@ -252,7 +252,7 @@ impl AptPipeline {
                 "apt_phase_1",
                 AccordionOptions::new("Fase 1: Preprocesamiento de Imágenes (Canales A y B)")
                     .with_badge(status_text_1, status_color_1)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Cada canal del sensor AVHRR satelital requiere exactamente 909 píxeles de ancho en escala de grises de 8 bits (0-255). Además, ambas imágenes deben recortarse simétricamente a la misma altura para sincronizar el barrido orbital.")
@@ -354,7 +354,7 @@ impl AptPipeline {
                 "apt_phase_2",
                 AccordionOptions::new("Fase 2: Codificación a Trama Matricial APT (2080 px por línea)")
                     .with_badge(status_text_2, status_color_2)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Ensambla la trama satelital completa a 2 líneas/segundo (2080 palabras/línea): Sincronismo A (39 px, pulsos cuadrados 1040 Hz) + Espacio A (47 px) + Canal A (909 px) + Telemetría A (45 px) + Sincronismo B (39 px) + Espacio B (47 px) + Canal B (909 px) + Telemetría B (45 px).")
@@ -419,7 +419,7 @@ impl AptPipeline {
                 "apt_phase_3",
                 AccordionOptions::new("Fase 3: Modulación en Subportadora AM (2400 Hz a 11025 Hz)")
                     .with_badge(status_text_3, status_color_3)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Cada píxel modula en amplitud una subportadora senoidal pura de 2400 Hz. El estándar NOAA utiliza una frecuencia de muestreo de audio de 11,025 Hz (exactamente 4.59375 muestras/ciclo).")
@@ -459,7 +459,7 @@ impl AptPipeline {
                             ui,
                             theme,
                             "apt_am_osc",
-                            AccordionOptions::new("Osciloscopio de Subportadora AM NOAA APT (11,025 Hz)").default_open(true),
+                            AccordionOptions::new("Osciloscopio de Subportadora AM NOAA APT (11,025 Hz)").default_open(false),
                             |ui| {
                                 crate::ui::spectrum::render_audio_waveform_i16(
                                     ui,
@@ -508,7 +508,7 @@ impl AptPipeline {
                 "apt_phase_4",
                 AccordionOptions::new("Fase 4: Modulación FM I/Q para SDR (17 kHz Desviación a 288 kHz)")
                     .with_badge(status_text_4, status_color_4)
-                    .default_open(true),
+                    .default_open(false),
                 |ui| {
                     ui.label(
                         RichText::new("Modula la subportadora AM en FM en banda ancha (WBFM) con 17 kHz de desviación y sobremuestreo a 288 kHz en banda base en cuadratura (I/Q) para transmisión SDR o exportación.")
@@ -572,7 +572,7 @@ impl AptPipeline {
                             ui,
                             theme,
                             "apt_iq_osc",
-                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(true),
+                            AccordionOptions::new("Osciloscopio I/Q (Dominio del Tiempo)").default_open(false),
                             |ui| {
                                 crate::ui::spectrum::render_signal_visualizer(
                                     ui,
@@ -588,7 +588,7 @@ impl AptPipeline {
                             ui,
                             theme,
                             "apt_iq_spec",
-                            AccordionOptions::new("Espectrograma y Cascada de Radiofrecuencia (FFT en Vivo)").default_open(true),
+                            AccordionOptions::new("Espectrograma y Cascada de RF").default_open(false),
                             |ui| {
                                 let out_dir = config.get_pipeline_dir("noaa_apt");
                                 crate::ui::spectrogram::render_spectrogram_widget(
