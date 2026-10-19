@@ -357,7 +357,12 @@ impl AptPipeline {
                     .default_open(false),
                 |ui| {
                     ui.label(
-                        RichText::new("Ensambla la trama satelital completa a 2 líneas/segundo (2080 palabras/línea): Sincronismo A (39 px, pulsos cuadrados 1040 Hz) + Espacio A (47 px) + Canal A (909 px) + Telemetría A (45 px) + Sincronismo B (39 px) + Espacio B (47 px) + Canal B (909 px) + Telemetría B (45 px).")
+                        RichText::new("Ensambla la trama satelital completa a 2 líneas/segundo (2080 palabras/línea): ")
+                            .size(12.0)
+                            .color(theme.text_secondary()),
+                    );
+                    ui.label(
+                        RichText::new("Sincronismo A (39 px, pulsos cuadrados 1040 Hz) + Espacio A (47 px) + Canal A (909 px) + Telemetría A (45 px) + Sincronismo B (39 px) + Espacio B (47 px) + Canal B (909 px) + Telemetría B (45 px).")
                             .size(12.0)
                             .color(theme.text_secondary()),
                     );
