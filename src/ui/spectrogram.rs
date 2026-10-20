@@ -626,7 +626,7 @@ pub fn render_spectrogram_widget(
                     state.pan_y = (state.pan_y + delta.y / span_y).clamp(-1.0, 1.0);
                 }
                 if img_response.hovered() {
-                    let scroll = ui.input(|i| i.raw_scroll_delta.y);
+                    let scroll = ui.input(|i| i.smooth_scroll_delta.y);
                     let is_shift = ui.input(|i| i.modifiers.shift);
                     if scroll > 0.0 {
                         if is_shift {

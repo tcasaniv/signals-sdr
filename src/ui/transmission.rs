@@ -77,15 +77,17 @@ pub fn render_transmission_tab(
             let sdr_selected = state.destination == TransmissionDestination::HardwareSdr;
             let file_selected = state.destination == TransmissionDestination::IqFile;
 
+            let sdr_label = format!("{} Transmitir con Hardware SDR", icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
             if ui
-                .selectable_label(sdr_selected, RichText::new("Transmitir con Hardware SDR").strong())
+                .selectable_label(sdr_selected, RichText::new(sdr_label).strong())
                 .clicked()
             {
                 state.destination = TransmissionDestination::HardwareSdr;
             }
 
+            let file_label = format!("{} Guardar como Archivo I/Q", icons::ICON_SAVE.codepoint);
             if ui
-                .selectable_label(file_selected, RichText::new("Guardar como Archivo I/Q").strong())
+                .selectable_label(file_selected, RichText::new(file_label).strong())
                 .clicked()
             {
                 state.destination = TransmissionDestination::IqFile;
@@ -150,10 +152,8 @@ fn render_sdr_panel(
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let btn = ui.button(RichText::new("Detectar SDRs Conectados").size(12.0));
-                        let (icon_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
-                        icons::draw_refresh_icon(ui, icon_rect, theme.accent_blue());
-                        if btn.clicked() {
+                        let btn_text = format!("{} Detectar SDRs Conectados", icons::ICON_REFRESH.codepoint);
+                        if ui.button(RichText::new(btn_text).size(12.0).color(theme.accent_blue())).clicked() {
                             state.detected_devices = detect_detailed_radios();
                         }
                     });
@@ -164,11 +164,10 @@ fn render_sdr_panel(
                     ui.add_space(6.0);
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            let (icon_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
-                            icons::draw_radio_icon(ui, icon_rect, theme.accent_blue());
                             ui.label(
                                 RichText::new(format!(
-                                    "SDRs Detectados en el Sistema ({})",
+                                    "{} SDRs Detectados en el Sistema ({})",
+                                    icons::ICON_RADIO.codepoint,
                                     state.detected_devices.len()
                                 ))
                                 .strong()
@@ -194,7 +193,8 @@ fn render_sdr_panel(
 
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                             // Botón Seleccionar este SDR
-                                            if ui.button(RichText::new("Seleccionar este SDR").size(11.0)).clicked() {
+                                            let sel_btn_text = format!("{} Seleccionar este SDR", icons::ICON_MY_LOCATION.codepoint);
+                                            if ui.button(RichText::new(sel_btn_text).size(11.0)).clicked() {
                                                 state.selected_backend = dev.backend;
                                                 state.tx_config.backend = dev.backend;
                                                 state.tx_config.hw_type = dev.hw_type;
@@ -213,7 +213,8 @@ fn render_sdr_panel(
                                             }
 
                                             // Botón Copiar Args
-                                            if ui.button(RichText::new("Copiar Args").size(11.0)).clicked() {
+                                            let copy_args_text = format!("{} Copiar Args", icons::ICON_CONTENT_COPY.codepoint);
+                                            if ui.button(RichText::new(copy_args_text).size(11.0)).clicked() {
                                                 ui.ctx().copy_text(dev.full_args.clone());
                                                 state.copied_feedback = Some((
                                                     "Argumentos copiados al portapapeles".to_string(),
@@ -224,7 +225,8 @@ fn render_sdr_panel(
                                             // Botón Copiar Serial
                                             if let Some(ref s) = dev.serial {
                                                 let s_clone = s.clone();
-                                                if ui.button(RichText::new("Copiar Serial").size(11.0)).clicked() {
+                                                let copy_serial_text = format!("{} Copiar Serial", icons::ICON_CONTENT_COPY.codepoint);
+                                                if ui.button(RichText::new(copy_serial_text).size(11.0)).clicked() {
                                                     ui.ctx().copy_text(s_clone);
                                                     state.copied_feedback = Some((
                                                         "Número de serie copiado al portapapeles".to_string(),
@@ -569,26 +571,23 @@ fn render_sdr_panel(
 
                 ui.horizontal(|ui| {
                     if is_transmitting {
+                        let stop_label = format!("{} Detener Transmisión", icons::ICON_STOP.codepoint);
                         let stop_btn = egui::Button::new(
-                            RichText::new("Detener Transmisión").strong().color(Color32::WHITE),
+                            RichText::new(stop_label).strong().size(14.0).color(Color32::WHITE),
                         )
                         .fill(Color32::from_rgb(220, 38, 38))
                         .corner_radius(6.0);
 
-                        let (icon_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
-                        icons::draw_stop_icon(ui, icon_rect, Color32::WHITE);
                         if ui.add(stop_btn).clicked() {
                             sdr_controller.stop();
                         }
                     } else {
+                        let tx_label = format!("{} Transmitir con SDR", icons::ICON_PLAY_ARROW.codepoint);
                         let tx_btn = egui::Button::new(
-                            RichText::new("Transmitir con SDR").strong().color(Color32::WHITE),
+                            RichText::new(tx_label).strong().size(14.0).color(Color32::WHITE),
                         )
                         .fill(theme.accent_blue())
                         .corner_radius(6.0);
-
-                        let (icon_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
-                        icons::draw_play_icon(ui, icon_rect, Color32::WHITE);
 
                         let enabled = !samples.is_empty();
                         if ui.add_enabled(enabled, tx_btn).clicked() {
@@ -739,7 +738,8 @@ fn render_file_panel(
                     );
                 });
                 ui.add_space(4.0);
-                if ui.button("Cambiar Carpeta Destino...").clicked() {
+                let folder_label = format!("{} Cambiar Carpeta Destino...", icons::ICON_FOLDER_OPEN.codepoint);
+                if ui.button(folder_label).clicked() {
                     if let Some(folder) = rfd::FileDialog::new().pick_folder() {
                         state.custom_output_dir = Some(folder);
                     }
@@ -748,8 +748,9 @@ fn render_file_panel(
                 ui.add_space(10.0);
 
                 // Botón Guardar Archivo I/Q
+                let save_label = format!("{} Guardar Archivo I/Q", icons::ICON_SAVE.codepoint);
                 let save_btn = egui::Button::new(
-                    RichText::new("Guardar Archivo I/Q").strong().color(Color32::WHITE),
+                    RichText::new(save_label).strong().color(Color32::WHITE),
                 )
                 .fill(theme.accent_blue())
                 .corner_radius(6.0);

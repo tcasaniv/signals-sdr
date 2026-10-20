@@ -1,6 +1,14 @@
 use egui::{Color32, Pos2, Rect, Stroke, Ui, Vec2};
 use std::f32::consts::PI;
 
+pub use egui_icons::icons::*;
+
+/// Helper para formatear texto con icono a la izquierda
+pub fn with_icon(icon: egui_icons::MaterialIcon, text: &str) -> String {
+    format!("{} {}", icon.codepoint, text)
+}
+
+
 /// Dibuja un icono vectorial de satélite con cuerpo central, paneles solares y ondas RF
 pub fn draw_satellite_icon(ui: &mut Ui, rect: Rect, color: Color32) {
     let painter = ui.painter();

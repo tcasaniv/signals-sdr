@@ -70,19 +70,20 @@ pub fn step_bar(
         .trim_start_matches("2.")
         .trim();
 
-    let steps = [
-        ("1", "Elegir fuente"),
-        ("2", clean_step_two),
-        ("3", "Efectos de canal"),
-        ("4", "Transmisión"),
+    let step_two_str = format!("2. {}", clean_step_two);
+    let steps: [(egui_icons::MaterialIcon, &str); 4] = [
+        (crate::icons::ICON_FOLDER_OPEN, "1. Elegir fuente"),
+        (crate::icons::ICON_TUNE, &step_two_str),
+        (crate::icons::ICON_WAVES, "3. Efectos de canal"),
+        (crate::icons::ICON_SETTINGS_INPUT_ANTENNA, "4. Transmisión"),
     ];
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.spacing_mut().item_spacing.x = 8.0;
 
-        for (idx, (num, label)) in steps.iter().enumerate() {
+        for (idx, (icon, label)) in steps.iter().enumerate() {
             if idx > 0 {
-                ui.label(RichText::new("->").size(13.0).color(theme.text_secondary()));
+                ui.label(RichText::new(crate::icons::ICON_ARROW_FORWARD.codepoint).size(13.0).color(theme.text_secondary()));
             }
 
             let is_selected = *current_step == idx;
@@ -101,7 +102,7 @@ pub fn step_bar(
             };
 
             let pill_btn = egui::Button::new(
-                RichText::new(format!("  {} - {}  ", num, label))
+                RichText::new(format!("  {} {}  ", icon.codepoint, label))
                     .size(13.0)
                     .strong()
                     .color(text_color),
@@ -502,7 +503,7 @@ impl<'a> AccordionOptions<'a> {
 pub fn accordion_section<R>(
     ui: &mut Ui,
     theme: &AppTheme,
-    id_salt: impl std::hash::Hash,
+    id_salt: impl std::hash::Hash + std::fmt::Debug,
     options: AccordionOptions,
     add_contents: impl FnOnce(&mut Ui) -> R,
 ) -> Option<R> {

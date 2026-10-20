@@ -276,8 +276,9 @@ pub fn render_signal_visualizer(
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
                         let save_btn = egui::Button::new(
-                            RichText::new("Guardar Oscilograma (.png)")
+                            RichText::new(btn_label)
                                 .strong()
                                 .size(11.5)
                                 .color(Color32::WHITE),
@@ -533,8 +534,9 @@ pub fn render_audio_waveform(
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
                         let save_btn = egui::Button::new(
-                            RichText::new("Guardar Oscilograma (.png)")
+                            RichText::new(btn_label)
                                 .strong()
                                 .size(11.5)
                                 .color(Color32::WHITE),
@@ -773,7 +775,7 @@ fn handle_scope_mouse_interaction(resp: &egui::Response, ui: &mut Ui, state: &mu
     }
 
     if resp.hovered() {
-        let scroll = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
         if scroll > 0.0 {
             state.zoom_x = (state.zoom_x * 1.25).min(50_000.0);
         } else if scroll < 0.0 {

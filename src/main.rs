@@ -20,6 +20,7 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            egui_icons::initialize(&cc.egui_ctx);
             Ok(Box::new(SignalsSdrApp::default()))
         }),
     )
@@ -50,6 +51,7 @@ fn main() {
                 web_options,
                 Box::new(|cc| {
                     egui_extras::install_image_loaders(&cc.egui_ctx);
+                    egui_icons::initialize(&cc.egui_ctx);
                     Ok(Box::new(SignalsSdrApp::default()))
                 }),
             )

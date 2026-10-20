@@ -55,7 +55,13 @@ pub fn render_desktop_rail(
             ui.painter().rect_stroke(rect_pipe, 8.0, Stroke::new(1.5_f32, theme.accent_blue()), egui::StrokeKind::Inside);
         }
         let pipe_color = if is_pipe { theme.accent_blue() } else { theme.text_secondary() };
-        icons::draw_satellite_icon(ui, rect_pipe.shrink(12.0), pipe_color);
+        ui.painter().text(
+            rect_pipe.center() - egui::vec2(0.0, 2.0),
+            egui::Align2::CENTER_CENTER,
+            icons::ICON_SATELLITE_ALT.codepoint,
+            egui::FontId::proportional(22.0),
+            pipe_color,
+        );
         ui.label(RichText::new("Señales").size(10.0).color(pipe_color));
 
         ui.add_space(12.0);
@@ -79,7 +85,13 @@ pub fn render_desktop_rail(
             ui.painter().rect_stroke(rect_sett, 8.0, Stroke::new(1.5_f32, theme.accent_blue()), egui::StrokeKind::Inside);
         }
         let sett_color = if is_sett { theme.accent_blue() } else { theme.text_secondary() };
-        icons::draw_settings_icon(ui, rect_sett.shrink(12.0), sett_color);
+        ui.painter().text(
+            rect_sett.center() - egui::vec2(0.0, 2.0),
+            egui::Align2::CENTER_CENTER,
+            icons::ICON_SETTINGS.codepoint,
+            egui::FontId::proportional(22.0),
+            sett_color,
+        );
         ui.label(RichText::new("Ajustes").size(10.0).color(sett_color));
     });
 }
@@ -124,8 +136,15 @@ pub fn render_desktop_pipeline_list(
                 if pipe.category() != current_category {
                     current_category = pipe.category();
                     ui.add_space(6.0);
+                    let cat_icon = match current_category {
+                        "Satélites Meteorológicos" => icons::ICON_SATELLITE_ALT.codepoint,
+                        "Imágenes SSTV" => icons::ICON_IMAGE.codepoint,
+                        "Moduladores Analógicos" => icons::ICON_GRAPHIC_EQ.codepoint,
+                        "Herramientas de Señal" => icons::ICON_ANALYTICS.codepoint,
+                        _ => icons::ICON_RADIO.codepoint,
+                    };
                     ui.label(
-                        RichText::new(current_category)
+                        RichText::new(format!("{} {}", cat_icon, current_category))
                             .size(11.0)
                             .strong()
                             .color(theme.accent_blue()),
@@ -150,6 +169,17 @@ pub fn render_desktop_pipeline_list(
                     ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
+                            let pipe_icon = match pipe {
+                                PipelineId::NoaaApt | PipelineId::MeteorLrpt | PipelineId::NoaaHrpt => icons::ICON_SATELLITE_ALT.codepoint,
+                                PipelineId::IssSstv | PipelineId::GenericSstv => icons::ICON_IMAGE.codepoint,
+                                PipelineId::GenericFm | PipelineId::GenericAm => icons::ICON_GRAPHIC_EQ.codepoint,
+                                PipelineId::GenericIq => icons::ICON_ANALYTICS.codepoint,
+                            };
+                            ui.label(
+                                RichText::new(pipe_icon)
+                                    .size(13.0)
+                                    .color(if is_active { theme.accent_blue() } else { theme.text_secondary() }),
+                            );
                             ui.label(
                                 RichText::new(pipe.title())
                                     .strong()

@@ -9,7 +9,7 @@ use crate::ui::mobile_nav::{
     render_mobile_bottom_bar, render_mobile_header, render_mobile_pipeline_grid, MobileNavState,
 };
 use egui::{
-    CentralPanel, Context, Frame, RichText, ScrollArea, SidePanel, Stroke, TopBottomPanel, Ui,
+    CentralPanel, Frame, Panel, RichText, ScrollArea, Stroke, Ui,
 };
 
 pub struct SignalsSdrApp {
@@ -54,7 +54,7 @@ impl eframe::App for SignalsSdrApp {
         ]
     }
 
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let theme = if self.dark_mode {
             AppTheme::Dark
         } else {
@@ -67,30 +67,30 @@ impl eframe::App for SignalsSdrApp {
             self.config.save();
         }
 
-        theme.apply_to_context(ctx);
+        theme.apply_to_context(ui.ctx());
 
-        let screen_width = ctx.viewport_rect().width();
+        let screen_width = ui.ctx().viewport_rect().width();
         let is_mobile = screen_width < 720.0;
 
         if is_mobile {
-            self.render_mobile_ui(ctx, &theme);
+            self.render_mobile_ui(ui, &theme);
         } else {
-            self.render_desktop_ui(ctx, &theme);
+            self.render_desktop_ui(ui, &theme);
         }
     }
 }
 
 impl SignalsSdrApp {
-    fn render_mobile_ui(&mut self, ctx: &Context, theme: &AppTheme) {
+    fn render_mobile_ui(&mut self, ui: &mut Ui, theme: &AppTheme) {
         // Barra superior móvil con relleno continuo del tema (sin áreas negras)
-        TopBottomPanel::top("mobile_header")
+        Panel::top("mobile_header")
             .frame(
                 Frame::new()
                     .fill(theme.surface_subtle())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                     .inner_margin(8.0),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 render_mobile_header(
                     ui,
                     theme,
@@ -101,14 +101,14 @@ impl SignalsSdrApp {
             });
 
         // Barra inferior móvil con relleno continuo del tema
-        TopBottomPanel::bottom("mobile_bottom")
+        Panel::bottom("mobile_bottom")
             .frame(
                 Frame::new()
                     .fill(theme.surface_subtle())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                     .inner_margin(6.0),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 render_mobile_bottom_bar(
                     ui,
                     theme,
@@ -120,7 +120,7 @@ impl SignalsSdrApp {
         // Contenido central móvil
         CentralPanel::default()
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(10.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
                     match self.desktop_nav.active_section {
                         NavSection::Settings => self.render_settings(ui, theme),
@@ -141,33 +141,33 @@ impl SignalsSdrApp {
             });
     }
 
-    fn render_desktop_ui(&mut self, ctx: &Context, theme: &AppTheme) {
+    fn render_desktop_ui(&mut self, ui: &mut Ui, theme: &AppTheme) {
         // 1. Icon Rail estrecho (ancho fijo 64px, ocupa 100% de la altura de la ventana)
-        SidePanel::left("desktop_nav_rail")
+        Panel::left("desktop_nav_rail")
             .resizable(false)
-            .exact_width(64.0)
+            .exact_size(64.0)
             .frame(
                 Frame::new()
                     .fill(theme.surface_subtle())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                     .inner_margin(8.0),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 render_desktop_rail(ui, theme, &mut self.desktop_nav);
             });
 
         // 2. Panel intermedio de catálogo/pipelines (ancho 260px) solo si la sección activa es Pipelines
         if self.desktop_nav.active_section == NavSection::Pipelines {
-            SidePanel::left("desktop_catalog")
+            Panel::left("desktop_catalog")
                 .resizable(false)
-                .exact_width(260.0)
+                .exact_size(260.0)
                 .frame(
                     Frame::new()
                         .fill(theme.card_bg())
                         .stroke(Stroke::new(1.0_f32, theme.card_border()))
                         .inner_margin(12.0),
                 )
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     render_desktop_pipeline_list(
                         ui,
                         theme,
@@ -180,7 +180,7 @@ impl SignalsSdrApp {
         // 3. Panel central principal (ocupa toda la altura y el ancho restante del viewport)
         CentralPanel::default()
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(16.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
                     match self.desktop_nav.active_section {
                         NavSection::Settings => self.render_settings(ui, theme),
