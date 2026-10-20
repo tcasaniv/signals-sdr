@@ -6,6 +6,12 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SdrBackend {
+    SeifyNative,
+    SoapySdr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SdrHardwareType {
     Dummy,
     HackRfSoapy,
@@ -21,6 +27,7 @@ pub enum SdrHardwareType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdrDeviceOption {
     pub display_name: String,
+    pub backend: SdrBackend,
     pub hw_type: SdrHardwareType,
     pub default_args: String,
     pub description: String,
@@ -29,95 +36,196 @@ pub struct SdrDeviceOption {
 impl SdrDeviceOption {
     pub fn all_supported() -> Vec<SdrDeviceOption> {
         vec![
+            // --- Seify Nativo (Por Defecto - Sin Dependencias Externas) ---
             SdrDeviceOption {
-                display_name: "HackRF One (SoapySDR - Recomendado)".to_string(),
-                hw_type: SdrHardwareType::HackRfSoapy,
-                default_args: "driver=soapy,soapy_driver=hackrf".to_string(),
-                description: "Transceptor semidúplex 1 MHz - 6 GHz vía SoapySDR (estable en Windows). Mínimo 1 MSps.".to_string(),
-            },
-            SdrDeviceOption {
-                display_name: "HackRF One (Seify Nativo / USB)".to_string(),
+                display_name: "HackRF One (Transmisión Real - Driver Rust puro)".to_string(),
+                backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::HackRfSeify,
                 default_args: "driver=hackrf".to_string(),
-                description: "Transceptor semidúplex con driver Rust puro nusb. Mínimo 2 MSps.".to_string(),
+                description: "Transceptor semidúplex con driver Rust puro nusb. No requiere software externo (mínimo 2 MSps).".to_string(),
             },
             SdrDeviceOption {
-                display_name: "SoapySDR (Detección Automática de Radio)".to_string(),
-                hw_type: SdrHardwareType::SoapyAuto,
-                default_args: "driver=soapy".to_string(),
-                description: "Busca transceptores de radio reales conectados descartando tarjetas de audio.".to_string(),
-            },
-            SdrDeviceOption {
-                display_name: "bladeRF (SoapySDR)".to_string(),
+                display_name: "bladeRF (Transmisión Real - Driver Rust puro)".to_string(),
+                backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::BladeRfSoapy,
-                default_args: "driver=soapy,soapy_driver=bladerf".to_string(),
-                description: "Transceptor full dúplex USB 3.0 (Nuand bladeRF / micro).".to_string(),
-            },
-            SdrDeviceOption {
-                display_name: "USRP / UHD (Ettus Research / Red)".to_string(),
-                hw_type: SdrHardwareType::UsrpSoapy,
-                default_args: "driver=soapy,soapy_driver=uhd".to_string(),
-                description: "Dispositivos USRP B200, B210, N210, X310 vía SoapyUHD (admite IP de red).".to_string(),
-            },
-            SdrDeviceOption {
-                display_name: "PlutoSDR / ADALM-Pluto (SoapySDR)".to_string(),
-                hw_type: SdrHardwareType::PlutoSdrSoapy,
-                default_args: "driver=soapy,soapy_driver=plutosdr".to_string(),
-                description: "Transceptor de Analog Devices ADALM-PLUTO vía USB o URI IP de red.".to_string(),
-            },
-            SdrDeviceOption {
-                display_name: "LimeSDR (SoapySDR)".to_string(),
-                hw_type: SdrHardwareType::LimeSdrSoapy,
-                default_args: "driver=soapy,soapy_driver=lime".to_string(),
-                description: "Transceptor MIMO LMS7002M (LimeSDR USB / Mini).".to_string(),
+                default_args: "driver=bladerf".to_string(),
+                description: "Transceptor full dúplex USB 3.0 con driver nativo Rust.".to_string(),
             },
             SdrDeviceOption {
                 display_name: "Simulador Dummy (Sin hardware)".to_string(),
+                backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::Dummy,
                 default_args: "driver=dummy".to_string(),
                 description: "Simula transmisión en memoria para pruebas de laboratorio sin emitir RF.".to_string(),
             },
             SdrDeviceOption {
-                display_name: "Personalizado (Argumentos manuales)".to_string(),
+                display_name: "Driver Personalizado Seify (Argumentos manuales)".to_string(),
+                backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::Custom,
-                default_args: "".to_string(),
-                description: "Argumentos directos para Seify / Soapy (ej: driver=soapy,soapy_driver=hackrf).".to_string(),
+                default_args: "driver=hackrf".to_string(),
+                description: "Ingresa argumentos directos para el backend Seify Nativo (ej: driver=hackrf).".to_string(),
+            },
+
+            // --- SoapySDR (Avanzado - Módulos C++ / Radioconda) ---
+            SdrDeviceOption {
+                display_name: "Detección Automática de Radio (SoapySDR)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::SoapyAuto,
+                default_args: "driver=soapy".to_string(),
+                description: "Busca transceptores de radio reales conectados descartando tarjetas de audio.".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "HackRF One (Módulo SoapySDR)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::HackRfSoapy,
+                default_args: "driver=soapy,soapy_driver=hackrf".to_string(),
+                description: "Transceptor semidúplex 1 MHz - 6 GHz vía SoapySDR (estable en Windows, mínimo 1 MSps).".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "bladeRF (Módulo SoapySDR)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::BladeRfSoapy,
+                default_args: "driver=soapy,soapy_driver=bladerf".to_string(),
+                description: "Transceptor full dúplex USB 3.0 vía SoapySDR.".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "USRP / UHD (Ettus Research / Red)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::UsrpSoapy,
+                default_args: "driver=soapy,soapy_driver=uhd".to_string(),
+                description: "Dispositivos USRP B200, B210, N210, X310 vía SoapyUHD (admite IP de red).".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "PlutoSDR / ADALM-Pluto (Módulo SoapySDR)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::PlutoSdrSoapy,
+                default_args: "driver=soapy,soapy_driver=plutosdr".to_string(),
+                description: "Transceptor de Analog Devices ADALM-PLUTO vía USB o URI IP de red.".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "LimeSDR (Módulo SoapySDR)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::LimeSdrSoapy,
+                default_args: "driver=soapy,soapy_driver=lime".to_string(),
+                description: "Transceptor MIMO LMS7002M (LimeSDR USB / Mini).".to_string(),
+            },
+            SdrDeviceOption {
+                display_name: "Driver Personalizado Soapy (Argumentos manuales)".to_string(),
+                backend: SdrBackend::SoapySdr,
+                hw_type: SdrHardwareType::Custom,
+                default_args: "driver=soapy,soapy_driver=hackrf".to_string(),
+                description: "Ingresa argumentos directos para SoapySDR (ej: driver=soapy,soapy_driver=hackrf).".to_string(),
             },
         ]
     }
+
+    pub fn for_backend(backend: SdrBackend) -> Vec<SdrDeviceOption> {
+        Self::all_supported()
+            .into_iter()
+            .filter(|d| d.backend == backend)
+            .collect()
+    }
+}
+
+/// Información completa de un transceptor SDR detectado físicamente
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetectedDeviceInfo {
+    pub label: String,
+    pub backend: SdrBackend,
+    pub hw_type: SdrHardwareType,
+    pub driver: String,
+    pub soapy_driver: Option<String>,
+    pub serial: Option<String>,
+    pub full_args: String,
 }
 
 /// Detecta los transceptores de radio reales conectados por USB o red excluyendo tarjetas de audio
-pub fn detect_connected_radios() -> Vec<String> {
+pub fn detect_detailed_radios() -> Vec<DetectedDeviceInfo> {
     let mut radios = Vec::new();
     if let Ok(devs) = seify::enumerate() {
         for d in devs {
             let driver_str = d.get::<String>("driver").unwrap_or_default();
-            let soapy_driver = d.get::<String>("soapy_driver").unwrap_or_default();
-            // Descartar audio y dispositivos no-radio
-            if driver_str == "audio" || soapy_driver == "audio" || driver_str == "dummy" {
+            let soapy_driver = d.get::<String>("soapy_driver").ok();
+            let soapy_driver_str = soapy_driver.as_deref().unwrap_or("");
+
+            // Descartar audio y dispositivos virtuales dummy
+            if driver_str == "audio" || soapy_driver_str == "audio" || driver_str == "dummy" {
                 continue;
             }
+
+            let serial = d.get::<String>("serial").ok().or_else(|| d.get::<String>("part_id").ok());
             let label = d
                 .get::<String>("label")
                 .or_else(|_| d.get::<String>("device"))
+                .or_else(|_| d.get::<String>("product"))
                 .unwrap_or_else(|_| {
-                    if !soapy_driver.is_empty() {
-                        format!("Soapy: {}", soapy_driver)
+                    if !soapy_driver_str.is_empty() {
+                        format!("Soapy: {}", soapy_driver_str)
                     } else {
-                        driver_str
+                        driver_str.clone()
                     }
                 });
-            radios.push(label);
+
+            let is_soapy = driver_str == "soapy" || !soapy_driver_str.is_empty();
+            let backend = if is_soapy {
+                SdrBackend::SoapySdr
+            } else {
+                SdrBackend::SeifyNative
+            };
+
+            let hw_type = if driver_str.contains("hackrf") || soapy_driver_str.contains("hackrf") {
+                if is_soapy { SdrHardwareType::HackRfSoapy } else { SdrHardwareType::HackRfSeify }
+            } else if driver_str.contains("bladerf") || soapy_driver_str.contains("bladerf") {
+                SdrHardwareType::BladeRfSoapy
+            } else if driver_str.contains("uhd") || soapy_driver_str.contains("uhd") {
+                SdrHardwareType::UsrpSoapy
+            } else if driver_str.contains("pluto") || soapy_driver_str.contains("pluto") {
+                SdrHardwareType::PlutoSdrSoapy
+            } else if driver_str.contains("lime") || soapy_driver_str.contains("lime") {
+                SdrHardwareType::LimeSdrSoapy
+            } else {
+                SdrHardwareType::Custom
+            };
+
+            let full_args = if is_soapy {
+                if let Some(ref s) = serial {
+                    format!("driver=soapy,soapy_driver={},serial={}", soapy_driver_str, s)
+                } else {
+                    format!("driver=soapy,soapy_driver={}", soapy_driver_str)
+                }
+            } else {
+                if let Some(ref s) = serial {
+                    format!("driver={},serial={}", driver_str, s)
+                } else {
+                    format!("driver={}", driver_str)
+                }
+            };
+
+            radios.push(DetectedDeviceInfo {
+                label,
+                backend,
+                hw_type,
+                driver: driver_str,
+                soapy_driver,
+                serial,
+                full_args,
+            });
         }
     }
     radios
 }
 
+/// Mantiene compatibilidad con detect_connected_radios devolviendo las etiquetas
+pub fn detect_connected_radios() -> Vec<String> {
+    detect_detailed_radios().into_iter().map(|r| r.label).collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct TxConfig {
+    pub backend: SdrBackend,
     pub hw_type: SdrHardwareType,
     pub device_args: String,
+    pub target_serial: String,
     pub frequency_hz: f64,
     pub sample_rate_hz: u32,
     pub repeat: bool,
@@ -151,10 +259,12 @@ pub struct TxConfig {
 impl Default for TxConfig {
     fn default() -> Self {
         Self {
-            hw_type: SdrHardwareType::HackRfSoapy,
-            device_args: "driver=soapy,soapy_driver=hackrf".to_string(),
+            backend: SdrBackend::SeifyNative,
+            hw_type: SdrHardwareType::HackRfSeify,
+            device_args: "driver=hackrf".to_string(),
+            target_serial: String::new(),
             frequency_hz: 915_000_000.0,
-            sample_rate_hz: 1_000_000,
+            sample_rate_hz: 2_000_000,
             repeat: false,
 
             hackrf_vga_gain: 16.0,
@@ -182,11 +292,17 @@ impl Default for TxConfig {
 impl TxConfig {
     /// Resuelve los argumentos de conexión reales para Seify según el SDR seleccionado
     pub fn resolve_device_args(&self) -> Result<String, String> {
-        match self.hw_type {
+        let mut base_args = match self.hw_type {
             SdrHardwareType::Dummy => Ok("driver=dummy".to_string()),
             SdrHardwareType::HackRfSeify => Ok("driver=hackrf".to_string()),
             SdrHardwareType::HackRfSoapy => Ok("driver=soapy,soapy_driver=hackrf".to_string()),
-            SdrHardwareType::BladeRfSoapy => Ok("driver=soapy,soapy_driver=bladerf".to_string()),
+            SdrHardwareType::BladeRfSoapy => {
+                if self.backend == SdrBackend::SeifyNative {
+                    Ok("driver=bladerf".to_string())
+                } else {
+                    Ok("driver=soapy,soapy_driver=bladerf".to_string())
+                }
+            }
             SdrHardwareType::UsrpSoapy => {
                 let ip = self.usrp_ip.trim();
                 if !ip.is_empty() {
@@ -207,7 +323,7 @@ impl TxConfig {
             SdrHardwareType::Custom => {
                 let args = self.custom_args.trim();
                 if args.is_empty() {
-                    Err("Los argumentos personalizados no pueden estar vacíos. Ejemplo: driver=soapy,soapy_driver=hackrf".to_string())
+                    Err("Los argumentos personalizados no pueden estar vacíos. Ejemplo: driver=hackrf o driver=soapy,soapy_driver=hackrf".to_string())
                 } else {
                     Ok(args.to_string())
                 }
@@ -232,7 +348,15 @@ impl TxConfig {
                     Err(e) => Err(format!("Error al consultar dispositivos SoapySDR: {}", e)),
                 }
             }
+        }?;
+
+        // Añadir serial específico si está configurado y no figura en la cadena base
+        let serial = self.target_serial.trim();
+        if !serial.is_empty() && !base_args.contains("serial=") && base_args != "driver=dummy" {
+            base_args.push_str(&format!(",serial={}", serial));
         }
+
+        Ok(base_args)
     }
 }
 
@@ -553,28 +677,34 @@ mod tests {
 
     #[test]
     fn test_all_supported_devices_presence() {
-        let devices = SdrDeviceOption::all_supported();
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::HackRfSoapy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::HackRfSeify));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::SoapyAuto));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::BladeRfSoapy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::UsrpSoapy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::PlutoSdrSoapy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::LimeSdrSoapy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::Dummy));
-        assert!(devices.iter().any(|d| d.hw_type == SdrHardwareType::Custom));
+        let seify_devs = SdrDeviceOption::for_backend(SdrBackend::SeifyNative);
+        assert!(seify_devs.iter().any(|d| d.hw_type == SdrHardwareType::HackRfSeify));
+        assert!(seify_devs.iter().any(|d| d.hw_type == SdrHardwareType::Dummy));
+
+        let soapy_devs = SdrDeviceOption::for_backend(SdrBackend::SoapySdr);
+        assert!(soapy_devs.iter().any(|d| d.hw_type == SdrHardwareType::HackRfSoapy));
+        assert!(soapy_devs.iter().any(|d| d.hw_type == SdrHardwareType::SoapyAuto));
+        assert!(soapy_devs.iter().any(|d| d.hw_type == SdrHardwareType::UsrpSoapy));
+        assert!(soapy_devs.iter().any(|d| d.hw_type == SdrHardwareType::PlutoSdrSoapy));
     }
 
     #[test]
     fn test_resolve_device_args_correctness() {
         let mut cfg = TxConfig::default();
 
-        cfg.hw_type = SdrHardwareType::Dummy;
-        assert_eq!(cfg.resolve_device_args().unwrap(), "driver=dummy");
-
+        cfg.backend = SdrBackend::SeifyNative;
         cfg.hw_type = SdrHardwareType::HackRfSeify;
         assert_eq!(cfg.resolve_device_args().unwrap(), "driver=hackrf");
 
+        // Con serial especificado para entornos Multi-SDR
+        cfg.target_serial = "123456789".to_string();
+        assert_eq!(cfg.resolve_device_args().unwrap(), "driver=hackrf,serial=123456789");
+        cfg.target_serial.clear();
+
+        cfg.hw_type = SdrHardwareType::Dummy;
+        assert_eq!(cfg.resolve_device_args().unwrap(), "driver=dummy");
+
+        cfg.backend = SdrBackend::SoapySdr;
         cfg.hw_type = SdrHardwareType::HackRfSoapy;
         assert_eq!(cfg.resolve_device_args().unwrap(), "driver=soapy,soapy_driver=hackrf");
 
