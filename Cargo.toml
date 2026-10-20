@@ -41,6 +41,9 @@ log = "0.4"
 env_logger = "0.11"
 rodio = "0.23.0"
 
+[build-dependencies]
+winres = "0.1"
+
 [features]
 default = ["hackrf", "soapy"]
 hackrf = ["seify/hackrf"]

@@ -39,6 +39,12 @@ pub fn render_mobile_header(
             ui.add_space(8.0);
             ui.label(RichText::new(selected_pipeline.title()).strong().size(15.0).color(theme.text_primary()));
         } else if active_section == NavSection::Pipelines {
+            ui.add(
+                egui::Image::new(egui::include_image!("../../assets/icon_256.png"))
+                    .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                    .corner_radius(5.0),
+            );
+            ui.add_space(4.0);
             ui.label(RichText::new("Signals SDR").strong().size(15.0).color(theme.accent_blue()));
             ui.label(RichText::new("Generador").size(12.0).color(theme.text_secondary()));
         } else {

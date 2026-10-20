@@ -8,4 +8,6 @@ Cargo.lock
 *.png
 *.jpg
 *.jpeg
+!assets/*.png
+!assets/*.ico
 dist/

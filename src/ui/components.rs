@@ -16,10 +16,20 @@ pub fn dynamic_image_to_color_image(img: &image::DynamicImage) -> egui::ColorIma
 
 /// Convierte una ruta de archivo local o URL web en un URI compatible con egui::Image
 pub fn path_to_uri(path: &str) -> String {
-    if path.starts_with("http://") || path.starts_with("https://") || path.starts_with("file://") {
+    if path.starts_with("http://") || path.starts_with("https://") {
         path.to_string()
+    } else if let Some(stripped) = path.strip_prefix("file:///") {
+        format!("file:///{}", stripped.replace('\\', "/"))
+    } else if let Some(stripped) = path.strip_prefix("file://") {
+        // En Windows, file://C:/... interpreta 'C:' como host de red provocando 'os error 123'. Corregir a file:///
+        format!("file:///{}", stripped.replace('\\', "/"))
     } else {
-        format!("file://{}", path.replace('\\', "/"))
+        let normalized = path.replace('\\', "/");
+        if normalized.starts_with('/') {
+            format!("file://{}", normalized)
+        } else {
+            format!("file:///{}", normalized)
+        }
     }
 }
 

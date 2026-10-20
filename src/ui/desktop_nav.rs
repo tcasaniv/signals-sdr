@@ -30,11 +30,17 @@ pub fn render_desktop_rail(
     state: &mut DesktopNavState,
 ) {
     ui.vertical_centered(|ui| {
-        ui.add_space(8.0);
-        // Logo o monograma de la aplicación
-        ui.label(RichText::new("SIGNALS").strong().size(11.0).color(theme.accent_blue()));
-        ui.label(RichText::new("SDR").strong().size(13.0).color(theme.text_primary()));
-        ui.add_space(16.0);
+        ui.add_space(4.0);
+        // Logo oficial de la aplicación
+        ui.add(
+            egui::Image::new(egui::include_image!("../../assets/icon_256.png"))
+                .fit_to_exact_size(Vec2::new(38.0, 38.0))
+                .corner_radius(8.0),
+        );
+        ui.add_space(6.0);
+        ui.label(RichText::new("SIGNALS").strong().size(10.5).color(theme.accent_blue()));
+        ui.label(RichText::new("SDR").strong().size(12.0).color(theme.text_primary()));
+        ui.add_space(14.0);
 
         // Botón Sección: Satélites y Señales
         let is_pipe = state.active_section == NavSection::Pipelines;

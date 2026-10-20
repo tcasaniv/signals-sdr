@@ -229,6 +229,54 @@ impl SignalsSdrApp {
             );
             ui.add_space(14.0);
 
+            // Tarjeta de identidad y presentación de Signals SDR
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(16.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Image::new(egui::include_image!("../assets/icon_256.png"))
+                                .fit_to_exact_size(egui::vec2(64.0, 64.0))
+                                .corner_radius(10.0),
+                        );
+                        ui.add_space(14.0);
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Signals SDR").strong().size(19.0).color(theme.text_primary()));
+                                ui.label(
+                                    RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                                        .size(11.5)
+                                        .color(theme.accent_blue())
+                                        .monospace(),
+                                );
+                            });
+                            ui.add_space(3.0);
+                            ui.label(
+                                RichText::new("Plataforma integral de DSP, telemetría satelital y transmisión SDR para radioaficionados y docencia.")
+                                    .size(12.5)
+                                    .color(theme.text_secondary()),
+                            );
+                            ui.add_space(6.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new("NOAA APT").monospace().size(11.0).color(theme.accent_blue()));
+                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("Meteor M2/M2-x LRPT").monospace().size(11.0).color(theme.accent_blue()));
+                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("ISS SSTV").monospace().size(11.0).color(theme.accent_blue()));
+                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("Generic SSTV").monospace().size(11.0).color(theme.accent_blue()));
+                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("FM / AM / I/Q TX").monospace().size(11.0).color(theme.accent_blue()));
+                            });
+                        });
+                    });
+                });
+
+            ui.add_space(14.0);
+
             // Tarjeta de apariencia y tema visual
             Frame::new()
                 .fill(theme.card_bg())

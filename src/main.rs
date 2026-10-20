@@ -6,11 +6,17 @@ use signals_sdr::SignalsSdrApp;
 fn main() -> eframe::Result<()> {
     env_logger::init();
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1100.0, 780.0])
+        .with_min_inner_size([380.0, 500.0])
+        .with_title("Signals SDR - Generador Didáctico de Señales de Radio");
+
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon_256.png")) {
+        viewport = viewport.with_icon(icon);
+    }
+
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 780.0])
-            .with_min_inner_size([380.0, 500.0])
-            .with_title("Signals SDR - Generador Didáctico de Señales de Radio"),
+        viewport,
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
