@@ -88,48 +88,98 @@ pub fn step_bar(
         (crate::icons::ICON_SETTINGS_INPUT_ANTENNA, "4. Transmisión"),
     ];
 
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
+    let avail_w = ui.available_width();
+    if avail_w < 520.0 {
+        // En pantallas móviles / estrechas, renderizar en cuadrícula 2x2 tipo control segmentado responsivo sin flechas rotas
+        let col_w = ((avail_w - 6.0) / 2.0).max(120.0);
+        for row in 0..2 {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                for col in 0..2 {
+                    let idx = row * 2 + col;
+                    let (icon, label) = steps[idx];
+                    let is_selected = *current_step == idx;
+                    let text_color = if is_selected {
+                        Color32::WHITE
+                    } else {
+                        theme.text_secondary()
+                    };
+                    let bg_color = if is_selected {
+                        theme.accent_blue()
+                    } else if *theme == AppTheme::Dark {
+                        Color32::from_rgb(26, 32, 42)
+                    } else {
+                        Color32::from_rgb(238, 242, 248)
+                    };
 
-        for (idx, (icon, label)) in steps.iter().enumerate() {
-            if idx > 0 {
-                ui.label(RichText::new(crate::icons::ICON_ARROW_FORWARD.codepoint).size(13.0).color(theme.text_secondary()));
-            }
+                    let btn = egui::Button::new(
+                        RichText::new(format!("{} {}", icon.codepoint, label))
+                            .size(12.0)
+                            .strong()
+                            .color(text_color),
+                    )
+                    .fill(bg_color)
+                    .stroke(if is_selected {
+                        Stroke::NONE
+                    } else {
+                        Stroke::new(1.0_f32, theme.card_border())
+                    })
+                    .corner_radius(8.0)
+                    .min_size(Vec2::new(col_w, 32.0));
 
-            let is_selected = *current_step == idx;
-            let text_color = if is_selected {
-                Color32::WHITE
-            } else {
-                theme.text_secondary()
-            };
-
-            let bg_color = if is_selected {
-                theme.accent_blue()
-            } else if *theme == AppTheme::Dark {
-                Color32::from_rgb(26, 32, 42)
-            } else {
-                Color32::from_rgb(238, 242, 248)
-            };
-
-            let pill_btn = egui::Button::new(
-                RichText::new(format!("  {} {}  ", icon.codepoint, label))
-                    .size(13.0)
-                    .strong()
-                    .color(text_color),
-            )
-            .fill(bg_color)
-            .stroke(if is_selected {
-                Stroke::NONE
-            } else {
-                Stroke::new(1.0_f32, theme.card_border())
-            })
-            .corner_radius(16.0);
-
-            if ui.add(pill_btn).clicked() {
-                *current_step = idx;
+                    if ui.add(btn).clicked() {
+                        *current_step = idx;
+                    }
+                }
+            });
+            if row == 0 {
+                ui.add_space(4.0);
             }
         }
-    });
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+
+            for (idx, (icon, label)) in steps.iter().enumerate() {
+                if idx > 0 {
+                    ui.label(RichText::new(crate::icons::ICON_ARROW_FORWARD.codepoint).size(13.0).color(theme.text_secondary()));
+                }
+
+                let is_selected = *current_step == idx;
+                let text_color = if is_selected {
+                    Color32::WHITE
+                } else {
+                    theme.text_secondary()
+                };
+
+                let bg_color = if is_selected {
+                    theme.accent_blue()
+                } else if *theme == AppTheme::Dark {
+                    Color32::from_rgb(26, 32, 42)
+                } else {
+                    Color32::from_rgb(238, 242, 248)
+                };
+
+                let pill_btn = egui::Button::new(
+                    RichText::new(format!("  {} {}  ", icon.codepoint, label))
+                        .size(13.0)
+                        .strong()
+                        .color(text_color),
+                )
+                .fill(bg_color)
+                .stroke(if is_selected {
+                    Stroke::NONE
+                } else {
+                    Stroke::new(1.0_f32, theme.card_border())
+                })
+                .corner_radius(16.0);
+
+                if ui.add(pill_btn).clicked() {
+                    *current_step = idx;
+                }
+            }
+        });
+    }
 
     ui.add_space(8.0);
     let line_rect = ui.available_rect_before_wrap();

@@ -144,7 +144,7 @@ impl GenericAmPipeline {
                         ui.label(RichText::new("Seleccionar Fuente de Audio").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             let pick_btn = egui::Button::new("Examinar Audio (WAV, MP3)...")
                                 .fill(theme.surface_subtle())
                                 .stroke(Stroke::new(1.0_f32, theme.card_border()));
@@ -267,7 +267,7 @@ impl GenericAmPipeline {
                     });
 
                     ui.add_space(10.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         let mod_btn = egui::Button::new(
                             RichText::new("Modular Señal AM").strong().color(Color32::WHITE),
                         )

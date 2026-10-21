@@ -165,9 +165,11 @@ impl IssSstvPipeline {
                 .corner_radius(10.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Flujo Didáctico Paso a Paso ISS SSTV").strong().size(15.0).color(theme.accent_blue()));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_narrow_flujo = ui.available_width() < 500.0;
+                    if is_narrow_flujo {
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new("Flujo Didáctico Paso a Paso ISS SSTV").strong().size(14.5).color(theme.accent_blue()));
+                            ui.add_space(4.0);
                             let auto_btn = egui::Button::new(
                                 RichText::new("Ejecutar Todo el Pipeline en un Clic").strong().color(Color32::WHITE),
                             )
@@ -179,7 +181,23 @@ impl IssSstvPipeline {
                                 self.execute_pipeline(config);
                             }
                         });
-                    });
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new("Flujo Didáctico Paso a Paso ISS SSTV").strong().size(15.0).color(theme.accent_blue()));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let auto_btn = egui::Button::new(
+                                    RichText::new("Ejecutar Todo el Pipeline en un Clic").strong().color(Color32::WHITE),
+                                )
+                                .fill(theme.accent_blue())
+                                .corner_radius(8.0)
+                                .min_size(Vec2::new(0.0, 32.0));
+
+                                if ui.add(auto_btn).clicked() {
+                                    self.execute_pipeline(config);
+                                }
+                            });
+                        });
+                    }
                     ui.add_space(6.0);
                     ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
                 });
@@ -375,7 +393,7 @@ impl IssSstvPipeline {
                             )
                             .fill(Color32::from_rgb(34, 197, 94))
                             .corner_radius(8.0)
-                            .min_size(Vec2::new(200.0, 34.0));
+                            .min_size(Vec2::new(0.0, 34.0));
 
                             if ui.add(tx_btn).clicked() {
                                 self.current_step = 2;

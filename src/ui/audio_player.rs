@@ -162,8 +162,8 @@ impl AudioPlayerWidget {
 
                     ui.add_space(6.0);
 
-                    // Controles de reproducción con iconos vectoriales
-                    ui.horizontal(|ui| {
+                    // Controles de reproducción con iconos vectoriales (adaptable)
+                    ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
 
                         // Botón Reproducir / Pausa (reproducción interna en la app)

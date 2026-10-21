@@ -216,9 +216,9 @@ impl AptPipeline {
                 .show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(RichText::new("Flujo Paso a Paso de Codificación NOAA APT").strong().size(15.0).color(theme.accent_blue()));
-                        ui.add_space(12.0);
+                        ui.add_space(8.0);
                         let auto_btn = egui::Button::new(RichText::new("Ejecutar todo el Proceso").strong().size(12.5))
-                            .min_size(Vec2::new(180.0, 32.0));
+                            .min_size(Vec2::new(0.0, 32.0));
                         if ui.add(auto_btn).clicked() {
                             self.step_preprocess(config);
                             self.step_encode_apt(config);
@@ -559,7 +559,7 @@ impl AptPipeline {
                             )
                             .fill(Color32::from_rgb(34, 197, 94))
                             .corner_radius(8.0)
-                            .min_size(Vec2::new(240.0, 38.0));
+                            .min_size(Vec2::new(0.0, 36.0));
 
                             if ui.add(tx_btn).clicked() {
                                 self.current_step = 2;

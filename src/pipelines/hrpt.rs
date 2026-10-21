@@ -138,7 +138,7 @@ impl HrptPipeline {
                     ui.label("Filtro conformado de pulso: Root Raised Cosine (RRC) alpha = 0.5");
 
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         let gen_btn = egui::Button::new(
                             RichText::new("Sintetizar Señal BPSK HRPT").strong().color(Color32::WHITE),
                         )

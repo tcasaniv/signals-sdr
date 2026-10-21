@@ -249,33 +249,33 @@ pub fn render_signal_visualizer(
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                // Cabecera con título y métricas totales
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new("Visualizador de Señal I/Q (Osciloscopio en Cuadratura)")
-                            .strong()
-                            .size(14.0)
-                            .color(theme.text_primary()),
-                    );
+                // Cabecera con título y métricas totales (adaptable para pantallas estrechas)
+                let total_dur = if sample_rate > 0 {
+                    samples.len() as f32 / sample_rate as f32
+                } else {
+                    0.0
+                };
 
-                    let total_dur = if sample_rate > 0 {
-                        samples.len() as f32 / sample_rate as f32
-                    } else {
-                        0.0
-                    };
-
-                    ui.label(
-                        RichText::new(format!(
-                            "Total: {} muestras | {:.2}s a {} Hz",
-                            samples.len(),
-                            total_dur,
-                            sample_rate
-                        ))
-                        .size(11.5)
-                        .color(theme.text_secondary()),
-                    );
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let is_narrow_hdr = ui.available_width() < 500.0;
+                if is_narrow_hdr {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new("Visualizador de Señal I/Q (Osciloscopio en Cuadratura)")
+                                .strong()
+                                .size(14.0)
+                                .color(theme.text_primary()),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "Total: {} muestras | {:.2}s a {} Hz",
+                                samples.len(),
+                                total_dur,
+                                sample_rate
+                            ))
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                        );
+                        ui.add_space(4.0);
                         let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
                         let save_btn = egui::Button::new(
                             RichText::new(btn_label)
@@ -323,7 +323,76 @@ pub fn render_signal_visualizer(
                             }
                         }
                     });
-                });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new("Visualizador de Señal I/Q (Osciloscopio en Cuadratura)")
+                                .strong()
+                                .size(14.0)
+                                .color(theme.text_primary()),
+                        );
+
+                        ui.label(
+                            RichText::new(format!(
+                                "Total: {} muestras | {:.2}s a {} Hz",
+                                samples.len(),
+                                total_dur,
+                                sample_rate
+                            ))
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
+                            let save_btn = egui::Button::new(
+                                RichText::new(btn_label)
+                                    .strong()
+                                    .size(11.5)
+                                    .color(Color32::WHITE),
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0);
+
+                            if ui.add(save_btn).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .set_file_name("oscilograma_iq.png")
+                                    .add_filter("Imagen PNG", &["png"])
+                                    .save_file()
+                                {
+                                    if let Some(parent) = path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
+                                    }
+                                    let (samples_i, samples_q): (Vec<f32>, Vec<f32>) =
+                                        samples.iter().cloned().unzip();
+                                    let chart = render_high_res_scope_chart(
+                                        &samples_i,
+                                        Some(&samples_q),
+                                        sample_rate,
+                                        "Oscilograma de Señal I/Q",
+                                        state.zoom_x,
+                                        state.pan_x,
+                                        state.scale_y,
+                                    );
+                                    match chart.save(&path) {
+                                        Ok(_) => {
+                                            state.status_message = Some((
+                                                format!("Oscilograma guardado con éxito: {}", path.display()),
+                                                false,
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            state.status_message = Some((
+                                                format!("Error al guardar oscilograma: {}", e),
+                                                true,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
 
                 if let Some((ref msg, is_err)) = state.status_message {
                     ui.add_space(4.0);
@@ -459,9 +528,9 @@ pub fn render_signal_visualizer(
                     }
                 }
 
-                // Leyenda inferior y ventana de tiempo actual
+                // Leyenda inferior y ventana de tiempo actual (adaptable)
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new("Canal I (En fase)").strong().size(11.0).color(i_color));
                     ui.add_space(8.0);
                     ui.label(RichText::new("Canal Q (Cuadratura)").strong().size(11.0).color(q_color));
@@ -469,19 +538,18 @@ pub fn render_signal_visualizer(
                     if sample_rate > 0 {
                         let t_start = start_idx as f32 / sample_rate as f32;
                         let t_end = end_idx as f32 / sample_rate as f32;
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(format!(
-                                    "Ventana: [{:.4}s - {:.4}s] | {:.4}s visible ({} muestras)",
-                                    t_start,
-                                    t_end,
-                                    t_end - t_start,
-                                    visible_len
-                                ))
-                                .size(10.5)
-                                .color(theme.text_secondary()),
-                            );
-                        });
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "Ventana: [{:.4}s - {:.4}s] | {:.4}s visible ({} muestras)",
+                                t_start,
+                                t_end,
+                                t_end - t_start,
+                                visible_len
+                            ))
+                            .size(10.5)
+                            .color(theme.text_secondary()),
+                        );
                     }
                 });
             });
@@ -508,32 +576,32 @@ pub fn render_audio_waveform(
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new(title)
-                            .strong()
-                            .size(13.5)
-                            .color(theme.text_primary()),
-                    );
+                let total_dur = if sample_rate > 0 {
+                    samples.len() as f32 / sample_rate as f32
+                } else {
+                    0.0
+                };
 
-                    let total_dur = if sample_rate > 0 {
-                        samples.len() as f32 / sample_rate as f32
-                    } else {
-                        0.0
-                    };
-
-                    ui.label(
-                        RichText::new(format!(
-                            "Total: {} muestras | {:.2}s a {} Hz",
-                            samples.len(),
-                            total_dur,
-                            sample_rate
-                        ))
-                        .size(11.5)
-                        .color(theme.text_secondary()),
-                    );
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let is_narrow_audio = ui.available_width() < 500.0;
+                if is_narrow_audio {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(title)
+                                .strong()
+                                .size(13.5)
+                                .color(theme.text_primary()),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "Total: {} muestras | {:.2}s a {} Hz",
+                                samples.len(),
+                                total_dur,
+                                sample_rate
+                            ))
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                        );
+                        ui.add_space(4.0);
                         let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
                         let save_btn = egui::Button::new(
                             RichText::new(btn_label)
@@ -580,7 +648,75 @@ pub fn render_audio_waveform(
                             }
                         }
                     });
-                });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(title)
+                                .strong()
+                                .size(13.5)
+                                .color(theme.text_primary()),
+                        );
+
+                        ui.label(
+                            RichText::new(format!(
+                                "Total: {} muestras | {:.2}s a {} Hz",
+                                samples.len(),
+                                total_dur,
+                                sample_rate
+                            ))
+                            .size(11.5)
+                            .color(theme.text_secondary()),
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let btn_label = format!("{} Guardar Oscilograma (.png)", crate::icons::ICON_DOWNLOAD.codepoint);
+                            let save_btn = egui::Button::new(
+                                RichText::new(btn_label)
+                                    .strong()
+                                    .size(11.5)
+                                    .color(Color32::WHITE),
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0);
+
+                            if ui.add(save_btn).clicked() {
+                                let default_fn = format!("{}.png", title.to_lowercase().replace(' ', "_"));
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .set_file_name(&default_fn)
+                                    .add_filter("Imagen PNG", &["png"])
+                                    .save_file()
+                                {
+                                    if let Some(parent) = path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
+                                    }
+                                    let chart = render_high_res_scope_chart(
+                                        samples,
+                                        None,
+                                        sample_rate,
+                                        title,
+                                        state.zoom_x,
+                                        state.pan_x,
+                                        state.scale_y,
+                                    );
+                                    match chart.save(&path) {
+                                        Ok(_) => {
+                                            state.status_message = Some((
+                                                format!("Oscilograma guardado con éxito: {}", path.display()),
+                                                false,
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            state.status_message = Some((
+                                                format!("Error al guardar oscilograma: {}", e),
+                                                true,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
 
                 if let Some((ref msg, is_err)) = state.status_message {
                     ui.add_space(4.0);
@@ -689,12 +825,12 @@ pub fn render_audio_waveform(
                     }
                 }
 
-                // Información de rango visible al pie del osciloscopio
+                // Información de rango visible al pie del osciloscopio (adaptable)
                 if sample_rate > 0 {
                     ui.add_space(4.0);
                     let t_start = start_idx as f32 / sample_rate as f32;
                     let t_end = end_idx as f32 / sample_rate as f32;
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label(
                             RichText::new(format!(
                                 "Ventana visible: [{:.4}s - {:.4}s] | {:.4}s mostrados ({} muestras)",
@@ -714,7 +850,7 @@ pub fn render_audio_waveform(
     ui.data_mut(|d| *d.get_temp_mut_or_default::<ScopeControls>(scope_id) = state);
 }
 
-/// Renderiza la barra de control interactiva para los osciloscopios
+/// Renderiza la barra de control interactiva para los osciloscopios (adaptable)
 fn render_scope_toolbar(
     ui: &mut Ui,
     theme: &AppTheme,
@@ -722,48 +858,97 @@ fn render_scope_toolbar(
     _total_len: usize,
     _sample_rate: u32,
 ) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
+    if ui.available_width() < 500.0 {
+        ui.vertical(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Zoom Tiempo (X):").size(11.5).color(theme.text_secondary()));
+                ui.add(
+                    egui::Slider::new(&mut state.zoom_x, 1.0..=50_000.0)
+                        .logarithmic(true)
+                        .suffix("x")
+                        .custom_formatter(|n, _| format!("{:.1}x", n)),
+                );
 
-        ui.label(RichText::new("Zoom Tiempo (X):").size(11.5).color(theme.text_secondary()));
-        ui.add(
-            egui::Slider::new(&mut state.zoom_x, 1.0..=50_000.0)
-                .logarithmic(true)
-                .suffix("x")
-                .custom_formatter(|n, _| format!("{:.1}x", n)),
-        );
+                if state.zoom_x > 1.01 {
+                    ui.label(RichText::new("Posición X:").size(11.5).color(theme.text_secondary()));
+                    ui.add(
+                        egui::Slider::new(&mut state.pan_x, 0.0..=1.0)
+                            .show_value(false),
+                    );
+                }
+            });
 
-        if state.zoom_x > 1.01 {
-            ui.label(RichText::new("Posición X:").size(11.5).color(theme.text_secondary()));
-            ui.add(
-                egui::Slider::new(&mut state.pan_x, 0.0..=1.0)
-                    .show_value(false),
+            ui.add_space(2.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Escala Amplitud (Y):").size(11.5).color(theme.text_secondary()));
+                ui.add(
+                    egui::Slider::new(&mut state.scale_y, 0.1..=100.0)
+                        .logarithmic(true)
+                        .suffix("x")
+                        .custom_formatter(|n, _| format!("{:.1}x", n)),
+                );
+
+                let is_custom = state.zoom_x != 1.0 || state.scale_y != 1.0 || state.pan_x != 0.0;
+                if is_custom {
+                    if ui.button(RichText::new("Restablecer").size(11.0)).clicked() {
+                        state.zoom_x = 1.0;
+                        state.pan_x = 0.0;
+                        state.scale_y = 1.0;
+                    }
+                }
+            });
+
+            ui.add_space(2.0);
+            ui.label(
+                RichText::new("(Arrastre el mouse o use la rueda para zoom/scroll)")
+                    .size(10.5)
+                    .color(theme.text_secondary()),
             );
-        }
+        });
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
 
-        ui.label(RichText::new("Escala Amplitud (Y):").size(11.5).color(theme.text_secondary()));
-        ui.add(
-            egui::Slider::new(&mut state.scale_y, 0.1..=100.0)
-                .logarithmic(true)
-                .suffix("x")
-                .custom_formatter(|n, _| format!("{:.1}x", n)),
-        );
+            ui.label(RichText::new("Zoom Tiempo (X):").size(11.5).color(theme.text_secondary()));
+            ui.add(
+                egui::Slider::new(&mut state.zoom_x, 1.0..=50_000.0)
+                    .logarithmic(true)
+                    .suffix("x")
+                    .custom_formatter(|n, _| format!("{:.1}x", n)),
+            );
 
-        let is_custom = state.zoom_x != 1.0 || state.scale_y != 1.0 || state.pan_x != 0.0;
-        if is_custom {
-            if ui.button(RichText::new("Restablecer").size(11.0)).clicked() {
-                state.zoom_x = 1.0;
-                state.pan_x = 0.0;
-                state.scale_y = 1.0;
+            if state.zoom_x > 1.01 {
+                ui.label(RichText::new("Posición X:").size(11.5).color(theme.text_secondary()));
+                ui.add(
+                    egui::Slider::new(&mut state.pan_x, 0.0..=1.0)
+                        .show_value(false),
+                );
             }
-        }
 
-        ui.label(
-            RichText::new("(Arrastre el mouse o use la rueda para zoom/scroll)")
-                .size(10.5)
-                .color(theme.text_secondary()),
-        );
-    });
+            ui.label(RichText::new("Escala Amplitud (Y):").size(11.5).color(theme.text_secondary()));
+            ui.add(
+                egui::Slider::new(&mut state.scale_y, 0.1..=100.0)
+                    .logarithmic(true)
+                    .suffix("x")
+                    .custom_formatter(|n, _| format!("{:.1}x", n)),
+            );
+
+            let is_custom = state.zoom_x != 1.0 || state.scale_y != 1.0 || state.pan_x != 0.0;
+            if is_custom {
+                if ui.button(RichText::new("Restablecer").size(11.0)).clicked() {
+                    state.zoom_x = 1.0;
+                    state.pan_x = 0.0;
+                    state.scale_y = 1.0;
+                }
+            }
+
+            ui.label(
+                RichText::new("(Arrastre el mouse o use la rueda para zoom/scroll)")
+                    .size(10.5)
+                    .color(theme.text_secondary()),
+            );
+        });
+    }
 }
 
 /// Maneja la interacción con mouse (rueda para zoom y arrastre para pan)

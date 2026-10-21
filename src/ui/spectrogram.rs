@@ -481,8 +481,9 @@ pub fn render_spectrogram_widget(
                         .color(theme.text_secondary()),
                     );
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Botón Guardar Espectrograma con letras blancas para contraste impecable
+                    let is_narrow_spec = ui.available_width() < 500.0;
+                    if is_narrow_spec {
+                        ui.add_space(4.0);
                         let save_btn = egui::Button::new(
                             RichText::new("Guardar Espectrograma (.png)")
                                 .strong()
@@ -506,7 +507,6 @@ pub fn render_spectrogram_widget(
                                 if let Some(parent) = path.parent() {
                                     let _ = std::fs::create_dir_all(parent);
                                 }
-                                // Generar gráfico de alta resolución (1600x900) con el zoom y la posición actuales
                                 let high_res_chart = render_high_res_spectrogram_chart(
                                     samples,
                                     sample_rate,
@@ -532,7 +532,58 @@ pub fn render_spectrogram_widget(
                                 }
                             }
                         }
-                    });
+                    } else {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let save_btn = egui::Button::new(
+                                RichText::new("Guardar Espectrograma (.png)")
+                                    .strong()
+                                    .size(12.5)
+                                    .color(Color32::WHITE),
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0);
+
+                            if ui.add(save_btn).clicked() {
+                                let default_filename = format!("espectrograma_{}.png", pipeline_name);
+                                let save_dest = rfd::FileDialog::new()
+                                    .set_file_name(&default_filename)
+                                    .add_filter("Imagen PNG", &["png"])
+                                    .save_file()
+                                    .or_else(|| {
+                                        target_output_dir.map(|dir| dir.join(&default_filename))
+                                    });
+
+                                if let Some(path) = save_dest {
+                                    if let Some(parent) = path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
+                                    }
+                                    let high_res_chart = render_high_res_spectrogram_chart(
+                                        samples,
+                                        sample_rate,
+                                        pipeline_name,
+                                        state.zoom_x,
+                                        state.pan_x,
+                                        state.zoom_y,
+                                        state.pan_y,
+                                    );
+                                    match high_res_chart.save(&path) {
+                                        Ok(_) => {
+                                            state.status_message = Some((
+                                                format!("Espectrograma en alta resolución guardado: {}", path.display()),
+                                                false,
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            state.status_message = Some((
+                                                format!("Error al guardar imagen: {}", e),
+                                                true,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
                 });
 
                 if let Some((ref msg, is_err)) = state.status_message {

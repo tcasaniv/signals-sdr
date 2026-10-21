@@ -136,7 +136,34 @@ pub fn render_mobile_pipeline_grid(
 
         let pipelines = PipelineId::all();
         egui::ScrollArea::vertical().show(ui, |ui| {
+            let mut current_category = "";
             for &pipe in pipelines {
+                if pipe.category() != current_category {
+                    current_category = pipe.category();
+                    ui.add_space(8.0);
+                    let cat_icon = match current_category {
+                        "Satélites Meteorológicos" => icons::ICON_SATELLITE_ALT.codepoint,
+                        "Imágenes SSTV" => icons::ICON_IMAGE.codepoint,
+                        "Moduladores Analógicos" => icons::ICON_GRAPHIC_EQ.codepoint,
+                        "Herramientas de Señal" => icons::ICON_ANALYTICS.codepoint,
+                        _ => icons::ICON_RADIO.codepoint,
+                    };
+                    ui.label(
+                        RichText::new(format!("{} {}", cat_icon, current_category))
+                            .size(12.0)
+                            .strong()
+                            .color(theme.accent_blue()),
+                    );
+                    ui.add_space(4.0);
+                }
+
+                let pipe_icon = match pipe {
+                    PipelineId::NoaaApt | PipelineId::MeteorLrpt | PipelineId::NoaaHrpt => icons::ICON_SATELLITE_ALT.codepoint,
+                    PipelineId::IssSstv | PipelineId::GenericSstv => icons::ICON_IMAGE.codepoint,
+                    PipelineId::GenericFm | PipelineId::GenericAm => icons::ICON_GRAPHIC_EQ.codepoint,
+                    PipelineId::GenericIq => icons::ICON_ANALYTICS.codepoint,
+                };
+
                 let card_frame = Frame::new()
                     .fill(theme.card_bg())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -147,7 +174,8 @@ pub fn render_mobile_pipeline_grid(
                     ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(RichText::new(pipe.title()).strong().size(14.0).color(theme.accent_blue()));
+                            ui.label(RichText::new(pipe_icon).size(15.0).color(theme.accent_blue()));
+                            ui.label(RichText::new(pipe.title()).strong().size(14.0).color(theme.text_primary()));
                             ui.label(RichText::new(format!("({})", pipe.category())).size(11.0).color(theme.text_secondary()));
                         });
                         ui.add_space(4.0);

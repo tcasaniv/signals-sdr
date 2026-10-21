@@ -270,7 +270,7 @@ impl GenericIqPipeline {
                     });
 
                     ui.add_space(10.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         let apply_btn = egui::Button::new(
                             RichText::new("Aplicar Procesamiento").strong().color(Color32::WHITE),
                         )

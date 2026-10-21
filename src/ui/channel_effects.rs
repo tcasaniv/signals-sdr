@@ -21,7 +21,7 @@ pub fn render_channel_effects_tab(
 ) {
     ui.vertical(|ui| {
         // 1. Selector Superior de Modo (Pills): Sin efectos vs Con efectos de canal
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(
                 RichText::new("Modo de Canal:")
                     .strong()
@@ -238,35 +238,63 @@ fn render_with_effects_view(
         .inner_margin(14.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                // Fila de selección de Presets contextuales
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new("Preset de Escenario Realista:")
-                            .strong()
-                            .size(13.5)
-                            .color(theme.accent_blue()),
-                    );
-                    ui.add_space(6.0);
+                // Fila de selección de Presets contextuales (adaptable para pantallas estrechas)
+                let available_presets = ChannelPreset::for_pipeline(pipeline_id);
+                let current_name = state.params.active_preset.display_name();
 
-                    let available_presets = ChannelPreset::for_pipeline(pipeline_id);
-                    let current_name = state.params.active_preset.display_name();
-
-                    egui::ComboBox::from_id_salt("channel_preset_combo")
-                        .selected_text(current_name)
-                        .show_ui(ui, |ui| {
-                            for preset in available_presets {
-                                let is_selected = state.params.active_preset == *preset;
-                                if ui
-                                    .selectable_label(is_selected, preset.display_name())
-                                    .clicked()
-                                {
-                                    state.params =
-                                        ChannelSimulationParams::from_preset(*preset, carrier_mhz);
-                                    state.is_dirty = true;
+                if ui.available_width() < 460.0 {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new("Preset de Escenario Realista:")
+                                .strong()
+                                .size(13.0)
+                                .color(theme.accent_blue()),
+                        );
+                        ui.add_space(2.0);
+                        egui::ComboBox::from_id_salt("channel_preset_combo")
+                            .selected_text(current_name)
+                            .width(ui.available_width() - 8.0)
+                            .show_ui(ui, |ui| {
+                                for preset in available_presets {
+                                    let is_selected = state.params.active_preset == *preset;
+                                    if ui
+                                        .selectable_label(is_selected, preset.display_name())
+                                        .clicked()
+                                    {
+                                        state.params =
+                                            ChannelSimulationParams::from_preset(*preset, carrier_mhz);
+                                        state.is_dirty = true;
+                                    }
                                 }
-                            }
-                        });
-                });
+                            });
+                    });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new("Preset de Escenario Realista:")
+                                .strong()
+                                .size(13.5)
+                                .color(theme.accent_blue()),
+                        );
+                        ui.add_space(6.0);
+
+                        egui::ComboBox::from_id_salt("channel_preset_combo")
+                            .selected_text(current_name)
+                            .show_ui(ui, |ui| {
+                                for preset in available_presets {
+                                    let is_selected = state.params.active_preset == *preset;
+                                    if ui
+                                        .selectable_label(is_selected, preset.display_name())
+                                        .clicked()
+                                    {
+                                        state.params =
+                                            ChannelSimulationParams::from_preset(*preset, carrier_mhz);
+                                        state.is_dirty = true;
+                                    }
+                                }
+                            });
+                    });
+                }
 
                 ui.add_space(6.0);
                 // Descripción didáctica del preset actual
@@ -366,7 +394,7 @@ fn render_with_effects_view(
                     ).size(11.5).color(theme.text_secondary()));
 
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Modo Doppler:");
             let current_mode = match state.params.doppler_mode {
                 DopplerMode::LeoPass => "Pase Satelital LEO (Curva S)",
@@ -410,8 +438,10 @@ fn render_with_effects_view(
                         state.is_dirty = true;
                     }
                 });
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Desviación Máxima (Delta f):");
             if ui
                 .add(
@@ -459,7 +489,7 @@ fn render_with_effects_view(
                     ).size(11.5).color(theme.text_secondary()));
 
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Distancia de Enlace:");
             if ui
                 .add(egui::Slider::new(&mut state.params.distance_km, 1.0..=3000.0).suffix(" km"))
@@ -468,8 +498,10 @@ fn render_with_effects_view(
                 state.params.active_preset = ChannelPreset::Custom;
                 state.is_dirty = true;
             }
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Pérdida Atmosférica:");
             if ui
                 .add(
@@ -483,7 +515,8 @@ fn render_with_effects_view(
             }
         });
 
-        ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Atenuación Directa Normalizada:");
             if ui
                 .add(
@@ -535,7 +568,7 @@ fn render_with_effects_view(
                     ).size(11.5).color(theme.text_secondary()));
 
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Factor K de Rician:");
             if ui
                 .add(egui::Slider::new(&mut state.params.rician_k_db, 0.0..=25.0).suffix(" dB"))
@@ -544,8 +577,10 @@ fn render_with_effects_view(
                 state.params.active_preset = ChannelPreset::Custom;
                 state.is_dirty = true;
             }
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Tasa de Fading (fm):");
             if ui
                 .add(egui::Slider::new(&mut state.params.fading_rate_hz, 0.1..=30.0).suffix(" Hz"))
@@ -586,7 +621,7 @@ fn render_with_effects_view(
                     ).size(11.5).color(theme.text_secondary()));
 
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Ruido Previo (Apertura):");
             if ui
                 .add(egui::Slider::new(&mut state.params.pre_padding_sec, 0.0..=5.0).suffix(" s"))
@@ -595,8 +630,10 @@ fn render_with_effects_view(
                 state.params.active_preset = ChannelPreset::Custom;
                 state.is_dirty = true;
             }
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Ruido Posterior (Cierre):");
             if ui
                 .add(egui::Slider::new(&mut state.params.post_padding_sec, 0.0..=5.0).suffix(" s"))
@@ -638,7 +675,7 @@ fn render_with_effects_view(
                     ).size(11.5).color(theme.text_secondary()));
 
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Desbalance I/Q:");
             if ui
                 .add(egui::Slider::new(&mut state.params.iq_imbalance_db, -2.0..=2.0).suffix(" dB"))
@@ -647,8 +684,10 @@ fn render_with_effects_view(
                 state.params.active_preset = ChannelPreset::Custom;
                 state.is_dirty = true;
             }
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Error de Fase:");
             if ui
                 .add(
@@ -662,7 +701,8 @@ fn render_with_effects_view(
             }
         });
 
-        ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Offset DC (I):");
             if ui
                 .add(egui::Slider::new(
@@ -674,8 +714,10 @@ fn render_with_effects_view(
                 state.params.active_preset = ChannelPreset::Custom;
                 state.is_dirty = true;
             }
+        });
 
-            ui.add_space(10.0);
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
             ui.label("Offset DC (Q):");
             if ui
                 .add(egui::Slider::new(
@@ -704,7 +746,7 @@ fn render_with_effects_view(
         .inner_margin(14.0)
         .show(ui, |ui| {
             // Botón de cálculo y feedback
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let apply_btn = egui::Button::new(
                     RichText::new("  ⟳ Aplicar Efectos de Canal  ")
                         .strong()

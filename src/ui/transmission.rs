@@ -142,22 +142,38 @@ fn render_sdr_panel(
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                // Cabecera con botón de detección
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new("Configuración de Transmisión SDR")
-                            .strong()
-                            .size(15.0)
-                            .color(theme.accent_blue()),
-                    );
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Cabecera con botón de detección (adaptable)
+                if ui.available_width() < 480.0 {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new("Configuración de Transmisión SDR")
+                                .strong()
+                                .size(15.0)
+                                .color(theme.accent_blue()),
+                        );
+                        ui.add_space(4.0);
                         let btn_text = format!("{} Detectar SDRs Conectados", icons::ICON_REFRESH.codepoint);
                         if ui.button(RichText::new(btn_text).size(12.0).color(theme.accent_blue())).clicked() {
                             state.detected_devices = detect_detailed_radios();
                         }
                     });
-                });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new("Configuración de Transmisión SDR")
+                                .strong()
+                                .size(15.0)
+                                .color(theme.accent_blue()),
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let btn_text = format!("{} Detectar SDRs Conectados", icons::ICON_REFRESH.codepoint);
+                            if ui.button(RichText::new(btn_text).size(12.0).color(theme.accent_blue())).clicked() {
+                                state.detected_devices = detect_detailed_radios();
+                            }
+                        });
+                    });
+                }
 
                 // Panel Multidispositivo (Ver / Copiar / Seleccionar por Serial / ID)
                 if !state.detected_devices.is_empty() {
@@ -184,6 +200,57 @@ fn render_sdr_panel(
                                 .corner_radius(6.0)
                                 .inner_margin(8.0)
                                 .show(ui, |ui| {
+                                let is_narrow = ui.available_width() < 480.0;
+                                if is_narrow {
+                                    ui.vertical(|ui| {
+                                        ui.label(RichText::new(&dev.label).strong().size(13.0).color(theme.text_primary()));
+                                        let serial_text = dev.serial.as_deref().unwrap_or("No reportado");
+                                        ui.label(RichText::new(format!("ID / Serial: {}", serial_text)).size(11.0).color(theme.text_secondary()));
+                                        ui.add_space(4.0);
+
+                                        ui.horizontal_wrapped(|ui| {
+                                            let sel_btn_text = format!("{} Seleccionar este SDR", icons::ICON_MY_LOCATION.codepoint);
+                                            if ui.button(RichText::new(sel_btn_text).size(11.0)).clicked() {
+                                                state.selected_backend = dev.backend;
+                                                state.tx_config.backend = dev.backend;
+                                                state.tx_config.hw_type = dev.hw_type;
+                                                state.tx_config.device_args = dev.full_args.clone();
+                                                if let Some(ref s) = dev.serial {
+                                                    state.tx_config.target_serial = s.clone();
+                                                }
+                                                let backend_devs = SdrDeviceOption::for_backend(dev.backend);
+                                                if let Some(idx) = backend_devs.iter().position(|d| d.hw_type == dev.hw_type) {
+                                                    state.selected_device_idx = idx;
+                                                }
+                                                state.copied_feedback = Some((
+                                                    format!("Dispositivo '{}' seleccionado para transmisión", dev.label),
+                                                    std::time::Instant::now(),
+                                                ));
+                                            }
+
+                                            let copy_args_text = format!("{} Copiar Args", icons::ICON_CONTENT_COPY.codepoint);
+                                            if ui.button(RichText::new(copy_args_text).size(11.0)).clicked() {
+                                                ui.ctx().copy_text(dev.full_args.clone());
+                                                state.copied_feedback = Some((
+                                                    "Argumentos copiados al portapapeles".to_string(),
+                                                    std::time::Instant::now(),
+                                                ));
+                                            }
+
+                                            if let Some(ref s) = dev.serial {
+                                                let s_clone = s.clone();
+                                                let copy_serial_text = format!("{} Copiar Serial", icons::ICON_CONTENT_COPY.codepoint);
+                                                if ui.button(RichText::new(copy_serial_text).size(11.0)).clicked() {
+                                                    ui.ctx().copy_text(s_clone);
+                                                    state.copied_feedback = Some((
+                                                        "Número de serie copiado al portapapeles".to_string(),
+                                                        std::time::Instant::now(),
+                                                    ));
+                                                }
+                                            }
+                                        });
+                                    });
+                                } else {
                                     ui.horizontal(|ui| {
                                         ui.vertical(|ui| {
                                             ui.label(RichText::new(&dev.label).strong().size(13.0).color(theme.text_primary()));
@@ -236,6 +303,7 @@ fn render_sdr_panel(
                                             }
                                         });
                                     });
+                                }
                                 });
                             ui.add_space(2.0);
                         }
@@ -259,15 +327,18 @@ fn render_sdr_panel(
                 ui.add_space(8.0);
 
                 // --- ETAPA 1: SELECTOR DE FRAMEWORK / BACKEND SDR ---
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Framework / Backend SDR:").strong());
-                    let backend_name = match state.selected_backend {
-                        SdrBackend::SeifyNative => "Seify Nativo (Drivers integrados Rust - Recomendado)",
-                        SdrBackend::SoapySdr => "SoapySDR (Módulos dinámicos C++ / Radioconda)",
-                    };
+                let is_narrow_backend = ui.available_width() < 480.0;
+                let backend_name = match state.selected_backend {
+                    SdrBackend::SeifyNative => "Seify Nativo (Drivers integrados Rust - Recomendado)",
+                    SdrBackend::SoapySdr => "SoapySDR (Módulos dinámicos C++ / Radioconda)",
+                };
 
+                if is_narrow_backend {
+                    ui.label(RichText::new("Framework / Backend SDR:").strong());
+                    ui.add_space(2.0);
                     egui::ComboBox::from_id_salt("sdr_backend_combo")
                         .selected_text(backend_name)
+                        .width(ui.available_width() - 8.0)
                         .show_ui(ui, |ui| {
                             if ui
                                 .selectable_value(
@@ -303,7 +374,48 @@ fn render_sdr_panel(
                                 }
                             }
                         });
-                });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Framework / Backend SDR:").strong());
+                        egui::ComboBox::from_id_salt("sdr_backend_combo")
+                            .selected_text(backend_name)
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_value(
+                                        &mut state.selected_backend,
+                                        SdrBackend::SeifyNative,
+                                        "Seify Nativo (Drivers integrados Rust - Recomendado)",
+                                    )
+                                    .clicked()
+                                {
+                                    state.tx_config.backend = SdrBackend::SeifyNative;
+                                    state.selected_device_idx = 0;
+                                    let devs = SdrDeviceOption::for_backend(SdrBackend::SeifyNative);
+                                    if let Some(first) = devs.first() {
+                                        state.tx_config.hw_type = first.hw_type;
+                                        state.tx_config.device_args = first.default_args.clone();
+                                    }
+                                }
+
+                                if ui
+                                    .selectable_value(
+                                        &mut state.selected_backend,
+                                        SdrBackend::SoapySdr,
+                                        "SoapySDR (Módulos dinámicos C++ / Radioconda)",
+                                    )
+                                    .clicked()
+                                {
+                                    state.tx_config.backend = SdrBackend::SoapySdr;
+                                    state.selected_device_idx = 0;
+                                    let devs = SdrDeviceOption::for_backend(SdrBackend::SoapySdr);
+                                    if let Some(first) = devs.first() {
+                                        state.tx_config.hw_type = first.hw_type;
+                                        state.tx_config.device_args = first.default_args.clone();
+                                    }
+                                }
+                            });
+                    });
+                }
 
                 let backend_help = match state.selected_backend {
                     SdrBackend::SeifyNative => "Transmite con drivers puros en Rust integrados en el ejecutable. No requiere instalar software externo.",
@@ -315,16 +427,18 @@ fn render_sdr_panel(
 
                 // --- ETAPA 2: SELECTOR DE DISPOSITIVO SDR (Filtrado por Backend) ---
                 let backend_devices = SdrDeviceOption::for_backend(state.selected_backend);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Dispositivo SDR:").strong());
-                    if state.selected_device_idx >= backend_devices.len() {
-                        state.selected_device_idx = 0;
-                    }
+                if state.selected_device_idx >= backend_devices.len() {
+                    state.selected_device_idx = 0;
+                }
 
+                if is_narrow_backend {
+                    ui.label(RichText::new("Dispositivo SDR:").strong());
+                    ui.add_space(2.0);
                     if !backend_devices.is_empty() {
                         let curr_name = &backend_devices[state.selected_device_idx].display_name;
                         egui::ComboBox::from_id_salt("sdr_dev_filtered_combo")
                             .selected_text(curr_name)
+                            .width(ui.available_width() - 8.0)
                             .show_ui(ui, |ui| {
                                 for (idx, dev) in backend_devices.iter().enumerate() {
                                     if ui.selectable_value(&mut state.selected_device_idx, idx, &dev.display_name).clicked() {
@@ -334,7 +448,24 @@ fn render_sdr_panel(
                                 }
                             });
                     }
-                });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Dispositivo SDR:").strong());
+                        if !backend_devices.is_empty() {
+                            let curr_name = &backend_devices[state.selected_device_idx].display_name;
+                            egui::ComboBox::from_id_salt("sdr_dev_filtered_combo")
+                                .selected_text(curr_name)
+                                .show_ui(ui, |ui| {
+                                    for (idx, dev) in backend_devices.iter().enumerate() {
+                                        if ui.selectable_value(&mut state.selected_device_idx, idx, &dev.display_name).clicked() {
+                                            state.tx_config.hw_type = dev.hw_type;
+                                            state.tx_config.device_args = dev.default_args.clone();
+                                        }
+                                    }
+                                });
+                        }
+                    });
+                }
 
                 // Descripción didáctica del SDR seleccionado
                 if state.selected_device_idx < backend_devices.len() {
@@ -347,8 +478,10 @@ fn render_sdr_panel(
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.label("Serial / ID de Hardware (opcional):");
+                        let input_w = (ui.available_width() - 80.0).clamp(120.0, 260.0);
                         ui.add(
                             egui::TextEdit::singleline(&mut state.tx_config.target_serial)
+                                .desired_width(input_w)
                                 .hint_text("Dejar vacío para el primer SDR detectado"),
                         );
                         if !state.tx_config.target_serial.is_empty() {
@@ -395,16 +528,19 @@ fn render_sdr_panel(
                         .corner_radius(6.0)
                         .inner_margin(8.0)
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 let (warn_rect, _) = ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::hover());
                                 icons::draw_warning_icon(ui, warn_rect, Color32::from_rgb(250, 204, 21));
-                                ui.label(
-                                    RichText::new(format!(
-                                        "Tasa de muestreo actual ({} Hz) no admitida por HackRF. Requiere al menos 1,000,000 Hz (1 MSps) en Soapy o 2,000,000 Hz en Seify. Ve al paso 2 y ajusta la tasa de muestreo del pipeline.",
-                                        sample_rate
-                                    ))
-                                    .size(11.5)
-                                    .color(Color32::from_rgb(250, 204, 21)),
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(format!(
+                                            "Tasa de muestreo actual ({} Hz) no admitida por HackRF. Requiere al menos 1,000,000 Hz (1 MSps) en Soapy o 2,000,000 Hz en Seify. Ve al paso 2 y ajusta la tasa de muestreo del pipeline.",
+                                            sample_rate
+                                        ))
+                                        .size(11.5)
+                                        .color(Color32::from_rgb(250, 204, 21)),
+                                    )
+                                    .wrap(),
                                 );
                             });
                         });
@@ -569,7 +705,7 @@ fn render_sdr_panel(
                 let is_transmitting = sdr_controller.is_transmitting();
                 let status = sdr_controller.status();
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if is_transmitting {
                         let stop_label = format!("{} Detener Transmisión", icons::ICON_STOP.codepoint);
                         let stop_btn = egui::Button::new(
@@ -595,7 +731,14 @@ fn render_sdr_panel(
                         }
 
                         if samples.is_empty() {
-                            ui.label(RichText::new("(Primero genera la señal en el paso 2)").size(12.0).color(theme.text_secondary()));
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new("(Primero genera la señal en el paso 2)")
+                                        .size(12.0)
+                                        .color(theme.text_secondary()),
+                                )
+                                .wrap(),
+                            );
                         }
                     }
                 });

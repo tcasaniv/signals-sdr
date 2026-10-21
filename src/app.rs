@@ -121,7 +121,8 @@ impl SignalsSdrApp {
         CentralPanel::default()
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(10.0))
             .show(ui, |ui| {
-                ScrollArea::vertical().show(ui, |ui| {
+                ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_max_width(ui.available_width());
                     match self.desktop_nav.active_section {
                         NavSection::Settings => self.render_settings(ui, theme),
                         NavSection::Pipelines => {
@@ -181,7 +182,8 @@ impl SignalsSdrApp {
         CentralPanel::default()
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(16.0))
             .show(ui, |ui| {
-                ScrollArea::vertical().show(ui, |ui| {
+                ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_max_width(ui.available_width());
                     match self.desktop_nav.active_section {
                         NavSection::Settings => self.render_settings(ui, theme),
                         NavSection::Pipelines => self.render_active_pipeline(ui, theme),

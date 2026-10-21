@@ -39,6 +39,7 @@ impl AppTheme {
 
         for theme in [egui::Theme::Dark, egui::Theme::Light] {
             ctx.style_mut_of(theme, |style| {
+                style.wrap_mode = Some(egui::TextWrapMode::Wrap);
                 style.spacing.button_padding = egui::vec2(12.0, 7.0);
                 style.spacing.item_spacing = egui::vec2(10.0, 8.0);
                 style.visuals.widgets.noninteractive.corner_radius = 8.0.into();
