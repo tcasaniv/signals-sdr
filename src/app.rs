@@ -158,18 +158,18 @@ impl SignalsSdrApp {
                 render_desktop_rail(ui, theme, &mut self.desktop_nav, &mut self.dark_mode);
             });
 
-        // 2. Panel de catálogo de pipelines (ancho base 290px, redimensionable) solo si la sección activa es Pipelines
+        // 2. Panel de catálogo de pipelines (redimensionable sin rebotes) solo si la sección activa es Pipelines
         if self.desktop_nav.active_section == NavSection::Pipelines {
-            Panel::left("desktop_catalog")
+            let catalog_response = Panel::left("desktop_catalog")
                 .resizable(true)
-                .default_size(290.0)
-                .min_size(260.0)
-                .max_size(400.0)
+                .default_size(self.desktop_nav.catalog_width)
+                .min_size(220.0)
+                .max_size(450.0)
                 .frame(
                     Frame::new()
                         .fill(theme.surface_container_low())
                         .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                        .inner_margin(12.0),
+                        .inner_margin(10.0),
                 )
                 .show(ui, |ui| {
                     render_desktop_pipeline_list(
@@ -179,6 +179,9 @@ impl SignalsSdrApp {
                         &mut self.selected_pipeline,
                     );
                 });
+
+            // Sincronizar el ancho real medido para evitar rebotes al arrastrar o soltar
+            self.desktop_nav.catalog_width = catalog_response.response.rect.width();
         }
 
         // 3. Panel central principal (ocupa toda la altura y el ancho restante del viewport)

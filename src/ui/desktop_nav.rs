@@ -45,6 +45,7 @@ pub struct DesktopNavState {
     pub active_section: NavSection,
     pub search_query: String,
     pub filter_category: PipelineFilterCategory,
+    pub catalog_width: f32,
 }
 
 impl Default for DesktopNavState {
@@ -53,6 +54,7 @@ impl Default for DesktopNavState {
             active_section: NavSection::Pipelines,
             search_query: String::new(),
             filter_category: PipelineFilterCategory::All,
+            catalog_width: 290.0,
         }
     }
 }
@@ -198,7 +200,6 @@ pub fn render_m3_search_bar(
     theme: &AppTheme,
     search_query: &mut String,
 ) {
-    let available_w = ui.available_width();
     let container_frame = Frame::new()
         .fill(theme.surface_container_high())
         .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -206,7 +207,6 @@ pub fn render_m3_search_bar(
         .inner_margin(Margin::symmetric(10, 6));
 
     container_frame.show(ui, |ui| {
-        ui.set_width(available_w - 20.0);
         ui.horizontal(|ui| {
             // Icono de búsqueda
             ui.label(
@@ -216,12 +216,12 @@ pub fn render_m3_search_bar(
             );
             ui.add_space(2.0);
 
-            // Entrada de texto
+            // Entrada de texto flexible
             let has_query = !search_query.is_empty();
             let desired_w = (ui.available_width() - if has_query { 22.0 } else { 0.0 }).max(40.0);
             ui.add(
                 egui::TextEdit::singleline(search_query)
-                    .hint_text("Buscar por nombre, banda...")
+                    .hint_text("Buscar señales...")
                     .frame(Frame::NONE)
                     .desired_width(desired_w),
             );
@@ -256,6 +256,7 @@ pub fn render_m3_filter_chips(
     current_filter: &mut PipelineFilterCategory,
 ) {
     egui::ScrollArea::horizontal()
+        .auto_shrink([false, false])
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -336,7 +337,6 @@ pub fn render_pipeline_card(
         .inner_margin(Margin::symmetric(10, 8));
 
     let frame_resp = frame.show(ui, |ui| {
-        ui.set_width(ui.available_width());
         ui.vertical(|ui| {
             // Cabecera de la tarjeta: Icono + Título + Badge de frecuencia
             ui.horizontal(|ui| {
@@ -371,15 +371,18 @@ pub fn render_pipeline_card(
                 );
 
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new(pipe.title())
-                        .strong()
-                        .size(13.5)
-                        .color(if is_active {
-                            theme.accent_blue()
-                        } else {
-                            theme.text_primary()
-                        }),
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(pipe.title())
+                            .strong()
+                            .size(13.5)
+                            .color(if is_active {
+                                theme.accent_blue()
+                            } else {
+                                theme.text_primary()
+                            }),
+                    )
+                    .truncate(),
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -461,7 +464,9 @@ pub fn render_desktop_pipeline_list(
         render_m3_filter_chips(ui, theme, &mut state.filter_category);
         ui.add_space(8.0);
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
             let query = state.search_query.trim().to_lowercase();
             let pipelines = PipelineId::all();
 
