@@ -255,53 +255,60 @@ pub fn render_m3_filter_chips(
     theme: &AppTheme,
     current_filter: &mut PipelineFilterCategory,
 ) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(5.0, 5.0);
-        let categories = [
-            PipelineFilterCategory::All,
-            PipelineFilterCategory::Satellites,
-            PipelineFilterCategory::Sstv,
-            PipelineFilterCategory::Analog,
-            PipelineFilterCategory::Iq,
-        ];
+    egui::ScrollArea::horizontal()
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(5.0, 0.0);
+                let categories = [
+                    PipelineFilterCategory::All,
+                    PipelineFilterCategory::Satellites,
+                    PipelineFilterCategory::Sstv,
+                    PipelineFilterCategory::Analog,
+                    PipelineFilterCategory::Iq,
+                ];
 
-        for cat in categories {
-            let is_selected = *current_filter == cat;
-            let bg_color = if is_selected {
-                theme.active_pill()
-            } else {
-                theme.card_bg()
-            };
-            let stroke = Stroke::new(
-                1.0_f32,
-                if is_selected { theme.accent_blue() } else { theme.card_border() },
-            );
-            let text_color = if is_selected {
-                theme.accent_blue()
-            } else {
-                theme.text_secondary()
-            };
+                for cat in categories {
+                    let is_selected = *current_filter == cat;
+                    let bg_color = if is_selected {
+                        theme.active_pill()
+                    } else {
+                        theme.card_bg()
+                    };
+                    let stroke = Stroke::new(
+                        1.0_f32,
+                        if is_selected { theme.accent_blue() } else { theme.card_border() },
+                    );
+                    let text_color = if is_selected {
+                        theme.accent_blue()
+                    } else {
+                        theme.text_secondary()
+                    };
 
-            let chip_frame = Frame::new()
-                .fill(bg_color)
-                .stroke(stroke)
-                .corner_radius(12.0)
-                .inner_margin(Margin::symmetric(8, 4));
+                    let chip_frame = Frame::new()
+                        .fill(bg_color)
+                        .stroke(stroke)
+                        .corner_radius(12.0)
+                        .inner_margin(Margin::symmetric(9, 5));
 
-            let resp = chip_frame.show(ui, |ui| {
-                ui.label(
-                    RichText::new(cat.label())
-                        .size(11.0)
-                        .strong()
-                        .color(text_color),
-                );
+                    let resp = chip_frame.show(ui, |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(cat.label())
+                                    .size(11.0)
+                                    .strong()
+                                    .color(text_color),
+                            )
+                            .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                    });
+
+                    if resp.response.interact(Sense::click()).clicked() {
+                        *current_filter = cat;
+                    }
+                }
             });
-
-            if resp.response.interact(Sense::click()).clicked() {
-                *current_filter = cat;
-            }
-        }
-    });
+        });
 }
 
 /// Tarjeta unificada de señal M3 compartida entre Desktop y Mobile

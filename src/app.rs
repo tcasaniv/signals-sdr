@@ -158,11 +158,13 @@ impl SignalsSdrApp {
                 render_desktop_rail(ui, theme, &mut self.desktop_nav, &mut self.dark_mode);
             });
 
-        // 2. Panel de catálogo de pipelines (ancho 280px) solo si la sección activa es Pipelines
+        // 2. Panel de catálogo de pipelines (ancho base 290px, redimensionable) solo si la sección activa es Pipelines
         if self.desktop_nav.active_section == NavSection::Pipelines {
             Panel::left("desktop_catalog")
-                .resizable(false)
-                .exact_size(280.0)
+                .resizable(true)
+                .default_size(290.0)
+                .min_size(260.0)
+                .max_size(400.0)
                 .frame(
                     Frame::new()
                         .fill(theme.surface_container_low())
