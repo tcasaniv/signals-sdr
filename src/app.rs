@@ -86,7 +86,7 @@ impl SignalsSdrApp {
         Panel::top("mobile_header")
             .frame(
                 Frame::new()
-                    .fill(theme.surface_subtle())
+                    .fill(theme.surface_container_low())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                     .inner_margin(8.0),
             )
@@ -104,9 +104,9 @@ impl SignalsSdrApp {
         Panel::bottom("mobile_bottom")
             .frame(
                 Frame::new()
-                    .fill(theme.surface_subtle())
+                    .fill(theme.surface_container_low())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                    .inner_margin(6.0),
+                    .inner_margin(4.0),
             )
             .show(ui, |ui| {
                 render_mobile_bottom_bar(
@@ -134,6 +134,7 @@ impl SignalsSdrApp {
                                     theme,
                                     &mut self.selected_pipeline,
                                     &mut self.mobile_nav,
+                                    &mut self.desktop_nav,
                                 );
                             }
                         }
@@ -143,28 +144,28 @@ impl SignalsSdrApp {
     }
 
     fn render_desktop_ui(&mut self, ui: &mut Ui, theme: &AppTheme) {
-        // 1. Icon Rail estrecho (ancho fijo 64px, ocupa 100% de la altura de la ventana)
+        // 1. Navigation Rail estrecho (ancho fijo 72px estilo Material 3)
         Panel::left("desktop_nav_rail")
             .resizable(false)
-            .exact_size(64.0)
+            .exact_size(72.0)
             .frame(
                 Frame::new()
-                    .fill(theme.surface_subtle())
+                    .fill(theme.surface_container_low())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                    .inner_margin(8.0),
+                    .inner_margin(6.0),
             )
             .show(ui, |ui| {
-                render_desktop_rail(ui, theme, &mut self.desktop_nav);
+                render_desktop_rail(ui, theme, &mut self.desktop_nav, &mut self.dark_mode);
             });
 
-        // 2. Panel intermedio de catálogo/pipelines (ancho 260px) solo si la sección activa es Pipelines
+        // 2. Panel de catálogo de pipelines (ancho 280px) solo si la sección activa es Pipelines
         if self.desktop_nav.active_section == NavSection::Pipelines {
             Panel::left("desktop_catalog")
                 .resizable(false)
-                .exact_size(260.0)
+                .exact_size(280.0)
                 .frame(
                     Frame::new()
-                        .fill(theme.card_bg())
+                        .fill(theme.surface_container_low())
                         .stroke(Stroke::new(1.0_f32, theme.card_border()))
                         .inner_margin(12.0),
                 )

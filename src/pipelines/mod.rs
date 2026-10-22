@@ -68,6 +68,19 @@ impl PipelineId {
         }
     }
 
+    pub fn frequency_badge(&self) -> &'static str {
+        match self {
+            PipelineId::NoaaApt => "137.1 MHz",
+            PipelineId::MeteorLrpt => "137.9 MHz",
+            PipelineId::IssSstv => "145.8 MHz",
+            PipelineId::GenericSstv => "HF / VHF",
+            PipelineId::GenericFm => "88-108 MHz",
+            PipelineId::GenericAm => "HF / Airband",
+            PipelineId::GenericIq => "Banda Base",
+            PipelineId::NoaaHrpt => "1.7 GHz",
+        }
+    }
+
     pub fn all() -> &'static [PipelineId] {
         &[
             PipelineId::NoaaApt,
