@@ -31,7 +31,7 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
   - Breakpoint dinámico en 720 px de ancho.
   - Modo móvil: Barra inferior de 2 secciones con navegación *Master-Detail* y botón de retorno.
   - Modo escritorio: Barra lateral izquierda, buscador de pipelines y panel de trabajo multitarea.
-- **Iconografía Vectorial:** Ausencia total de caracteres emoji, empleando trazos geométricos nítidos.
+- **Iconografía Vectorial:** Ausencia total de caracteres emoji, empleando trazos geométricos nítidos y/o Material Design Icons [`egui_icons`](https://crates.io/crates/egui_icons).
 - **Temas:** Modo Claro y Modo Oscuro persistentes.
 
 ### 2.2. Pipelines Implementados
@@ -61,8 +61,6 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
 7. **Generic IQ:**
    - Entrada: Archivos I/Q pregrabados (WAV estéreo, RAW SC16, Float32, Int8).
    - Inspección espectral FFT, osciloscopio y retransmisión con SDR o conversión de formato.
-8. **NOAA HRPT (Placeholder Educativo):**
-   - Tarjeta informativa del protocolo satelital de alta resolución en banda L.
 
 ### 2.3. Subpestaña "3. Transmisión"
 - Modo mutuamente excluyente:
@@ -133,6 +131,7 @@ Para incorporar un nuevo protocolo a **Signals SDR**:
    Verificar que la modulación genera muestras válidas sin entrar en pánico.
 
 ### Reglas de Estilo del Proyecto
-- **Sin emojis:** Todo componente visual debe usar texto limpio o trazos vectoriales en `src/icons.rs`.
+- **Sin emojis:** Todo componente visual debe usar texto limpio o trazos vectoriales en `src/icons.rs` o usar Material Design Icons [`egui_icons`](https://crates.io/crates/egui_icons).
+- **Lineamientos de UI**: Material Design 3 principalmente, con algunos conceptos de Apple Human Interface Guidelines, Fluent 2 + Windows 11 design principles y diseño mobile first con soporte desktop.
 - **Rendimiento UI:** Operaciones pesadas de DSP o I/O deben ejecutarse en hilos secundarios (`std::thread::spawn` o canales `mpsc`) para no congelar los 60 FPS de `egui`.
-- **Multiplataforma:** Evitar llamadas a APIs específicas de Windows/Linux sin condicionales `#[cfg(...)]`.
+- **Multiplataforma:** Evitar llamadas a APIs específicas de Windows/Linux/macos/android/ios/web sin condicionales `#[cfg(...)]`.
