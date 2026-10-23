@@ -1,7 +1,7 @@
 # Signals SDR
 
 [![Licencia: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Versión](https://img.shields.io/badge/version-0.2.1-green.svg)](Cargo.toml)
+[![Versión](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
 [![Rust: 2021](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![UI: Material 3 / HIG](https://img.shields.io/badge/UI-Material_3_%2F_Apple_HIG-purple.svg)](docs/ARCHITECTURE.md)
 
@@ -148,14 +148,33 @@ cargo run --release --features bladerf
 cargo run --release --features usrp
 ```
 
-### Modalidad 2: Servidor Web LAN (`--serve`) *(Próximamente en v0.3.0)*
-Permite ejecutar el programa en una PC anfitriona o Raspberry Pi conectada a los SDRs y controlarla de forma inalámbrica desde el navegador de cualquier celular, tablet o laptop en la misma red Wi-Fi:
+### Modalidad 2: Servidor Web LAN (`--serve`)
+Permite ejecutar el binario nativo en una PC anfitriona o Raspberry Pi conectada físicamente a los SDRs y exponer la interfaz web en la red local (Wi-Fi), controlando la transmisión inalámbricamente desde cualquier celular (Android/iOS), tablet (iPad) o laptop:
+
 ```bash
-signals-sdr --serve --port 8080 --bind 0.0.0.0
+# Iniciar servidor web en el puerto predeterminado (8080)
+cargo run --release -- --serve
+
+# O con opciones avanzadas de puerto y dirección de red:
+cargo run --release -- --serve --port 8080 --bind 0.0.0.0 --open
 ```
 
-### Modalidad 3: WebAssembly Estático *(Próximamente en v0.3.0)*
-Despliegue estático sin servidor en GitHub Pages con dominio personalizado, permitiendo generar señales, inspeccionar espectrogramas y descargar archivos I/Q directamente desde el navegador web. Consulte [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para más detalles técnicos.
+Al iniciarse, el servidor imprime las direcciones de conexión directa:
+- **Acceso Local:** `http://localhost:8080`
+- **Acceso en Red LAN:** `http://192.168.1.X:8080` (desde tu teléfono o tablet)
+
+### Modalidad 3: WebAssembly Estático (GitHub Pages / Dominio Personalizado)
+Compila la suite como una aplicación web estática autónoma que se ejecuta al 100% en el navegador del usuario a través de WebAssembly (WASM) y Canvas:
+
+```bash
+# Instalar trunk (empaquetador web de Rust)
+cargo install trunk
+
+# Compilar release para producción
+trunk build --release
+```
+
+Los artefactos listos para producción se generan en la carpeta `dist/`. Pueden desplegarse gratuitamente en **GitHub Pages** (con soporte de dominio personalizado mediante archivo `CNAME`), Cloudflare Pages o cualquier servidor web estático. Consulte el workflow automatizado en [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) y la documentación en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Ejecución de Pruebas Automatizadas
 ```bash

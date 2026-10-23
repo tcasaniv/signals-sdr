@@ -1,7 +1,7 @@
 # Signals SDR: Roadmap y Plan de Desarrollo
 
 > **Documento de referencia para desarrolladores, colaboradores y agentes de Inteligencia Artificial.**
-> Define la arquitectura, el estado de implementación actual (**v0.2.1**) y las próximas fases de desarrollo hacia el release web (**v0.3.0**) y nuevos protocolos.
+> Define la arquitectura, el estado de implementación actual (**v0.3.0**) y las próximas fases de desarrollo hacia nuevos protocolos satelitales e integraciones.
 
 ---
 
@@ -23,7 +23,7 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
 
 ---
 
-## 2. Estado de Implementación (Versión v0.2.1 - Actual)
+## 2. Estado de Implementación (Versión v0.3.0 - Actual)
 
 ### 2.1. Arquitectura de UI/UX Unificada (Material 3 + Apple HIG)
 - **Framework:** `egui / eframe` en Rust puro a 60 FPS estables.
@@ -86,27 +86,22 @@ Cada pipeline se divide transparentemente en 4 etapas pedagógicas:
 - **Formatos de Archivo I/Q:** WAV I/Q PCM 16 bits estéreo, RAW SC16_Q11 (bladeRF-cli), RAW SC16 completo, RAW int8 (hackrf_transfer), RAW float32 (GNU Radio / inspectrum) y WAV Audio Mono.
 - **Organización Automática de Carpetas:** Selector persistente de ruta raíz con subcarpetas automáticas (`noaa_apt/`, `meteor_lrpt/`, etc.).
 
+### 2.7. Arquitectura Dual Web y Despliegue (v0.3.0 Completada)
+- **Modalidad 1: Servidor Web LAN Integrado (`signals-sdr --serve`):**
+  - CLI nativo con flags: `-s, --serve`, `-p, --port <PUERTO>`, `-b, --bind <IP>`, `-d, --dir <RUTA>`, `-o, --open`.
+  - Servidor HTTP ligero multi-hilo integrado en el binario sin dependencias pesadas.
+  - Soporte SPA, tipos MIME completos (`application/wasm`, `text/html`, etc.) y página de estado Material 3 embebida.
+  - Imprime las URLs de conexión directa local y LAN Wi-Fi para acceso desde teléfonos (Android/iOS), tablets o laptops manteniendo el control directo sobre los transceptores SDR físicos por USB.
+- **Modalidad 2: WebAssembly Estático (GitHub Pages / Dominio Personalizado):**
+  - Contenedor web HTML5 responsive (`web/index.html`) con pantalla de carga Material 3 y meta-etiquetas PWA.
+  - Empaquetador web `Trunk.toml` para compilación optimizada con `trunk build --release`.
+  - Workflow automatizado de CI/CD en GitHub Actions (`.github/workflows/deploy-pages.yml`) para despliegue automático a GitHub Pages y compatibilidad con registros DNS `CNAME`.
+- **Avisos de Limitaciones del Sandbox Web en la UI:**
+  - Panel de transmisión con avisos didácticos explícitos cuando se ejecuta en WebAssembly, explicando las restricciones de seguridad del navegador frente a los drivers nativos de bajo nivel y guiando al usuario a la versión de escritorio o a la pestaña de descarga de archivos I/Q.
+
 ---
 
 ## 3. Próximas Fases de Desarrollo
-
-### Fase 3: Arquitectura Dual Web y Release v0.3.0 (En Progreso)
-El hito **v0.3.0** implementará el soporte web a través de dos vertientes complementarias:
-
-1. **Modalidad WebAssembly Estática (GitHub Pages + Dominio Personalizado):**
-   - Despliegue estático a coste $0$ en GitHub Pages asociado a dominio personalizado mediante archivo `CNAME`.
-   - Toda la interfaz `egui`, procesamiento DSP, síntesis de modulación, espectrograma cascada y efectos de canal se ejecutan 100% en el navegador del cliente.
-   - Generación y descarga directa en el navegador de archivos `.wav` y `.iq`.
-   - Avisos pedagógicos de limitaciones de seguridad web (incompatibilidad de drivers nativos USB en sandbox web) para evitar confusiones de los usuarios.
-   - Soporte experimental de **WebUSB** para conexión directa de HackRF en navegadores basados en Chromium (Chrome, Edge, Android).
-
-2. **Modalidad Servidor Web LAN (`signals-sdr --serve`):**
-   - Flag de ejecución en el binario nativo: `signals-sdr --serve [puerto] [bind-address]` (por defecto abre la interfaz de escritorio nativa si no se especifican argumentos).
-   - Inicia un servidor web interno ligero (Axum / WebSockets) para exponer la interfaz web en la red local (`http://192.168.1.X:8080`).
-   - Permite controlar la transmisión SDR físicamente conectada a la PC o Raspberry Pi anfitriona de forma inalámbrica desde teléfonos Android, iPhone, iPad o laptops sin necesidad de cables OTG.
-
-3. **Flujo de Integración Continua (CI/CD Web):**
-   - Workflow en GitHub Actions con `trunk build --release` para desplegar automáticamente el bundle WebAssembly en cada etiqueta de versión o push a `main`.
 
 ### Fase 4: Nuevos Protocolos Satelitales y de Telemetría (Q2 2027)
 1. **NOAA HRPT Completo:** Flujo de tramas Minor Frame / Major Frame con telemetría AVHRR de 5 canales espectrales en tiempo real.
