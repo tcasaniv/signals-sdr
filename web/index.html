@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0e141b">
+    <title>Signals SDR - Generador Didáctico de Señales de Radio</title>
+
+    <link rel="icon" type="image/png" href="icon_256.png">
+    <link data-trunk rel="copy-file" href="../assets/icon_256.png">
+    <link data-trunk rel="rust" href="../Cargo.toml" data-bin="signals-sdr" data-wasm-opt="z">
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0e141b;
+            color: #e6edf3;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #signals_sdr_canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+        }
+
+        #loading_screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #0e141b;
+            z-index: 100;
+            transition: opacity 0.4s ease-out;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #1f2e3d;
+            border-top: 4px solid #52a5ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading_title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #52a5ff;
+            letter-spacing: 0.5px;
+        }
+
+        .loading_subtitle {
+            font-size: 13px;
+            color: #8c9ba8;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading_screen">
+        <div class="spinner"></div>
+        <div class="loading_title">Signals SDR</div>
+        <div class="loading_subtitle">Cargando motor de procesamiento digital WebAssembly...</div>
+    </div>
+
+    <canvas id="signals_sdr_canvas"></canvas>
+
+    <script>
+        // Ocultar pantalla de carga cuando el canvas de eframe comience a renderizar
+        const observer = new MutationObserver((mutations) => {
+            const screen = document.getElementById('loading_screen');
+            if (screen) {
+                screen.style.opacity = '0';
+                setTimeout(() => screen.remove(), 400);
+            }
+        });
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const screen = document.getElementById('loading_screen');
+                if (screen) {
+                    screen.style.opacity = '0';
+                    setTimeout(() => screen.remove(), 400);
+                }
+            }, 1200);
+        });
+    </script>
+</body>
+</html>
