@@ -329,8 +329,8 @@ fn render_sdr_panel(
                 // --- ETAPA 1: SELECTOR DE FRAMEWORK / BACKEND SDR ---
                 let is_narrow_backend = ui.available_width() < 480.0;
                 let backend_name = match state.selected_backend {
-                    SdrBackend::SeifyNative => "Seify Nativo (Drivers integrados Rust - Recomendado)",
-                    SdrBackend::SoapySdr => "SoapySDR (Módulos dinámicos C++ / Radioconda)",
+                    SdrBackend::SeifyNative => "Seify",
+                    SdrBackend::SoapySdr => "SoapySDR",
                 };
 
                 if is_narrow_backend {
@@ -344,7 +344,7 @@ fn render_sdr_panel(
                                 .selectable_value(
                                     &mut state.selected_backend,
                                     SdrBackend::SeifyNative,
-                                    "Seify Nativo (Drivers integrados Rust - Recomendado)",
+                                    "Seify",
                                 )
                                 .clicked()
                             {
@@ -361,7 +361,7 @@ fn render_sdr_panel(
                                 .selectable_value(
                                     &mut state.selected_backend,
                                     SdrBackend::SoapySdr,
-                                    "SoapySDR (Módulos dinámicos C++ / Radioconda)",
+                                    "SoapySDR",
                                 )
                                 .clicked()
                             {
@@ -384,7 +384,7 @@ fn render_sdr_panel(
                                     .selectable_value(
                                         &mut state.selected_backend,
                                         SdrBackend::SeifyNative,
-                                        "Seify Nativo (Drivers integrados Rust - Recomendado)",
+                                        "Seify",
                                     )
                                     .clicked()
                                 {
@@ -401,7 +401,7 @@ fn render_sdr_panel(
                                     .selectable_value(
                                         &mut state.selected_backend,
                                         SdrBackend::SoapySdr,
-                                        "SoapySDR (Módulos dinámicos C++ / Radioconda)",
+                                        "SoapySDR",
                                     )
                                     .clicked()
                                 {

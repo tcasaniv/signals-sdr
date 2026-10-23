@@ -38,14 +38,14 @@ impl SdrDeviceOption {
         vec![
             // --- Seify Nativo (Por Defecto - Sin Dependencias Externas) ---
             SdrDeviceOption {
-                display_name: "HackRF One (Transmisión Real - Driver Rust puro)".to_string(),
+                display_name: "HackRF One (Transmisión Real)".to_string(),
                 backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::HackRfSeify,
                 default_args: "driver=hackrf".to_string(),
                 description: "Transceptor semidúplex con driver Rust puro nusb. No requiere software externo (mínimo 2 MSps).".to_string(),
             },
             SdrDeviceOption {
-                display_name: "bladeRF (Transmisión Real - Driver Rust puro)".to_string(),
+                display_name: "bladeRF (Transmisión Real)".to_string(),
                 backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::BladeRfSoapy,
                 default_args: "driver=bladerf".to_string(),
@@ -59,7 +59,7 @@ impl SdrDeviceOption {
                 description: "Simula transmisión en memoria para pruebas de laboratorio sin emitir RF.".to_string(),
             },
             SdrDeviceOption {
-                display_name: "Driver Personalizado Seify (Argumentos manuales)".to_string(),
+                display_name: "Driver Personalizado Seify".to_string(),
                 backend: SdrBackend::SeifyNative,
                 hw_type: SdrHardwareType::Custom,
                 default_args: "driver=hackrf".to_string(),
@@ -75,14 +75,14 @@ impl SdrDeviceOption {
                 description: "Busca transceptores de radio reales conectados descartando tarjetas de audio.".to_string(),
             },
             SdrDeviceOption {
-                display_name: "HackRF One (Módulo SoapySDR)".to_string(),
+                display_name: "HackRF One (SoapySDR)".to_string(),
                 backend: SdrBackend::SoapySdr,
                 hw_type: SdrHardwareType::HackRfSoapy,
                 default_args: "driver=soapy,soapy_driver=hackrf".to_string(),
                 description: "Transceptor semidúplex 1 MHz - 6 GHz vía SoapySDR (estable en Windows, mínimo 1 MSps).".to_string(),
             },
             SdrDeviceOption {
-                display_name: "bladeRF (Módulo SoapySDR)".to_string(),
+                display_name: "bladeRF (SoapySDR)".to_string(),
                 backend: SdrBackend::SoapySdr,
                 hw_type: SdrHardwareType::BladeRfSoapy,
                 default_args: "driver=soapy,soapy_driver=bladerf".to_string(),
@@ -96,21 +96,21 @@ impl SdrDeviceOption {
                 description: "Dispositivos USRP B200, B210, N210, X310 vía SoapyUHD (admite IP de red).".to_string(),
             },
             SdrDeviceOption {
-                display_name: "PlutoSDR / ADALM-Pluto (Módulo SoapySDR)".to_string(),
+                display_name: "PlutoSDR / ADALM-Pluto (SoapySDR)".to_string(),
                 backend: SdrBackend::SoapySdr,
                 hw_type: SdrHardwareType::PlutoSdrSoapy,
                 default_args: "driver=soapy,soapy_driver=plutosdr".to_string(),
                 description: "Transceptor de Analog Devices ADALM-PLUTO vía USB o URI IP de red.".to_string(),
             },
             SdrDeviceOption {
-                display_name: "LimeSDR (Módulo SoapySDR)".to_string(),
+                display_name: "LimeSDR (SoapySDR)".to_string(),
                 backend: SdrBackend::SoapySdr,
                 hw_type: SdrHardwareType::LimeSdrSoapy,
                 default_args: "driver=soapy,soapy_driver=lime".to_string(),
                 description: "Transceptor MIMO LMS7002M (LimeSDR USB / Mini).".to_string(),
             },
             SdrDeviceOption {
-                display_name: "Driver Personalizado Soapy (Argumentos manuales)".to_string(),
+                display_name: "Driver Personalizado Soapy".to_string(),
                 backend: SdrBackend::SoapySdr,
                 hw_type: SdrHardwareType::Custom,
                 default_args: "driver=soapy,soapy_driver=hackrf".to_string(),
