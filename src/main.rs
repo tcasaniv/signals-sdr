@@ -4,6 +4,31 @@ use signals_sdr::SignalsSdrApp;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    #[cfg(target_os = "windows")]
+    attach_console_if_needed();
+
+    use signals_sdr::server::{parse_cli_args, print_help, print_version, run_server, CliMode};
+
+    match parse_cli_args() {
+        CliMode::Help => {
+            print_help();
+            return Ok(());
+        }
+        CliMode::Version => {
+            print_version();
+            return Ok(());
+        }
+        CliMode::Serve(config) => {
+            if let Err(e) = run_server(config) {
+                eprintln!("Error al ejecutar servidor web LAN: {}", e);
+            }
+            return Ok(());
+        }
+        CliMode::Desktop => {
+            // Continúa a ejecutar la interfaz gráfica nativa de escritorio
+        }
+    }
+
     env_logger::init();
 
     let mut viewport = egui::ViewportBuilder::default()
@@ -64,4 +89,16 @@ fn main() {
             .await
             .expect("Error al iniciar eframe en WebAssembly");
     });
+}
+
+#[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+fn attach_console_if_needed() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(dwProcessId: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
 }

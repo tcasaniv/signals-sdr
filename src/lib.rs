@@ -9,4 +9,7 @@ pub mod theme;
 pub mod ui;
 pub mod utils;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server;
+
 pub use app::SignalsSdrApp;

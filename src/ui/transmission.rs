@@ -142,6 +142,33 @@ fn render_sdr_panel(
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    Frame::new()
+                        .fill(theme.surface_container_high())
+                        .stroke(Stroke::new(1.0_f32, theme.accent_blue()))
+                        .corner_radius(8.0)
+                        .inner_margin(10.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(icons::ICON_INFO.codepoint).size(18.0).color(theme.accent_blue()));
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new("Aviso de Entorno Web (WebAssembly)").strong().size(12.5).color(theme.text_primary()));
+                                    ui.label(
+                                        RichText::new(
+                                            "La transmisión directa por hardware USB (HackRF, bladeRF, USRP) requiere drivers nativos del sistema operativo restringidos por la seguridad del navegador.\n\
+                                            • Para emitir con hardware SDR físico: utilice la versión de escritorio nativa o inicie el servidor LAN con 'signals-sdr --serve' en la máquina anfitriona.\n\
+                                            • En esta versión web: puede generar la señal e inspeccionar el espectrograma/cascada, y usar la pestaña 'Guardar como Archivo I/Q' para descargarla."
+                                        )
+                                        .size(11.0)
+                                        .color(theme.text_secondary()),
+                                    );
+                                });
+                            });
+                        });
+                    ui.add_space(8.0);
+                }
+
                 // Cabecera con botón de detección (adaptable)
                 if ui.available_width() < 480.0 {
                     ui.vertical(|ui| {
