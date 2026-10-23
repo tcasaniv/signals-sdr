@@ -177,43 +177,41 @@ pub fn render_mobile_pipeline_grid(
         let pipelines = PipelineId::all();
         let query = nav_state.search_query.trim().to_lowercase();
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            let mut matched_count = 0;
-            for &pipe in pipelines {
-                // Filtro por chip
-                if !nav_state.filter_category.matches(pipe) {
+        let mut matched_count = 0;
+        for &pipe in pipelines {
+            // Filtro por chip
+            if !nav_state.filter_category.matches(pipe) {
+                continue;
+            }
+
+            // Filtro por texto
+            if !query.is_empty() {
+                let match_title = pipe.title().to_lowercase().contains(&query);
+                let match_desc = pipe.description().to_lowercase().contains(&query);
+                let match_cat = pipe.category().to_lowercase().contains(&query);
+                let match_badge = pipe.frequency_badge().to_lowercase().contains(&query);
+                if !match_title && !match_desc && !match_cat && !match_badge {
                     continue;
                 }
-
-                // Filtro por texto
-                if !query.is_empty() {
-                    let match_title = pipe.title().to_lowercase().contains(&query);
-                    let match_desc = pipe.description().to_lowercase().contains(&query);
-                    let match_cat = pipe.category().to_lowercase().contains(&query);
-                    let match_badge = pipe.frequency_badge().to_lowercase().contains(&query);
-                    if !match_title && !match_desc && !match_cat && !match_badge {
-                        continue;
-                    }
-                }
-
-                matched_count += 1;
-                let is_active = *selected_pipeline == pipe;
-                // Tarjeta idéntica compartida entre Desktop y Mobile
-                if render_pipeline_card(ui, theme, pipe, is_active).clicked() {
-                    *selected_pipeline = pipe;
-                    mobile_state.showing_detail = true;
-                }
-
-                ui.add_space(6.0);
             }
 
-            if matched_count == 0 {
-                ui.add_space(16.0);
-                ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("No se encontraron transmisores").size(12.0).color(theme.text_secondary()));
-                    ui.label(RichText::new("Prueba con otros términos de búsqueda").size(11.0).color(theme.text_secondary()));
-                });
+            matched_count += 1;
+            let is_active = *selected_pipeline == pipe;
+            // Tarjeta idéntica compartida entre Desktop y Mobile
+            if render_pipeline_card(ui, theme, pipe, is_active).clicked() {
+                *selected_pipeline = pipe;
+                mobile_state.showing_detail = true;
             }
-        });
+
+            ui.add_space(6.0);
+        }
+
+        if matched_count == 0 {
+            ui.add_space(16.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new("No se encontraron transmisores").size(12.0).color(theme.text_secondary()));
+                ui.label(RichText::new("Prueba con otros términos de búsqueda").size(11.0).color(theme.text_secondary()));
+            });
+        }
     });
 }

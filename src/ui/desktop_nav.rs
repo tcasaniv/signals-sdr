@@ -208,22 +208,25 @@ pub fn render_m3_search_bar(
 
     container_frame.show(ui, |ui| {
         ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+
             // Icono de búsqueda
             ui.label(
                 RichText::new(icons::ICON_SEARCH.codepoint)
                     .size(15.0)
                     .color(theme.text_secondary()),
             );
-            ui.add_space(2.0);
 
-            // Entrada de texto flexible
+            // Entrada de texto flexible y delimitada sin provocar desbordamiento
             let has_query = !search_query.is_empty();
-            let desired_w = (ui.available_width() - if has_query { 22.0 } else { 0.0 }).max(40.0);
-            ui.add(
+            let clear_btn_width = if has_query { 22.0 } else { 0.0 };
+            let edit_width = (ui.available_width() - clear_btn_width).max(30.0);
+
+            ui.add_sized(
+                [edit_width, 18.0],
                 egui::TextEdit::singleline(search_query)
                     .hint_text("Buscar señales...")
-                    .frame(Frame::NONE)
-                    .desired_width(desired_w),
+                    .frame(Frame::NONE),
             );
 
             // Botón de limpiar si hay texto ingresado
@@ -256,7 +259,7 @@ pub fn render_m3_filter_chips(
     current_filter: &mut PipelineFilterCategory,
 ) {
     egui::ScrollArea::horizontal()
-        .auto_shrink([false, false])
+        .auto_shrink([false, true])
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -371,11 +374,29 @@ pub fn render_pipeline_card(
                 );
 
                 ui.add_space(4.0);
-                ui.add(
+
+                let badge_text = pipe.frequency_badge();
+                let badge_bg = if is_active {
+                    theme.accent_blue().gamma_multiply(0.22)
+                } else {
+                    theme.surface_container_high()
+                };
+                let badge_fg = if is_active {
+                    theme.accent_blue()
+                } else {
+                    theme.text_secondary()
+                };
+
+                // Badge ocupa ~72px (e.g. "137.1 MHz" o "437.8 MHz")
+                let badge_w = 72.0;
+                let title_w = (ui.available_width() - badge_w - 6.0).max(30.0);
+
+                ui.add_sized(
+                    [title_w, 20.0],
                     egui::Label::new(
                         RichText::new(pipe.title())
                             .strong()
-                            .size(13.5)
+                            .size(13.0)
                             .color(if is_active {
                                 theme.accent_blue()
                             } else {
@@ -385,32 +406,18 @@ pub fn render_pipeline_card(
                     .truncate(),
                 );
 
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let badge_text = pipe.frequency_badge();
-                    let badge_bg = if is_active {
-                        theme.accent_blue().gamma_multiply(0.22)
-                    } else {
-                        theme.surface_container_high()
-                    };
-                    let badge_fg = if is_active {
-                        theme.accent_blue()
-                    } else {
-                        theme.text_secondary()
-                    };
-
-                    Frame::new()
-                        .fill(badge_bg)
-                        .corner_radius(4.0)
-                        .inner_margin(Margin::symmetric(6, 2))
-                        .show(ui, |ui| {
-                            ui.label(
-                                RichText::new(badge_text)
-                                    .monospace()
-                                    .size(10.0)
-                                    .color(badge_fg),
-                            );
-                        });
-                });
+                Frame::new()
+                    .fill(badge_bg)
+                    .corner_radius(4.0)
+                    .inner_margin(Margin::symmetric(6, 2))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(badge_text)
+                                .monospace()
+                                .size(10.0)
+                                .color(badge_fg),
+                        );
+                    });
             });
 
             ui.add_space(4.0);

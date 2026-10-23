@@ -180,8 +180,14 @@ impl SignalsSdrApp {
                     );
                 });
 
-            // Sincronizar el ancho real medido para evitar rebotes al arrastrar o soltar
-            self.desktop_nav.catalog_width = catalog_response.response.rect.width();
+            // Sincronizar el ancho SOLO si el usuario está arrastrando activamente el divisor de redimensionamiento
+            let is_dragging_separator = ui
+                .ctx()
+                .read_response(egui::Id::new("desktop_catalog").with("__resize"))
+                .is_some_and(|r| r.dragged());
+            if is_dragging_separator {
+                self.desktop_nav.catalog_width = catalog_response.response.rect.width();
+            }
         }
 
         // 3. Panel central principal (ocupa toda la altura y el ancho restante del viewport)
