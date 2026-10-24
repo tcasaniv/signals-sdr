@@ -910,7 +910,7 @@ fn render_file_panel(
                 ui.add_space(4.0);
                 let folder_label = format!("{} Cambiar Carpeta Destino...", icons::ICON_FOLDER_OPEN.codepoint);
                 if ui.button(folder_label).clicked() {
-                    if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    if let Some(folder) = crate::file_dialog::FileDialog::new().pick_folder() {
                         state.custom_output_dir = Some(folder);
                     }
                 }

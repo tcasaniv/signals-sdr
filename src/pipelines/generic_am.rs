@@ -150,7 +150,7 @@ impl GenericAmPipeline {
                                 .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
+                                if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .add_filter("Archivos de audio", &["wav", "mp3", "flac", "ogg"])
                                     .pick_file()
                                 {

@@ -2,6 +2,7 @@ pub mod app;
 pub mod channel;
 pub mod config;
 pub mod export;
+pub mod file_dialog;
 pub mod icons;
 pub mod pipelines;
 pub mod sdr;

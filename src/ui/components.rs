@@ -335,7 +335,7 @@ pub fn image_input_card(
                     );
 
                     if drop_resp.clicked() {
-                        if let Some(file) = rfd::FileDialog::new()
+                        if let Some(file) = crate::file_dialog::FileDialog::new()
                             .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
                             .pick_file()
                         {
@@ -378,7 +378,7 @@ pub fn image_input_card(
                 .min_size(Vec2::new(ui.available_width(), 32.0));
 
                 if ui.add(local_btn).clicked() {
-                    if let Some(file) = rfd::FileDialog::new()
+                    if let Some(file) = crate::file_dialog::FileDialog::new()
                         .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
                         .pick_file()
                     {

@@ -1,8 +1,33 @@
 use crate::icons;
 use crate::theme::AppTheme;
 use egui::{Color32, Frame, Pos2, Rect, RichText, Stroke, Ui, Vec2};
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::BufReader;
+
+#[cfg(target_arch = "wasm32")]
+mod rodio {
+    use std::time::Duration;
+
+    pub struct Player;
+    impl Player {
+        pub fn empty(&self) -> bool {
+            true
+        }
+        pub fn get_pos(&self) -> Duration {
+            Duration::ZERO
+        }
+        pub fn try_seek(&self, _pos: Duration) -> Result<(), ()> {
+            Ok(())
+        }
+        pub fn pause(&self) {}
+        pub fn play(&self) {}
+        pub fn stop(&self) {}
+    }
+
+    pub struct MixerDeviceSink;
+}
 
 pub struct AudioPlayerWidget {
     pub is_playing: bool,
@@ -33,6 +58,7 @@ impl AudioPlayerWidget {
 
     pub fn start_playback(&mut self, path: &str) {
         self.stop_playback();
+        #[cfg(not(target_arch = "wasm32"))]
         if let Ok(device_sink) = rodio::DeviceSinkBuilder::open_default_sink() {
             let player = rodio::Player::connect_new(&device_sink.mixer());
             if let Ok(file) = File::open(path) {
@@ -45,6 +71,10 @@ impl AudioPlayerWidget {
                     self.loaded_path = Some(path.to_string());
                 }
             }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = path;
         }
     }
 

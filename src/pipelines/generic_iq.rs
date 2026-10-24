@@ -150,7 +150,7 @@ impl GenericIqPipeline {
                                 .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
+                                if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .add_filter("Muestras I/Q o WAV", &["wav", "raw", "iq", "bin", "sc16", "dat"])
                                     .pick_file()
                                 {

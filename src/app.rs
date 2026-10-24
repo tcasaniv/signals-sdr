@@ -352,7 +352,7 @@ impl SignalsSdrApp {
                         ui.add_space(4.0);
 
                         if ui.button("Cambiar Carpeta...").clicked() {
-                            if let Some(new_dir) = rfd::FileDialog::new().pick_folder() {
+                            if let Some(new_dir) = crate::file_dialog::FileDialog::new().pick_folder() {
                                 self.config.default_output_dir = new_dir;
                                 self.config.ensure_directories_exist();
                                 self.config.save();

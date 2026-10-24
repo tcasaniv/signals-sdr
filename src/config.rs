@@ -1,6 +1,5 @@
 use crate::theme::AppTheme;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,9 +10,13 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let default_dir = dirs::document_dir()
             .map(|p| p.join("Signals_SDR"))
             .unwrap_or_else(|| PathBuf::from("Signals_SDR_Output"));
+
+        #[cfg(target_arch = "wasm32")]
+        let default_dir = PathBuf::from("Signals_SDR_Output");
 
         Self {
             is_dark_mode: true,
@@ -34,37 +37,44 @@ impl AppConfig {
     /// Obtiene y crea (si no existe) la subcarpeta organizada correspondiente a un pipeline
     pub fn get_pipeline_dir(&self, pipeline_slug: &str) -> PathBuf {
         let dir = self.default_output_dir.join(pipeline_slug);
-        let _ = fs::create_dir_all(&dir);
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = std::fs::create_dir_all(&dir);
         dir
     }
 
     /// Asegura que la carpeta base y todas sus subcarpetas existan en el sistema de archivos
     pub fn ensure_directories_exist(&self) {
-        let _ = fs::create_dir_all(&self.default_output_dir);
-        let pipelines = [
-            "noaa_apt",
-            "meteor_lrpt",
-            "iss_sstv",
-            "generic_sstv",
-            "generic_fm",
-            "generic_am",
-            "generic_iq",
-        ];
-        for slug in pipelines {
-            let _ = fs::create_dir_all(self.default_output_dir.join(slug));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = std::fs::create_dir_all(&self.default_output_dir);
+            let pipelines = [
+                "noaa_apt",
+                "meteor_lrpt",
+                "iss_sstv",
+                "generic_sstv",
+                "generic_fm",
+                "generic_am",
+                "generic_iq",
+            ];
+            for slug in pipelines {
+                let _ = std::fs::create_dir_all(self.default_output_dir.join(slug));
+            }
         }
     }
 
     /// Carga la configuración desde el disco o usa los valores predeterminados
     pub fn load() -> Self {
-        let config_path = dirs::config_dir()
-            .map(|p| p.join("Signals_SDR").join("config.json"));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let config_path = dirs::config_dir()
+                .map(|p| p.join("Signals_SDR").join("config.json"));
 
-        if let Some(path) = config_path {
-            if let Ok(data) = fs::read_to_string(&path) {
-                if let Ok(cfg) = serde_json::from_str::<AppConfig>(&data) {
-                    cfg.ensure_directories_exist();
-                    return cfg;
+            if let Some(path) = config_path {
+                if let Ok(data) = std::fs::read_to_string(&path) {
+                    if let Ok(cfg) = serde_json::from_str::<AppConfig>(&data) {
+                        cfg.ensure_directories_exist();
+                        return cfg;
+                    }
                 }
             }
         }
@@ -76,12 +86,13 @@ impl AppConfig {
 
     /// Guarda la configuración actual en el disco
     pub fn save(&self) {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(mut path) = dirs::config_dir() {
             path = path.join("Signals_SDR");
-            let _ = fs::create_dir_all(&path);
+            let _ = std::fs::create_dir_all(&path);
             let file_path = path.join("config.json");
             if let Ok(serialized) = serde_json::to_string_pretty(self) {
-                let _ = fs::write(file_path, serialized);
+                let _ = std::fs::write(file_path, serialized);
             }
         }
     }

@@ -287,7 +287,7 @@ pub fn render_signal_visualizer(
                         .corner_radius(6.0);
 
                         if ui.add(save_btn).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
+                            if let Some(path) = crate::file_dialog::FileDialog::new()
                                 .set_file_name("oscilograma_iq.png")
                                 .add_filter("Imagen PNG", &["png"])
                                 .save_file()
@@ -355,7 +355,7 @@ pub fn render_signal_visualizer(
                             .corner_radius(6.0);
 
                             if ui.add(save_btn).clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
+                                if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .set_file_name("oscilograma_iq.png")
                                     .add_filter("Imagen PNG", &["png"])
                                     .save_file()
@@ -614,7 +614,7 @@ pub fn render_audio_waveform(
 
                         if ui.add(save_btn).clicked() {
                             let default_fn = format!("{}.png", title.to_lowercase().replace(' ', "_"));
-                            if let Some(path) = rfd::FileDialog::new()
+                            if let Some(path) = crate::file_dialog::FileDialog::new()
                                 .set_file_name(&default_fn)
                                 .add_filter("Imagen PNG", &["png"])
                                 .save_file()
@@ -681,7 +681,7 @@ pub fn render_audio_waveform(
 
                             if ui.add(save_btn).clicked() {
                                 let default_fn = format!("{}.png", title.to_lowercase().replace(' ', "_"));
-                                if let Some(path) = rfd::FileDialog::new()
+                                if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .set_file_name(&default_fn)
                                     .add_filter("Imagen PNG", &["png"])
                                     .save_file()

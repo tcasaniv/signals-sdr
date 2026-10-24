@@ -495,7 +495,7 @@ pub fn render_spectrogram_widget(
 
                         if ui.add(save_btn).clicked() {
                             let default_filename = format!("espectrograma_{}.png", pipeline_name);
-                            let save_dest = rfd::FileDialog::new()
+                            let save_dest = crate::file_dialog::FileDialog::new()
                                 .set_file_name(&default_filename)
                                 .add_filter("Imagen PNG", &["png"])
                                 .save_file()
@@ -545,7 +545,7 @@ pub fn render_spectrogram_widget(
 
                             if ui.add(save_btn).clicked() {
                                 let default_filename = format!("espectrograma_{}.png", pipeline_name);
-                                let save_dest = rfd::FileDialog::new()
+                                let save_dest = crate::file_dialog::FileDialog::new()
                                     .set_file_name(&default_filename)
                                     .add_filter("Imagen PNG", &["png"])
                                     .save_file()
