@@ -27,20 +27,20 @@ am-modulator = { path = "../am-modulator-rs" }
 # SDR Hardware Abstraction
 seify = { path = "../seify", default-features = false, features = ["dummy"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-seify = { path = "../seify", default-features = false, features = ["hackrf", "soapy"] }
-
-# Procesamiento de audio, imagen y datos
+# Procesamiento de audio, imagen y datos comunes
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
 hound = "3.5"
 symphonia = { version = "0.5.4", features = ["mp3", "wav"] }
 num-complex = "0.4"
-rfd = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
-dirs = "6.0"
 log = "0.4"
+rfd = "0.15"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+seify = { path = "../seify", default-features = false, features = ["hackrf", "soapy"] }
+dirs = "6.0"
 env_logger = "0.11"
 rodio = "0.23.0"
 
