@@ -170,15 +170,38 @@ Compila la suite como una aplicación web estática autónoma que se ejecuta al 
 # Instalar trunk (empaquetador web de Rust)
 cargo install trunk
 
-# Compilar release para producción
-trunk build --release
+# Compilar release estática WebAssembly para producción (salida en carpeta dist/)
+trunk build --release --no-default-features
+
+# O probar la web localmente con servidor de desarrollo y auto-recarga (Hot-Reload)
+trunk serve --no-default-features
 ```
 
 Los artefactos listos para producción se generan en la carpeta `dist/`. Pueden desplegarse gratuitamente en **GitHub Pages** (con soporte de dominio personalizado mediante archivo `CNAME`), Cloudflare Pages o cualquier servidor web estático. Consulte el workflow automatizado en [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) y la documentación en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-### Ejecución de Pruebas Automatizadas
+### Comparativa de Capacidades por Modalidad
+
+| Característica | Escritorio (`signals-sdr.exe`) | Servidor LAN (`--serve`) | Web Estática (WASM / Pages) |
+| :--- | :--- | :--- | :--- |
+| **Entorno de Ejecución** | Windows / Linux / macOS | Host PC / Raspberry Pi | Navegador Web (Chrome, Firefox, Safari) |
+| **Hardware SDR USB** | Acceso USB nativo completo | Acceso USB en máquina anfitriona | Simulación didáctica + aviso de Sandbox M3 |
+| **Audio** | Salida de audio nativa (`rodio`) | Reproducción local en anfitrión | Web Audio API / Navegador |
+| **Archivos** | Acceso directo a disco (`rfd`) | Sistema de archivos del anfitrión | Selector de archivos asíncrono web |
+| **Uso Recomendado** | Estación de trabajo principal | Control táctil Wi-Fi (móvil/tablet) | Pruebas de laboratorio sin instalación |
+
+### Flujo de Desarrollo Diario
 ```bash
+# Chequeo rápido de sintaxis y tipos
+cargo check
+
+# Ejecución de la suite de pruebas unitarias e integración (17 pruebas)
 cargo test
+
+# Linter de calidad de código y buenas prácticas
+cargo clippy
+
+# Formato automático del código
+cargo fmt
 ```
 
 ---

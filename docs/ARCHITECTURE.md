@@ -107,4 +107,67 @@ flowchart LR
 > 2. **Soporte WebUSB (Futuro):** La transmisión directa desde el navegador solo es técnicamente viable con dispositivos compatibles con la API **WebUSB** (como HackRF) en navegadores basados en Chromium (Chrome, Edge, Android). No es soportada por Safari ni Firefox.
 > 3. **Sistema de Archivos:** No existe acceso al explorador de carpetas nativo del sistema operativo; las operaciones de entrada/salida se realizan mediante diálogo de carga y descarga de archivos del navegador web.
 >
-> La aplicación web incluirá badges informativos claros indicando estas diferencias para que el usuario conozca de antemano el alcance de la versión estática frente al ejecutable nativo.
+> La aplicación web incluye callouts informativos de Material 3 indicando estas diferencias para que el usuario conozca de antemano el alcance de la versión estática frente al ejecutable nativo.
+
+---
+
+### 2.4 Matriz Comparativa de Capacidades
+
+| Característica | Modalidad 1: Escritorio (`signals-sdr.exe`) | Modalidad 2: Servidor LAN (`--serve`) | Modalidad 3: Web Estática (WASM / Pages) |
+| :--- | :--- | :--- | :--- |
+| **Entorno de Ejecución** | Windows / Linux / macOS (Nativo) | Host PC / Raspberry Pi (Servidor HTTP local) | Navegador Web (Chrome, Firefox, Safari) |
+| **Hardware SDR USB** | Acceso USB nativo completo (Seify / Soapy) | Acceso USB en máquina host (Seify / Soapy) | Modo de simulación didáctica + aviso de Sandbox M3 |
+| **Salida de Audio** | Motor de audio nativo de baja latencia (`rodio`) | Reproducción en dispositivo anfitrión | Web Audio API del navegador |
+| **Gestión de Archivos** | Diálogos de archivo de SO directos (`rfd`) | Sistema de archivos del servidor anfitrión | Carga y descarga de archivos asíncrona del navegador |
+| **Caso de Uso Ideal** | Transmisión principal en PC de laboratorio | Control táctil inalámbrico desde móvil o tablet en Wi-Fi | Demostración interactiva en línea sin instalación |
+
+---
+
+## 3. Guía de Comandos para Compilación y Despliegue
+
+### Compilación y Ejecución de Escritorio
+```bash
+# Compilar binario optimizado para producción
+cargo build --release
+
+# Ejecutar aplicación de escritorio nativa
+cargo run --release
+
+# Compilar con soporte para hardware SDR específico
+cargo run --release --features hackrf
+cargo run --release --features bladerf
+cargo run --release --features usrp
+```
+
+### Ejecución en Modo Servidor Web LAN
+```bash
+# Iniciar servidor LAN en puerto por defecto (8080)
+cargo run --release -- --serve
+
+# Opciones avanzadas de red
+cargo run --release -- --serve --port 8080 --bind 0.0.0.0 --open
+```
+
+### Compilación y Prueba WebAssembly Estática
+```bash
+# Compilar release para producción (carpeta dist/)
+trunk build --release --no-default-features
+
+# Servidor de desarrollo con auto-recarga
+trunk serve --no-default-features
+```
+
+### Comandos de Calidad y Pruebas
+```bash
+# Comprobación rápida de errores de sintaxis y tipos
+cargo check
+
+# Ejecutar suite de pruebas unitarias y de integración
+cargo test
+
+# Linter de código y buenas prácticas
+cargo clippy
+
+# Formateo de código según estándares de Rust
+cargo fmt
+```
