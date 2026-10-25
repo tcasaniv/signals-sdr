@@ -73,7 +73,7 @@ impl Default for AptPipeline {
             status_message: "Listo para seleccionar imágenes e iniciar el proceso.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             channel_effects_state: ChannelEffectsState::new_for_pipeline("noaa_apt", 137.1),
-            sdr_sample_rate: 288_000,
+            sdr_sample_rate: 60_000,
             transmission_state: TransmissionTabState::default(),
         }
     }
@@ -630,30 +630,26 @@ impl AptPipeline {
                 ui,
                 theme,
                 "apt_phase_4",
-                AccordionOptions::new("Fase 4: Modulación FM I/Q para SDR (17 kHz Desviación a 288 kHz)")
+                AccordionOptions::new("Fase 4: Modulación FM I/Q en Banda Base (17 kHz Desviación)")
                     .with_badge(status_text_4, status_color_4)
                     .default_open(false),
                 |ui| {
                     ui.label(
-                        RichText::new("Modula la subportadora AM en FM en banda ancha (WBFM) con 17 kHz de desviación y sobremuestreo a 288 kHz en banda base en cuadratura (I/Q) para transmisión SDR o exportación.")
+                        RichText::new("Modula la subportadora AM en FM (17 kHz de desviación) en banda base nativa en cuadratura (I/Q) para visualización eficiente y efectos de canal sin sobrecargar la memoria.")
                             .size(12.0)
                             .color(theme.text_secondary()),
                     );
                     ui.add_space(10.0);
 
                     ui.horizontal(|ui| {
-                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        ui.label("Tasa de Modulación Baseband Nativa:");
                         egui::ComboBox::from_id_salt("apt_sdr_rate_combo")
                             .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.sdr_sample_rate, 100_000, "100 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 8_000_000, "8.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 60_000, "60 kHz (Mínimo Nyquist APT)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 120_000, "120 kHz (Estándar recomendado)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz (Alta resolución)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz (Estándar RTL-SDR bajo)");
                             });
                     });
 

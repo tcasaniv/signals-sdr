@@ -42,7 +42,7 @@ impl Default for GenericAmPipeline {
             am_mode: AmMode::DsbFc,
             modulation_index: 0.85,
             if_offset_hz: 0.0,
-            sdr_sample_rate: 288_000,
+            sdr_sample_rate: 48_000,
             iq_samples: Vec::new(),
             status_message: "Listo para cargar archivo de audio o generar tono sintético.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
@@ -291,18 +291,14 @@ impl GenericAmPipeline {
 
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        ui.label("Tasa de Modulación Baseband Nativa:");
                         egui::ComboBox::from_id_salt("am_sdr_rate_combo")
                             .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.sdr_sample_rate, 100_000, "100 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 8_000_000, "8.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 48_000, "48 kHz (Óptimo voz / AM)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 96_000, "96 kHz (Alta fidelidad)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 192_000, "192 kHz (Estudio)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz (Extendido)");
                             });
                     });
 
@@ -319,7 +315,8 @@ impl GenericAmPipeline {
                         }
 
                         if !self.iq_samples.is_empty() {
-                            if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
+                            let next_btn = format!("Continuar a Efectos de Canal {}", crate::icons::ICON_ARROW_FORWARD.codepoint);
+                            if ui.button(RichText::new(next_btn).strong()).clicked() {
                                 self.current_step = 2;
                             }
                         }

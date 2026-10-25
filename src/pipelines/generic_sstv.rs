@@ -50,7 +50,7 @@ impl Default for GenericSstvPipeline {
             status_message: "Listo para seleccionar imagen para modulación SSTV multiprotocolo.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_sstv", 14.23),
-            sdr_sample_rate: 288_000,
+            sdr_sample_rate: 48_000,
             transmission_state: TransmissionTabState::default(),
         }
     }
@@ -440,7 +440,7 @@ impl GenericSstvPipeline {
                 ui,
                 theme,
                 "generic_sstv_phase_3",
-                AccordionOptions::new("Fase 3: Modulación FM RF para Transmisión SDR (288 kHz)")
+                AccordionOptions::new("Fase 3: Modulación FM RF en Banda Base Nativa")
                     .with_badge(badge_text_3, badge_color_3)
                     .default_open(false),
                 |ui| {
@@ -451,18 +451,14 @@ impl GenericSstvPipeline {
 
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        ui.label("Tasa de Modulación Baseband Nativa:");
                         egui::ComboBox::from_id_salt("generic_sstv_sdr_rate_combo")
                             .selected_text(format!("{} Sps ({} kHz)", self.sdr_sample_rate, self.sdr_sample_rate / 1000))
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.sdr_sample_rate, 100_000, "100 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 288_000, "288 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 500_000, "500 kHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 1_000_000, "1.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_000_000, "2.0 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 2_400_000, "2.4 MHz");
-                                ui.selectable_value(&mut self.sdr_sample_rate, 8_000_000, "8.0 MHz");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 48_000, "48 kHz (Óptimo SSTV / audio)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 96_000, "96 kHz (Alta resolución)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 192_000, "192 kHz (Estudio)");
+                                ui.selectable_value(&mut self.sdr_sample_rate, 250_000, "250 kHz (Extendido)");
                             });
                     });
 
