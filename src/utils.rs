@@ -174,3 +174,31 @@ pub fn load_audio_from_memory(
         original_channels,
     })
 }
+
+/// Remuestrea una señal I/Q compleja mediante interpolación lineal de fase continua.
+/// Realiza una única reserva exacta de memoria y es compatible con Web y Desktop.
+pub fn resample_iq(samples: &[(f32, f32)], in_rate: u32, out_rate: u32) -> Vec<(f32, f32)> {
+    if in_rate == out_rate || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let duration = samples.len() as f64 / in_rate as f64;
+    let n_out = (duration * out_rate as f64).round() as usize;
+    if n_out == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(n_out);
+    let ratio = (samples.len() - 1) as f64 / ((n_out - 1).max(1) as f64);
+    for j in 0..n_out {
+        let src_pos = j as f64 * ratio;
+        let idx = src_pos.floor() as usize;
+        let frac = (src_pos - idx as f64) as f32;
+        if idx + 1 < samples.len() {
+            let i = samples[idx].0 * (1.0 - frac) + samples[idx + 1].0 * frac;
+            let q = samples[idx].1 * (1.0 - frac) + samples[idx + 1].1 * frac;
+            out.push((i, q));
+        } else {
+            out.push(samples[idx]);
+        }
+    }
+    out
+}
