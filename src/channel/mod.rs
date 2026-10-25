@@ -666,6 +666,10 @@ pub struct ChannelEffectsState {
     pub is_dirty: bool,
     pub last_processing_ms: f32,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
+    /// true mientras se está calculando en background (WASM async / Desktop thread)
+    pub is_computing: bool,
+    /// Canal de retorno del cómputo asíncrono
+    pub compute_result: std::sync::Arc<std::sync::Mutex<Option<(Vec<(f32, f32)>, f32)>>>,
 }
 
 impl ChannelEffectsState {
@@ -678,7 +682,23 @@ impl ChannelEffectsState {
             is_dirty: true,
             last_processing_ms: 0.0,
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
+            is_computing: false,
+            compute_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Recoge el resultado del cómputo asíncrono si está listo. Devuelve true si se actualizó.
+    pub fn poll_compute_result(&mut self) -> bool {
+        if let Ok(mut guard) = self.compute_result.try_lock() {
+            if let Some((samples, elapsed_ms)) = guard.take() {
+                self.processed_iq = samples;
+                self.last_processing_ms = elapsed_ms;
+                self.is_dirty = false;
+                self.is_computing = false;
+                return true;
+            }
+        }
+        false
     }
 }
 

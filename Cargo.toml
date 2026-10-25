@@ -36,20 +36,24 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
 log = "0.4"
+rfd = "0.15"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 seify = { path = "../seify", default-features = false, features = ["hackrf", "soapy"] }
 dirs = "6.0"
 env_logger = "0.11"
 rodio = "0.23.0"
-rfd = "0.15"
+ureq = "3.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Document", "Window", "Element", "HtmlCanvasElement",
     "Navigator", "WorkerNavigator",
+    "Blob", "BlobPropertyBag", "HtmlAnchorElement", "Url",
+    "Response", "Request", "RequestInit", "Headers",
     "Usb", "UsbDevice", "UsbControlTransferParameters", "UsbInTransferResult",
     "UsbOutTransferResult", "UsbDeviceFilter", "UsbDeviceRequestOptions",
     "UsbRecipient", "UsbRequestType", "UsbDirection", "UsbTransferStatus"

@@ -3,7 +3,7 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions};
+use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions, ImageSlot};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use lrpt_encoder::{
@@ -13,12 +13,9 @@ use lrpt_encoder::{
 pub struct LrptPipeline {
     pub current_step: usize,
     pub num_channels: usize,
-    pub img1_path: Option<String>,
-    pub url1_input: String,
-    pub img2_path: Option<String>,
-    pub url2_input: String,
-    pub img3_path: Option<String>,
-    pub url3_input: String,
+    pub img1: ImageSlot,
+    pub img2: ImageSlot,
+    pub img3: ImageSlot,
     pub quality: u8,
     pub phase1_ready: bool,
     pub phase2_ready: bool,
@@ -39,12 +36,9 @@ impl Default for LrptPipeline {
         Self {
             current_step: 0,
             num_channels: 3,
-            img1_path: None,
-            url1_input: String::new(),
-            img2_path: None,
-            url2_input: String::new(),
-            img3_path: None,
-            url3_input: String::new(),
+            img1: ImageSlot::new(),
+            img2: ImageSlot::new(),
+            img3: ImageSlot::new(),
             quality: 80,
             phase1_ready: false,
             phase2_ready: false,
@@ -159,8 +153,7 @@ impl LrptPipeline {
                         &mut cols[0],
                         theme,
                         "Canal 1 (APID 64)",
-                        &mut self.img1_path,
-                        &mut self.url1_input,
+                        &mut self.img1,
                         crate::ui::components::ChannelColor::Blue,
                     );
                     if self.num_channels >= 2 {
@@ -168,8 +161,7 @@ impl LrptPipeline {
                             &mut cols[1],
                             theme,
                             "Canal 2 (APID 65)",
-                            &mut self.img2_path,
-                            &mut self.url2_input,
+                            &mut self.img2,
                             crate::ui::components::ChannelColor::Green,
                         );
                     }
@@ -178,8 +170,7 @@ impl LrptPipeline {
                             &mut cols[2],
                             theme,
                             "Canal 3 (APID 66)",
-                            &mut self.img3_path,
-                            &mut self.url3_input,
+                            &mut self.img3,
                             crate::ui::components::ChannelColor::Neutral,
                         );
                     }
@@ -189,8 +180,7 @@ impl LrptPipeline {
                     ui,
                     theme,
                     "Canal 1 (APID 64)",
-                    &mut self.img1_path,
-                    &mut self.url1_input,
+                    &mut self.img1,
                     crate::ui::components::ChannelColor::Blue,
                 );
                 if self.num_channels >= 2 {
@@ -199,8 +189,7 @@ impl LrptPipeline {
                         ui,
                         theme,
                         "Canal 2 (APID 65)",
-                        &mut self.img2_path,
-                        &mut self.url2_input,
+                        &mut self.img2,
                         crate::ui::components::ChannelColor::Green,
                     );
                 }
@@ -210,15 +199,14 @@ impl LrptPipeline {
                         ui,
                         theme,
                         "Canal 3 (APID 66)",
-                        &mut self.img3_path,
-                        &mut self.url3_input,
+                        &mut self.img3,
                         crate::ui::components::ChannelColor::Neutral,
                     );
                 }
             }
 
             ui.add_space(16.0);
-            if self.img1_path.is_some() || self.img2_path.is_some() || self.img3_path.is_some() {
+            if self.img1.is_some() || self.img2.is_some() || self.img3.is_some() {
                 ui.horizontal(|ui| {
                     let next_btn = egui::Button::new(
                         RichText::new("Continuar a Codificación ->")
@@ -371,7 +359,7 @@ impl LrptPipeline {
                     ui.add_space(8.0);
 
                     ui.horizontal_wrapped(|ui| {
-                        let can_fase2 = self.phase1_ready || self.img1_path.is_some();
+                        let can_fase2 = self.phase1_ready || self.img1.is_some();
                         let btn2 = egui::Button::new(
                             RichText::new("2. Estructurar Tramas CCSDS (VCDU) y FEC").strong().color(Color32::WHITE),
                         )
@@ -447,7 +435,7 @@ impl LrptPipeline {
 
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
-                        let can_fase3 = self.phase2_ready || self.phase1_ready || self.img1_path.is_some();
+                        let can_fase3 = self.phase2_ready || self.phase1_ready || self.img1.is_some();
                         let btn_label = format!("3. Modular Señal Digital OQPSK ({} kHz)", self.sdr_sample_rate / 1000);
                         let btn3 = egui::Button::new(
                             RichText::new(btn_label).strong().color(Color32::WHITE),
@@ -530,15 +518,15 @@ impl LrptPipeline {
     }
 
     fn get_channels_matrix(&self) -> [Vec<Vec<u8>>; 3] {
-        let load_or_dummy = |path: &Option<String>| -> Vec<Vec<u8>> {
-            path.as_ref()
-                .and_then(|p| imaging::load_image(std::path::Path::new(p)).ok())
-                .unwrap_or_else(|| vec![vec![128u8; 1568]; 64])
+        let load_or_dummy = |slot: &ImageSlot| -> Vec<Vec<u8>> {
+            slot.get_image()
+                .map(image_to_lrpt_matrix)
+                .unwrap_or_else(|| vec![vec![128u8; lrpt_encoder::IMAGE_WIDTH]; 64])
         };
 
-        let ch1 = load_or_dummy(&self.img1_path);
-        let ch2 = if self.num_channels >= 2 { load_or_dummy(&self.img2_path) } else { ch1.clone() };
-        let ch3 = if self.num_channels >= 3 { load_or_dummy(&self.img3_path) } else { ch1.clone() };
+        let ch1 = load_or_dummy(&self.img1);
+        let ch2 = if self.num_channels >= 2 { load_or_dummy(&self.img2) } else { ch1.clone() };
+        let ch3 = if self.num_channels >= 3 { load_or_dummy(&self.img3) } else { ch1.clone() };
         [ch1, ch2, ch3]
     }
 
@@ -685,4 +673,31 @@ fn resample_iq(samples: &[(f32, f32)], in_rate: u32, out_rate: u32) -> Vec<(f32,
         }
     }
     out
+}
+
+fn image_to_lrpt_matrix(img: &image::DynamicImage) -> Vec<Vec<u8>> {
+    let orig_width = img.width();
+    let orig_height = img.height();
+    if orig_width == 0 || orig_height == 0 {
+        return vec![vec![128u8; lrpt_encoder::IMAGE_WIDTH]; 64];
+    }
+    let new_height = ((orig_height as f32 * lrpt_encoder::IMAGE_WIDTH as f32 / orig_width as f32) as u32)
+        .max(lrpt_encoder::MCU_SIZE as u32);
+    let new_height = ((new_height + lrpt_encoder::MCU_SIZE as u32 - 1) / lrpt_encoder::MCU_SIZE as u32) * lrpt_encoder::MCU_SIZE as u32;
+
+    let resized = img.resize_exact(
+        lrpt_encoder::IMAGE_WIDTH as u32,
+        new_height,
+        image::imageops::FilterType::Lanczos3,
+    );
+    let grayscale = resized.to_luma8();
+    let mut rows = Vec::with_capacity(new_height as usize);
+    for y in 0..new_height {
+        let mut row = Vec::with_capacity(lrpt_encoder::IMAGE_WIDTH);
+        for x in 0..lrpt_encoder::IMAGE_WIDTH as u32 {
+            row.push(grayscale.get_pixel(x, y).0[0]);
+        }
+        rows.push(row);
+    }
+    rows
 }

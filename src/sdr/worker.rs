@@ -1,8 +1,12 @@
+#[cfg(not(target_arch = "wasm32"))]
 use num_complex::Complex32;
+#[cfg(not(target_arch = "wasm32"))]
 use seify::{DynDevice, TxStreamer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread::{self, JoinHandle};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -128,7 +132,7 @@ impl SdrDeviceOption {
 }
 
 /// Información completa de un transceptor SDR detectado físicamente
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DetectedDeviceInfo {
     pub label: String,
     pub backend: SdrBackend,
@@ -378,6 +382,7 @@ pub enum TransmissionStatus {
 pub struct SdrTransmissionController {
     stop_signal: Arc<AtomicBool>,
     status: Arc<Mutex<TransmissionStatus>>,
+    #[cfg(not(target_arch = "wasm32"))]
     handle: Option<JoinHandle<()>>,
 }
 
@@ -386,6 +391,7 @@ impl SdrTransmissionController {
         Self {
             stop_signal: Arc::new(AtomicBool::new(false)),
             status: Arc::new(Mutex::new(TransmissionStatus::Idle)),
+            #[cfg(not(target_arch = "wasm32"))]
             handle: None,
         }
     }
@@ -409,6 +415,7 @@ impl SdrTransmissionController {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn start(&mut self, config: TxConfig, iq_samples: Vec<(f32, f32)>) {
         self.stop();
 
@@ -662,10 +669,215 @@ impl SdrTransmissionController {
         self.handle = Some(handle);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn start(&mut self, config: TxConfig, iq_samples: Vec<(f32, f32)>) {
+        self.stop();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        self.stop_signal = Arc::clone(&stop);
+        let status = Arc::clone(&self.status);
+        let total = iq_samples.len();
+
+        *status.lock().unwrap() = TransmissionStatus::Transmitting {
+            samples_sent: 0,
+            total_samples: total,
+            elapsed_sec: 0.0,
+        };
+
+        if config.hw_type == SdrHardwareType::Dummy {
+            wasm_bindgen_futures::spawn_local(async move {
+                let start_ms = js_sys::Date::now();
+                let block_size = 16384;
+                let mut offset = 0;
+                let sample_duration_sec = 1.0 / (config.sample_rate_hz.max(1) as f64);
+
+                while !stop.load(Ordering::Relaxed) && offset < total {
+                    let end = (offset + block_size).min(total);
+                    let count = end - offset;
+                    let sleep_ms = ((count as f64 * sample_duration_sec) * 1000.0).clamp(10.0, 50.0) as i32;
+
+                    let promise = js_sys::Promise::new(&mut |resolve, _| {
+                        if let Some(w) = web_sys::window() {
+                            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, sleep_ms);
+                        }
+                    });
+                    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    offset = end;
+                    let elapsed_sec = ((js_sys::Date::now() - start_ms) / 1000.0) as f32;
+
+                    *status.lock().unwrap() = TransmissionStatus::Transmitting {
+                        samples_sent: offset,
+                        total_samples: total,
+                        elapsed_sec,
+                    };
+                }
+
+                if !stop.load(Ordering::Relaxed) {
+                    let elapsed_sec = ((js_sys::Date::now() - start_ms) / 1000.0) as f32;
+                    *status.lock().unwrap() = TransmissionStatus::Finished {
+                        total_samples: total,
+                        elapsed_sec,
+                    };
+                }
+            });
+        } else {
+            let origin = web_sys::window()
+                .and_then(|w| w.location().origin().ok())
+                .unwrap_or_default();
+
+            if origin.starts_with("http") {
+                wasm_bindgen_futures::spawn_local(async move {
+                    use web_sys::wasm_bindgen::JsCast;
+                    use web_sys::{Headers, Request, RequestInit, Response};
+
+                    let url = format!("{}/api/transmit", origin);
+                    let opts = RequestInit::new();
+                    opts.set_method("POST");
+
+                    let headers = match Headers::new() {
+                        Ok(h) => {
+                            let _ = h.set("Content-Type", "application/json");
+                            h
+                        }
+                        Err(_) => Headers::new().unwrap(),
+                    };
+                    opts.set_headers(&headers);
+
+                    let payload = serde_json::json!({
+                        "frequency_hz": config.frequency_hz,
+                        "sample_rate_hz": config.sample_rate_hz,
+                        "hw_type": format!("{:?}", config.hw_type),
+                        "device_args": config.resolve_device_args().unwrap_or_default(),
+                        "repeat": config.repeat,
+                        "samples_count": total,
+                    });
+
+                    opts.set_body(&web_sys::wasm_bindgen::JsValue::from_str(&payload.to_string()));
+
+                    let window = match web_sys::window() {
+                        Some(w) => w,
+                        None => {
+                            *status.lock().unwrap() = TransmissionStatus::Error("Ventana del navegador no disponible".to_string());
+                            return;
+                        }
+                    };
+
+                    let req = match Request::new_with_str_and_init(&url, &opts) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            *status.lock().unwrap() = TransmissionStatus::Error(format!("Error creando petición al servidor LAN: {:?}", e));
+                            return;
+                        }
+                    };
+
+                    match wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&req)).await {
+                        Ok(resp_val) => {
+                            if let Ok(resp) = resp_val.dyn_into::<Response>() {
+                                if resp.ok() {
+                                    let status_url = format!("{}/api/status", origin);
+                                    while !stop.load(Ordering::Relaxed) {
+                                        let delay_promise = js_sys::Promise::new(&mut |resolve, _| {
+                                            if let Some(w) = web_sys::window() {
+                                                let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 250);
+                                            }
+                                        });
+                                        let _ = wasm_bindgen_futures::JsFuture::from(delay_promise).await;
+
+                                        if stop.load(Ordering::Relaxed) {
+                                            break;
+                                        }
+
+                                        let st_req = match Request::new_with_str(&status_url) {
+                                            Ok(r) => r,
+                                            Err(_) => break,
+                                        };
+
+                                        if let Ok(st_val) = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&st_req)).await {
+                                            if let Ok(st_resp) = st_val.dyn_into::<Response>() {
+                                                if let Ok(txt_promise) = st_resp.text() {
+                                                    if let Ok(txt_val) = wasm_bindgen_futures::JsFuture::from(txt_promise).await {
+                                                        if let Some(txt) = txt_val.as_string() {
+                                                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                                                                let state_str = v["status"].as_str().unwrap_or("idle");
+                                                                if state_str == "transmitting" {
+                                                                    let sent = v["samples_sent"].as_u64().unwrap_or(0) as usize;
+                                                                    let tot = v["total_samples"].as_u64().unwrap_or(total as u64) as usize;
+                                                                    let el = v["elapsed_sec"].as_f64().unwrap_or(0.0) as f32;
+                                                                    *status.lock().unwrap() = TransmissionStatus::Transmitting {
+                                                                        samples_sent: sent,
+                                                                        total_samples: tot,
+                                                                        elapsed_sec: el,
+                                                                    };
+                                                                } else if state_str == "finished" {
+                                                                    let tot = v["total_samples"].as_u64().unwrap_or(total as u64) as usize;
+                                                                    let el = v["elapsed_sec"].as_f64().unwrap_or(0.0) as f32;
+                                                                    *status.lock().unwrap() = TransmissionStatus::Finished {
+                                                                        total_samples: tot,
+                                                                        elapsed_sec: el,
+                                                                    };
+                                                                    break;
+                                                                } else if state_str == "error" {
+                                                                    let msg = v["message"].as_str().unwrap_or("Error en servidor SDR");
+                                                                    *status.lock().unwrap() = TransmissionStatus::Error(msg.to_string());
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if let Ok(txt_promise) = resp.text() {
+                                        if let Ok(txt_val) = wasm_bindgen_futures::JsFuture::from(txt_promise).await {
+                                            let err_msg = txt_val.as_string().unwrap_or_else(|| "Error al iniciar transmisión en el anfitrión".to_string());
+                                            *status.lock().unwrap() = TransmissionStatus::Error(err_msg);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            *status.lock().unwrap() = TransmissionStatus::Error(format!("Fallo de comunicación con servidor LAN: {:?}", e));
+                        }
+                    }
+                });
+            } else {
+                *status.lock().unwrap() = TransmissionStatus::Error(
+                    "En modo WebAssembly standalone no hay acceso directo a los puertos USB de la máquina. Para transmitir con HackRF, ejecuta `signals-sdr --serve` en la PC con el hardware conectado o usa el Simulador Dummy.".to_string(),
+                );
+            }
+        }
+    }
+
     pub fn stop(&mut self) {
         self.stop_signal.store(true, Ordering::Relaxed);
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let origin = web_sys::window().and_then(|w| w.location().origin().ok()).unwrap_or_default();
+            if origin.starts_with("http") {
+                wasm_bindgen_futures::spawn_local(async move {
+                    use web_sys::{Request, RequestInit};
+                    let url = format!("{}/api/stop", origin);
+                    let opts = RequestInit::new();
+                    opts.set_method("POST");
+                    if let Ok(req) = Request::new_with_str_and_init(&url, &opts) {
+                        if let Some(w) = web_sys::window() {
+                            let _ = wasm_bindgen_futures::JsFuture::from(w.fetch_with_request(&req)).await;
+                        }
+                    }
+                });
+            }
         }
         *self.status.lock().unwrap() = TransmissionStatus::Idle;
     }

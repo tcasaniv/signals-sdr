@@ -5,7 +5,62 @@ use crate::ui::components::{accordion_section, info_card, AccordionOptions};
 use crate::ui::spectrogram::render_spectrogram_widget;
 use crate::ui::spectrum::render_signal_visualizer;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
+use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+
+/// Calcula efectos de canal síncronamente (Desktop) o de forma asíncrona (WASM).
+/// En WASM escribe el resultado en `result_arc` y devuelve un Vec vacío inmediatamente.
+/// En Desktop, calcula y devuelve el resultado directamente.
+fn dispatch_compute_channel_iq(
+    original: &[(f32, f32)],
+    sample_rate: u32,
+    params: &ChannelSimulationParams,
+    for_tx: bool,
+    result_arc: Arc<Mutex<Option<(Vec<(f32, f32)>, f32)>>>,
+    ctx: egui::Context,
+) {
+    // Límite de muestras para evitar congelamientos en WASM
+    let limit = if for_tx { 600_000usize } else { 300_000usize };
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let slice: Vec<(f32, f32)> = if original.len() > limit {
+            original[..limit].to_vec()
+        } else {
+            original.to_vec()
+        };
+        let params_owned = params.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let t0 = js_sys::Date::now();
+            let out = apply_channel_effects(&slice, sample_rate, &params_owned);
+            let elapsed_ms = (js_sys::Date::now() - t0) as f32;
+            if let Ok(mut g) = result_arc.lock() {
+                *g = Some((out, elapsed_ms));
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let slice: Vec<(f32, f32)> = if !for_tx && original.len() > limit {
+            original[..limit].to_vec()
+        } else {
+            original.to_vec()
+        };
+        let params_owned = params.clone();
+        std::thread::spawn(move || {
+            let t0 = Instant::now();
+            let out = apply_channel_effects(&slice, sample_rate, &params_owned);
+            let elapsed = t0.elapsed().as_secs_f32() * 1000.0;
+            if let Ok(mut g) = result_arc.lock() {
+                *g = Some((out, elapsed));
+            }
+            ctx.request_repaint();
+        });
+    }
+}
 
 /// Renderiza la subpestaña "3. Efectos de canal" para cualquier pipeline
 pub fn render_channel_effects_tab(
@@ -19,6 +74,12 @@ pub fn render_channel_effects_tab(
     state: &mut ChannelEffectsState,
     mut on_continue_to_tx: impl FnMut(),
 ) {
+    // Recoger resultado del cómputo asíncrono si ya terminó
+    if state.is_computing {
+        state.poll_compute_result();
+        ui.ctx().request_repaint();
+    }
+
     ui.vertical(|ui| {
         // 1. Selector Superior de Modo (Pills): Sin efectos vs Con efectos de canal
         ui.horizontal_wrapped(|ui| {
@@ -87,13 +148,18 @@ pub fn render_channel_effects_tab(
 
             if ui.add(with_btn).clicked() {
                 state.active_tab = ChannelEffectsTab::WithEffects;
-                // Si aún no se han procesado muestras y está sucio, procesar
-                if state.processed_iq.is_empty() && !original_iq.is_empty() {
-                    let start = Instant::now();
-                    state.processed_iq =
-                        apply_channel_effects(original_iq, sample_rate, &state.params);
-                    state.last_processing_ms = start.elapsed().as_secs_f32() * 1000.0;
+                // Disparar cómputo asíncrono si no hay muestras procesadas
+                if state.processed_iq.is_empty() && !original_iq.is_empty() && !state.is_computing {
+                    state.is_computing = true;
                     state.is_dirty = false;
+                    dispatch_compute_channel_iq(
+                        original_iq,
+                        sample_rate,
+                        &state.params,
+                        false,
+                        Arc::clone(&state.compute_result),
+                        ui.ctx().clone(),
+                    );
                 }
             }
         });
@@ -747,26 +813,45 @@ fn render_with_effects_view(
         .show(ui, |ui| {
             // Botón de cálculo y feedback
             ui.horizontal_wrapped(|ui| {
+                let is_computing = state.is_computing;
+
+                // Botón Aplicar — deshabilitado mientras computa
+                let apply_label = if is_computing {
+                    "  ⏳ Calculando…  "
+                } else {
+                    "  ⟳ Aplicar Efectos de Canal  "
+                };
                 let apply_btn = egui::Button::new(
-                    RichText::new("  ⟳ Aplicar Efectos de Canal  ")
+                    RichText::new(apply_label)
                         .strong()
                         .size(13.5)
                         .color(Color32::WHITE),
                 )
-                .fill(theme.accent_blue())
+                .fill(if is_computing { theme.surface_subtle() } else { theme.accent_blue() })
                 .corner_radius(6.0)
                 .min_size(Vec2::new(0.0, 32.0));
 
-                if ui.add(apply_btn).clicked() {
-                    let start = Instant::now();
-                    state.processed_iq =
-                        apply_channel_effects(original_iq, sample_rate, &state.params);
-                    state.last_processing_ms = start.elapsed().as_secs_f32() * 1000.0;
+                if ui.add_enabled(!is_computing, apply_btn).clicked() {
+                    state.is_computing = true;
                     state.is_dirty = false;
+                    dispatch_compute_channel_iq(
+                        original_iq,
+                        sample_rate,
+                        &state.params,
+                        false,
+                        Arc::clone(&state.compute_result),
+                        ui.ctx().clone(),
+                    );
                 }
 
                 ui.add_space(8.0);
-                if state.is_dirty {
+                if is_computing {
+                    ui.label(
+                        RichText::new("⏳ Calculando efectos de canal en segundo plano…")
+                            .color(theme.accent_blue())
+                            .strong(),
+                    );
+                } else if state.is_dirty {
                     ui.label(
                         RichText::new("⚠ Hay cambios de canal pendientes de aplicar.")
                             .color(Color32::from_rgb(234, 179, 8))
@@ -775,7 +860,7 @@ fn render_with_effects_view(
                 } else if !state.processed_iq.is_empty() {
                     ui.label(
                         RichText::new(format!(
-                            "✓ Efectos aplicados en {:.1} ms (Muestras totales: {})",
+                            "✓ Efectos aplicados en {:.1} ms (Muestras procesadas: {})",
                             state.last_processing_ms,
                             state.processed_iq.len()
                         ))
@@ -793,15 +878,22 @@ fn render_with_effects_view(
                         )
                         .clicked()
                     {
-                        // Si está sucio o vacío, asegurarse de computar antes de ir a tx
-                        if state.processed_iq.is_empty() || state.is_dirty {
-                            let start = Instant::now();
-                            state.processed_iq =
-                                apply_channel_effects(original_iq, sample_rate, &state.params);
-                            state.last_processing_ms = start.elapsed().as_secs_f32() * 1000.0;
+                        // Si está sucio o vacío, disparar cómputo (para Tx se usa todo el buffer)
+                        if (state.processed_iq.is_empty() || state.is_dirty) && !state.is_computing {
+                            state.is_computing = true;
                             state.is_dirty = false;
+                            dispatch_compute_channel_iq(
+                                original_iq,
+                                sample_rate,
+                                &state.params,
+                                true,
+                                Arc::clone(&state.compute_result),
+                                ui.ctx().clone(),
+                            );
                         }
-                        on_continue_to_tx();
+                        if !state.is_computing {
+                            on_continue_to_tx();
+                        }
                     }
                 });
             });

@@ -3,23 +3,26 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions};
+use crate::ui::components::{accordion_section, image_input_card, info_card, step_bar, AccordionOptions, ImageSlot};
 use crate::ui::spectrum::render_audio_waveform_i16;
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use fm_modulator::fm_modulate;
-use image::{DynamicImage, ImageReader, RgbImage};
+use image::{DynamicImage, RgbImage};
 use sstv_encoder::{encode_sstv, Mode};
 use std::path::PathBuf;
 
 pub struct GenericSstvPipeline {
     pub current_step: usize,
-    pub img_path: Option<String>,
-    pub url_input: String,
+    pub img: ImageSlot,
     pub selected_mode: Mode,
     pub fm_deviation_hz: f32,
     pub audio_samples: Option<Vec<i16>>,
     pub audio_wav_path: Option<PathBuf>,
+    pub bytes_wav: Option<Vec<u8>>,
+    pub is_playing_audio: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub active_audio_blob_url: Option<String>,
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
@@ -32,12 +35,15 @@ impl Default for GenericSstvPipeline {
     fn default() -> Self {
         Self {
             current_step: 0,
-            img_path: None,
-            url_input: String::new(),
+            img: ImageSlot::new(),
             selected_mode: Mode::Martin1,
             fm_deviation_hz: 5_000.0,
             audio_samples: None,
             audio_wav_path: None,
+            bytes_wav: None,
+            is_playing_audio: false,
+            #[cfg(target_arch = "wasm32")]
+            active_audio_blob_url: None,
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imagen para modulación SSTV multiprotocolo.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
@@ -127,14 +133,13 @@ impl GenericSstvPipeline {
                 ui,
                 theme,
                 "Imagen Fuente para SSTV",
-                &mut self.img_path,
-                &mut self.url_input,
+                &mut self.img,
                 crate::ui::components::ChannelColor::Blue,
             );
 
             ui.add_space(12.0);
 
-            if let Some(path) = &self.img_path {
+            if self.img.is_some() {
                 Frame::new()
                     .fill(theme.card_bg())
                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -142,7 +147,8 @@ impl GenericSstvPipeline {
                     .inner_margin(12.0)
                     .show(ui, |ui| {
                         ui.label(RichText::new("Imagen seleccionada:").strong().color(theme.accent_blue()));
-                        ui.label(RichText::new(path).monospace().size(12.0));
+                        let name = self.img.display_name.as_deref().unwrap_or("Imagen en memoria");
+                        ui.label(RichText::new(name).monospace().size(12.0));
                     });
 
                 ui.add_space(16.0);
@@ -370,21 +376,49 @@ impl GenericSstvPipeline {
 
                         ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
-                            if let Some(ref path) = self.audio_wav_path {
-                                let play_btn = egui::Button::new(RichText::new("Reproducir en Reproductor Predeterminado").strong().size(12.5))
+                            // Botón Reproducir / Detener Audio SSTV
+                            let play_label = if self.is_playing_audio {
+                                "⏹ Detener Audio SSTV"
+                            } else {
+                                "▶ Reproducir Audio SSTV (.wav)"
+                            };
+                            let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.5).color(Color32::WHITE))
+                                .fill(if self.is_playing_audio { Color32::from_rgb(239, 68, 68) } else { theme.accent_blue() })
+                                .corner_radius(6.0)
+                                .min_size(Vec2::new(0.0, 32.0));
+
+                            if ui.add(play_btn).clicked() {
+                                self.play_audio();
+                            }
+
+                            // Botón Descargar WAV
+                            if self.bytes_wav.is_some() || self.audio_wav_path.is_some() {
+                                let dl_wav_btn = egui::Button::new(RichText::new("⬇ Descargar Audio (.wav)").size(12.5))
+                                    .fill(theme.surface_subtle())
+                                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                                    .corner_radius(6.0)
                                     .min_size(Vec2::new(0.0, 32.0));
-                                if ui.add(play_btn).clicked() {
-                                    if let Some(p) = path.to_str() {
-                                        crate::utils::open_path_or_url(p);
+
+                                if ui.add(dl_wav_btn).clicked() {
+                                    if let Some(ref bytes) = self.bytes_wav {
+                                        #[cfg(target_arch = "wasm32")]
+                                        let _ = crate::web_utils::trigger_browser_download("audio_sstv.wav", bytes, "audio/wav");
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
+                                            let _ = std::fs::write(dir.join("audio_sstv.wav"), bytes);
+                                        }
                                     }
                                 }
                             }
 
-                            let out_dir = config.get_pipeline_dir("generic_sstv");
-                            let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
-                                .min_size(Vec2::new(0.0, 32.0));
-                            if ui.add(folder_btn).clicked() {
-                                crate::utils::open_folder(&out_dir);
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                let out_dir = config.get_pipeline_dir("generic_sstv");
+                                let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
+                                    .min_size(Vec2::new(0.0, 32.0));
+                                if ui.add(folder_btn).clicked() {
+                                    crate::utils::open_folder(&out_dir);
+                                }
                             }
                         });
                     }
@@ -434,7 +468,7 @@ impl GenericSstvPipeline {
 
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
-                        let can_mod = self.audio_samples.is_some() || self.img_path.is_some();
+                        let can_mod = self.audio_samples.is_some() || self.img.is_some();
                         let btn_label = format!("3. Modular en FM RF ({} kHz)", self.sdr_sample_rate / 1000);
                         let start_btn = egui::Button::new(
                             RichText::new(btn_label).strong().color(Color32::WHITE),
@@ -519,8 +553,7 @@ impl GenericSstvPipeline {
     /// Paso 2: Codificación Analógica SSTV a PCM 16-bit 48 kHz y guardado en WAV
     pub fn step_encode_audio(&mut self, config: &AppConfig) {
         let (name, res, _) = Self::mode_info_label(self.selected_mode);
-        let img = self.img_path.as_ref()
-            .and_then(|p| ImageReader::open(p).ok()?.decode().ok())
+        let img = self.img.get_image().cloned()
             .unwrap_or_else(|| {
                 // Generar imagen de barras de color de prueba
                 let mut rgb = RgbImage::new(640, 480);
@@ -545,6 +578,7 @@ impl GenericSstvPipeline {
                 let out_dir = config.get_pipeline_dir("generic_sstv");
                 let wav_path = out_dir.join("audio_sstv.wav");
                 let _ = save_wav_file(&wav_path, &samples_i16, 48_000);
+                self.bytes_wav = encode_wav_to_bytes(&samples_i16, 48_000);
 
                 self.audio_wav_path = Some(wav_path);
                 self.audio_samples = Some(samples_i16);
@@ -568,7 +602,17 @@ impl GenericSstvPipeline {
 
         if let Some(ref samples_i16) = self.audio_samples {
             let audio_f32: Vec<f32> = samples_i16.iter().map(|&s| s as f32 / 32768.0).collect();
-            self.iq_samples = fm_modulate(&audio_f32, 48_000, self.sdr_sample_rate, self.fm_deviation_hz, 0.0);
+
+            #[cfg(target_arch = "wasm32")]
+            let slice = if self.sdr_sample_rate >= 1_000_000 && audio_f32.len() > 48_000 * 3 {
+                &audio_f32[..48_000 * 3]
+            } else {
+                &audio_f32[..]
+            };
+            #[cfg(not(target_arch = "wasm32"))]
+            let slice = &audio_f32[..];
+
+            self.iq_samples = fm_modulate(slice, 48_000, self.sdr_sample_rate, self.fm_deviation_hz, 0.0);
             self.channel_effects_state.is_dirty = true;
             self.channel_effects_state.processed_iq.clear();
             self.status_message = format!(
@@ -577,6 +621,51 @@ impl GenericSstvPipeline {
                 self.iq_samples.len(),
                 self.fm_deviation_hz / 1000.0
             );
+        }
+    }
+
+    pub fn play_audio(&mut self) {
+        if self.is_playing_audio {
+            self.stop_audio();
+            return;
+        }
+
+        if let Some(ref bytes) = self.bytes_wav {
+            self.is_playing_audio = true;
+            #[cfg(target_arch = "wasm32")]
+            {
+                if let Some(old_url) = self.active_audio_blob_url.take() {
+                    let _ = web_sys::Url::revoke_object_url(&old_url);
+                }
+                if let Ok(url) = crate::web_utils::create_audio_blob_url(bytes) {
+                    let script = format!(
+                        r#"(function(){{var a=document.getElementById('_gen_sstv_audio');if(a){{a.pause();a.remove();}}var el=document.createElement('audio');el.id='_gen_sstv_audio';el.src='{}';el.play();}})()"#,
+                        url
+                    );
+                    let _ = js_sys::eval(&script);
+                    self.active_audio_blob_url = Some(url);
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = bytes;
+                if let Some(ref p) = self.audio_wav_path {
+                    if let Some(p_str) = p.to_str() {
+                        crate::utils::open_path_or_url(p_str);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn stop_audio(&mut self) {
+        self.is_playing_audio = false;
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(url) = self.active_audio_blob_url.take() {
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+            let _ = js_sys::eval(r#"(function(){var a=document.getElementById('_gen_sstv_audio');if(a){a.pause();a.remove();}})()"#);
         }
     }
 
@@ -599,4 +688,22 @@ fn save_wav_file(path: &std::path::Path, samples: &[i16], sample_rate: u32) -> R
     }
     writer.finalize().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn encode_wav_to_bytes(samples: &[i16], sample_rate: u32) -> Option<Vec<u8>> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    {
+        let mut writer = hound::WavWriter::new(&mut cursor, spec).ok()?;
+        for &s in samples {
+            writer.write_sample(s).ok()?;
+        }
+        writer.finalize().ok()?;
+    }
+    Some(cursor.into_inner())
 }

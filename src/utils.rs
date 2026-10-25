@@ -9,8 +9,13 @@ pub fn open_path_or_url(target: &str) {
 
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(window) = web_sys::window() {
-            let _ = window.open_with_url_and_target(target, "_blank");
+        // En WebAssembly, solo abrir en nueva pestaña si es un enlace web HTTP o HTTPS legítimo.
+        // Las rutas de archivo locales o relativas nunca deben navegarse en el navegador porque
+        // el servidor LAN responde con la SPA (index.html), recargando la interfaz.
+        if target.starts_with("http://") || target.starts_with("https://") {
+            if let Some(window) = web_sys::window() {
+                let _ = window.open_with_url_and_target(target, "_blank");
+            }
         }
     }
 

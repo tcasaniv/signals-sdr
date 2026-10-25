@@ -84,28 +84,29 @@ pub fn apply_channel_effects(
         let direct_coeff = (k_lin / (k_lin + 1.0)).sqrt();
         let diffuse_coeff = (1.0 / (k_lin + 1.0)).sqrt();
 
-        // Filtro paso bajo de un polo para simular variación temporal lenta (Doppler spread fm)
+        // Filtro paso bajo para simular variación temporal lenta (Doppler spread fm)
         let fm = params.fading_rate_hz.max(0.05);
         let alpha = (2.0 * PI * fm / sample_rate_f).clamp(0.0001, 0.5);
 
+        const FADING_BLOCK: usize = 64;
         let mut diff_i = 0.0_f32;
         let mut diff_q = 0.0_f32;
+        let step_alpha = (alpha * FADING_BLOCK as f32).min(0.5);
 
-        for (i, q) in current_iq.iter_mut() {
+        for chunk in current_iq.chunks_mut(FADING_BLOCK) {
             let (noise_i, noise_q) = rng.next_gaussian_pair();
-            // Actualizar componente difusa filtrada
-            diff_i += alpha * (noise_i - diff_i);
-            diff_q += alpha * (noise_q - diff_q);
+            diff_i += step_alpha * (noise_i - diff_i);
+            diff_q += step_alpha * (noise_q - diff_q);
 
-            // Coeficiente de canal h = direct + diffuse
             let h_i = direct_coeff + diffuse_coeff * diff_i;
             let h_q = diffuse_coeff * diff_q;
 
-            // Multiplicación compleja: y = x * h
-            let orig_i = *i;
-            let orig_q = *q;
-            *i = orig_i * h_i - orig_q * h_q;
-            *q = orig_i * h_q + orig_q * h_i;
+            for (i, q) in chunk {
+                let orig_i = *i;
+                let orig_q = *q;
+                *i = orig_i * h_i - orig_q * h_q;
+                *q = orig_i * h_q + orig_q * h_i;
+            }
         }
     }
 
@@ -116,37 +117,41 @@ pub fn apply_channel_effects(
         let tau = (total_time / 6.0).max(0.01);
 
         let mut phase = 0.0_f32;
+        const DOPPLER_BLOCK: usize = 64;
+        let mut sample_idx = 0usize;
 
-        for (n, (i, q)) in current_iq.iter_mut().enumerate() {
-            let t = n as f32 / sample_rate_f;
+        for chunk in current_iq.chunks_mut(DOPPLER_BLOCK) {
+            let t = sample_idx as f32 / sample_rate_f;
             let freq_offset = match params.doppler_mode {
                 DopplerMode::LeoPass => {
-                    // Curva S típica: +fd_max en AOS -> 0 en TCA -> -fd_max en LOS
                     -params.max_doppler_hz * ((t - mid_time) / tau).tanh()
                 }
                 DopplerMode::LinearDrift => {
-                    // Deriva lineal continua desde +fd hasta -fd
                     let progress = if total_time > 0.0 { t / total_time } else { 0.0 };
                     params.max_doppler_hz * (1.0 - 2.0 * progress)
                 }
                 DopplerMode::StaticOffset => params.max_doppler_hz,
             };
 
-            // Acumular fase: phi[n] = phi[n-1] + 2*pi * fd / fs
-            phase += 2.0 * PI * (freq_offset / sample_rate_f);
-            if phase > PI {
-                phase -= 2.0 * PI;
-            } else if phase < -PI {
-                phase += 2.0 * PI;
+            let dphase = 2.0 * PI * (freq_offset / sample_rate_f);
+
+            for (i, q) in chunk {
+                phase += dphase;
+                if phase > PI {
+                    phase -= 2.0 * PI;
+                } else if phase < -PI {
+                    phase += 2.0 * PI;
+                }
+
+                let cos_p = phase.cos();
+                let sin_p = phase.sin();
+
+                let orig_i = *i;
+                let orig_q = *q;
+                *i = orig_i * cos_p - orig_q * sin_p;
+                *q = orig_i * sin_p + orig_q * cos_p;
             }
-
-            let cos_p = phase.cos();
-            let sin_p = phase.sin();
-
-            let orig_i = *i;
-            let orig_q = *q;
-            *i = orig_i * cos_p - orig_q * sin_p;
-            *q = orig_i * sin_p + orig_q * cos_p;
+            sample_idx += DOPPLER_BLOCK;
         }
     }
 

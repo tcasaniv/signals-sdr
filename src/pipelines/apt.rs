@@ -3,20 +3,18 @@ use crate::config::AppConfig;
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
-use crate::ui::components::{accordion_section, image_input_card, info_card, intermediate_preview_card, step_bar, AccordionOptions, ChannelColor};
+use crate::ui::components::{accordion_section, image_input_card, info_card, intermediate_preview_card, step_bar, AccordionOptions, ChannelColor, ImageSlot};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use apt_encoder::{crop_to_matching_height, encode_apt, fm_modulate, modulate_apt, preprocess_image, CHANNEL_WIDTH};
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
-use image::{DynamicImage, GrayImage, ImageReader};
+use image::{DynamicImage, GrayImage};
 use std::path::PathBuf;
 
 pub struct AptPipeline {
     pub current_step: usize,
     // Paso 1: Fuente
-    pub img_a_path: Option<String>,
-    pub url_a_input: String,
-    pub img_b_path: Option<String>,
-    pub url_b_input: String,
+    pub img_a: ImageSlot,
+    pub img_b: ImageSlot,
     // Paso 2: Fases Didácticas de Codificación
     pub preprocessed_a: Option<GrayImage>,
     pub preprocessed_b: Option<GrayImage>,
@@ -26,6 +24,16 @@ pub struct AptPipeline {
     pub path_apt_image: Option<PathBuf>,
     pub audio_am_samples: Option<Vec<i16>>,
     pub path_audio_wav: Option<PathBuf>,
+    pub bytes_preprocessed_a: Option<Vec<u8>>,
+    pub bytes_preprocessed_b: Option<Vec<u8>>,
+    pub bytes_apt_image: Option<Vec<u8>>,
+    pub bytes_audio_wav: Option<Vec<u8>>,
+    pub image_modal: crate::ui::image_modal::ImageViewerModal,
+    pub output_files_modal: crate::ui::output_files_modal::OutputFilesModal,
+    pub is_modulating_fm: bool,
+    pub is_playing_audio: bool,
+    #[cfg(target_arch = "wasm32")]
+    pub active_audio_blob_url: Option<String>,
     pub iq_samples: Vec<(f32, f32)>,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
@@ -39,18 +47,26 @@ impl Default for AptPipeline {
     fn default() -> Self {
         Self {
             current_step: 0,
-            img_a_path: None,
-            url_a_input: String::new(),
-            img_b_path: None,
-            url_b_input: String::new(),
+            img_a: ImageSlot::new(),
+            img_b: ImageSlot::new(),
             preprocessed_a: None,
             preprocessed_b: None,
             path_preprocessed_a: None,
             path_preprocessed_b: None,
+            bytes_preprocessed_a: None,
+            bytes_preprocessed_b: None,
             apt_image: None,
             path_apt_image: None,
+            bytes_apt_image: None,
             audio_am_samples: None,
             path_audio_wav: None,
+            bytes_audio_wav: None,
+            image_modal: crate::ui::image_modal::ImageViewerModal::new(),
+            output_files_modal: crate::ui::output_files_modal::OutputFilesModal::new(),
+            is_modulating_fm: false,
+            is_playing_audio: false,
+            #[cfg(target_arch = "wasm32")]
+            active_audio_blob_url: None,
             iq_samples: Vec::new(),
             status_message: "Listo para seleccionar imágenes e iniciar el proceso.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
@@ -130,6 +146,10 @@ impl AptPipeline {
                 }
                 _ => {}
             }
+
+            // Renderizado de modales interactivos (Overlay a pantalla completa)
+            self.output_files_modal.show(ui.ctx(), theme, &mut self.image_modal);
+            self.image_modal.show(ui.ctx(), theme);
         });
     }
 
@@ -149,16 +169,14 @@ impl AptPipeline {
                         &mut cols[0],
                         theme,
                         "Imagen A",
-                        &mut self.img_a_path,
-                        &mut self.url_a_input,
+                        &mut self.img_a,
                         ChannelColor::Blue,
                     );
                     image_input_card(
                         &mut cols[1],
                         theme,
                         "Imagen B",
-                        &mut self.img_b_path,
-                        &mut self.url_b_input,
+                        &mut self.img_b,
                         ChannelColor::Green,
                     );
                 });
@@ -167,8 +185,7 @@ impl AptPipeline {
                     ui,
                     theme,
                     "Imagen A",
-                    &mut self.img_a_path,
-                    &mut self.url_a_input,
+                    &mut self.img_a,
                     ChannelColor::Blue,
                 );
                 ui.add_space(10.0);
@@ -176,14 +193,13 @@ impl AptPipeline {
                     ui,
                     theme,
                     "Imagen B",
-                    &mut self.img_b_path,
-                    &mut self.url_b_input,
+                    &mut self.img_b,
                     ChannelColor::Green,
                 );
             }
 
             ui.add_space(16.0);
-            if self.img_a_path.is_some() || self.img_b_path.is_some() {
+            if self.img_a.is_some() || self.img_b.is_some() {
                 ui.horizontal(|ui| {
                     let next_btn = egui::Button::new(
                         RichText::new("Continuar a Codificación ->")
@@ -291,9 +307,12 @@ impl AptPipeline {
                     let color_a = self.preprocessed_a.as_ref().map(crate::ui::components::gray_image_to_color_image);
                     let color_b = self.preprocessed_b.as_ref().map(crate::ui::components::gray_image_to_color_image);
 
+                    let mut action_a = crate::ui::components::PreviewCardResponse::default();
+                    let mut action_b = crate::ui::components::PreviewCardResponse::default();
+
                     if avail_w >= 680.0 {
                         ui.columns(2, |cols| {
-                            intermediate_preview_card(
+                            action_a = intermediate_preview_card(
                                 &mut cols[0],
                                 theme,
                                 "Canal A Preprocesado (909 px)",
@@ -303,7 +322,7 @@ impl AptPipeline {
                                 ChannelColor::Blue,
                                 color_a.as_ref(),
                             );
-                            intermediate_preview_card(
+                            action_b = intermediate_preview_card(
                                 &mut cols[1],
                                 theme,
                                 "Canal B Preprocesado (909 px)",
@@ -315,7 +334,7 @@ impl AptPipeline {
                             );
                         });
                     } else {
-                        intermediate_preview_card(
+                        action_a = intermediate_preview_card(
                             ui,
                             theme,
                             "Canal A Preprocesado (909 px)",
@@ -326,7 +345,7 @@ impl AptPipeline {
                             color_a.as_ref(),
                         );
                         ui.add_space(6.0);
-                        intermediate_preview_card(
+                        action_b = intermediate_preview_card(
                             ui,
                             theme,
                             "Canal B Preprocesado (909 px)",
@@ -336,6 +355,48 @@ impl AptPipeline {
                             ChannelColor::Green,
                             color_b.as_ref(),
                         );
+                    }
+
+                    if action_a.view_fullscreen {
+                        if let Some(ref ci) = color_a {
+                            self.image_modal.open_with_color_image(
+                                "Canal A Preprocesado (909 px)",
+                                ci.clone(),
+                                "preprocesado_a.png",
+                                self.bytes_preprocessed_a.clone(),
+                            );
+                        }
+                    }
+                    if action_a.download {
+                        if let Some(ref bytes) = self.bytes_preprocessed_a {
+                            #[cfg(target_arch = "wasm32")]
+                            let _ = crate::web_utils::trigger_browser_download("preprocesado_a.png", bytes, "image/png");
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
+                                let _ = std::fs::write(dir.join("preprocesado_a.png"), bytes);
+                            }
+                        }
+                    }
+
+                    if action_b.view_fullscreen {
+                        if let Some(ref ci) = color_b {
+                            self.image_modal.open_with_color_image(
+                                "Canal B Preprocesado (909 px)",
+                                ci.clone(),
+                                "preprocesado_b.png",
+                                self.bytes_preprocessed_b.clone(),
+                            );
+                        }
+                    }
+                    if action_b.download {
+                        if let Some(ref bytes) = self.bytes_preprocessed_b {
+                            #[cfg(target_arch = "wasm32")]
+                            let _ = crate::web_utils::trigger_browser_download("preprocesado_b.png", bytes, "image/png");
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
+                                let _ = std::fs::write(dir.join("preprocesado_b.png"), bytes);
+                            }
+                        }
                     }
                 },
             );
@@ -369,7 +430,7 @@ impl AptPipeline {
                     ui.add_space(10.0);
 
                     ui.horizontal_wrapped(|ui| {
-                        let can_encode = self.img_a_path.is_some() || self.img_b_path.is_some() || self.preprocessed_a.is_some();
+                        let can_encode = self.img_a.is_some() || self.img_b.is_some() || self.preprocessed_a.is_some();
                         let encode_btn = egui::Button::new(
                             RichText::new("2. Codificar Trama Matricial APT (2080 px)").strong().color(Color32::WHITE),
                         )
@@ -397,7 +458,7 @@ impl AptPipeline {
 
                     let color_apt = self.apt_image.as_ref().map(crate::ui::components::gray_image_to_color_image);
 
-                    intermediate_preview_card(
+                    let action_apt = intermediate_preview_card(
                         ui,
                         theme,
                         "Imagen Compuesta APT (2080 px)",
@@ -407,6 +468,27 @@ impl AptPipeline {
                         ChannelColor::Neutral,
                         color_apt.as_ref(),
                     );
+
+                    if action_apt.view_fullscreen {
+                        if let Some(ref ci) = color_apt {
+                            self.image_modal.open_with_color_image(
+                                "Imagen Compuesta APT (2080 px)",
+                                ci.clone(),
+                                "apt_compuesta.png",
+                                self.bytes_apt_image.clone(),
+                            );
+                        }
+                    }
+                    if action_apt.download {
+                        if let Some(ref bytes) = self.bytes_apt_image {
+                            #[cfg(target_arch = "wasm32")]
+                            let _ = crate::web_utils::trigger_browser_download("apt_compuesta.png", bytes, "image/png");
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
+                                let _ = std::fs::write(dir.join("apt_compuesta.png"), bytes);
+                            }
+                        }
+                    }
                 },
             );
 
@@ -434,7 +516,7 @@ impl AptPipeline {
                     ui.add_space(10.0);
 
                     ui.horizontal_wrapped(|ui| {
-                        let can_mod = self.apt_image.is_some() || self.img_a_path.is_some();
+                        let can_mod = self.apt_image.is_some() || self.img_a.is_some();
                         let mod_btn = egui::Button::new(
                             RichText::new("3. Modular Subportadora AM (2400 Hz)").strong().color(Color32::WHITE),
                         )
@@ -478,21 +560,57 @@ impl AptPipeline {
 
                         ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
-                            if let Some(ref wav_path) = self.path_audio_wav {
-                                let play_btn = egui::Button::new(RichText::new("Reproducir / Abrir Audio APT (.wav)").strong().size(12.5))
+                            // Botón Reproducir / Detener Audio
+                            let play_label = if self.is_playing_audio {
+                                "⏹ Detener Audio APT"
+                            } else {
+                                "▶ Reproducir Audio APT (.wav)"
+                            };
+                            let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.5).color(Color32::WHITE))
+                                .fill(if self.is_playing_audio { Color32::from_rgb(239, 68, 68) } else { theme.accent_blue() })
+                                .corner_radius(6.0)
+                                .min_size(Vec2::new(0.0, 32.0));
+
+                            if ui.add(play_btn).clicked() {
+                                self.play_audio();
+                            }
+
+                            // Botón Descargar WAV
+                            if self.bytes_audio_wav.is_some() || self.path_audio_wav.is_some() {
+                                let dl_wav_btn = egui::Button::new(RichText::new("⬇ Descargar Audio (.wav)").size(12.5))
+                                    .fill(theme.surface_subtle())
+                                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                                    .corner_radius(6.0)
                                     .min_size(Vec2::new(0.0, 32.0));
-                                if ui.add(play_btn).clicked() {
-                                    if let Some(p) = wav_path.to_str() {
-                                        crate::utils::open_path_or_url(p);
+
+                                if ui.add(dl_wav_btn).clicked() {
+                                    if let Some(ref bytes) = self.bytes_audio_wav {
+                                        #[cfg(target_arch = "wasm32")]
+                                        let _ = crate::web_utils::trigger_browser_download("audio_apt_2400hz.wav", bytes, "audio/wav");
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
+                                            let _ = std::fs::write(dir.join("audio_apt_2400hz.wav"), bytes);
+                                        }
                                     }
                                 }
                             }
 
-                            let out_dir = config.get_pipeline_dir("noaa_apt");
-                            let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
-                                .min_size(Vec2::new(0.0, 32.0));
-                            if ui.add(folder_btn).clicked() {
-                                crate::utils::open_folder(&out_dir);
+                            // Botón Archivos Generados (sustituto interactivo de abrir carpeta en web)
+                            let files_btn = egui::Button::new(
+                                RichText::new(format!("📁 Archivos Generados ({})", self.output_files_modal.files.len())).size(12.5)
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(0.0, 32.0));
+
+                            if ui.add(files_btn).clicked() {
+                                self.output_files_modal.open = true;
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let out_dir = config.get_pipeline_dir("noaa_apt");
+                                    crate::utils::open_folder(&out_dir);
+                                }
                             }
                         });
                     }
@@ -618,9 +736,9 @@ impl AptPipeline {
 
     /// Paso 1: Preprocesamiento de Imagen A y B a 909 px escala de grises y recorte simétrico
     pub fn step_preprocess(&mut self, config: &AppConfig) {
-        let img_a = self.img_a_path.as_ref().and_then(|p| ImageReader::open(p).ok()?.decode().ok())
+        let img_a = self.img_a.get_image().cloned()
             .unwrap_or_else(|| DynamicImage::ImageLuma8(GrayImage::new(CHANNEL_WIDTH, 200)));
-        let img_b = self.img_b_path.as_ref().and_then(|p| ImageReader::open(p).ok()?.decode().ok())
+        let img_b = self.img_b.get_image().cloned()
             .unwrap_or_else(|| DynamicImage::ImageLuma8(GrayImage::new(CHANNEL_WIDTH, 200)));
 
         let mut pre_a = preprocess_image(&img_a, CHANNEL_WIDTH);
@@ -632,6 +750,24 @@ impl AptPipeline {
         let path_b = out_dir.join("preprocesado_b.png");
         let _ = pre_a.save(&path_a);
         let _ = pre_b.save(&path_b);
+
+        self.bytes_preprocessed_a = encode_gray_to_png(&pre_a);
+        self.bytes_preprocessed_b = encode_gray_to_png(&pre_b);
+
+        if let Some(ref b) = self.bytes_preprocessed_a {
+            self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::image(
+                "preprocesado_a.png",
+                b.clone(),
+                "Canal A visible normalizado a 909 px de ancho",
+            ));
+        }
+        if let Some(ref b) = self.bytes_preprocessed_b {
+            self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::image(
+                "preprocesado_b.png",
+                b.clone(),
+                "Canal B infrarrojo normalizado a 909 px de ancho",
+            ));
+        }
 
         self.preprocessed_a = Some(pre_a);
         self.preprocessed_b = Some(pre_b);
@@ -653,6 +789,15 @@ impl AptPipeline {
             let png_path = out_dir.join("apt_compuesta.png");
             let _ = apt.save(&png_path);
 
+            self.bytes_apt_image = encode_gray_to_png(&apt);
+            if let Some(ref b) = self.bytes_apt_image {
+                self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::image(
+                    "apt_compuesta.png",
+                    b.clone(),
+                    "Trama matricial continua NOAA APT (2080 px)",
+                ));
+            }
+
             self.apt_image = Some(apt);
             self.path_apt_image = Some(png_path);
 
@@ -671,8 +816,17 @@ impl AptPipeline {
             let out_dir = config.get_pipeline_dir("noaa_apt");
             let wav_path = out_dir.join("audio_apt_2400hz.wav");
 
-            // Guardar archivo WAV
+            // Guardar archivo WAV en disco y en memoria
             let _ = save_wav_file(&wav_path, &am_audio, 11025);
+            self.bytes_audio_wav = encode_wav_to_bytes(&am_audio, 11025);
+
+            if let Some(ref b) = self.bytes_audio_wav {
+                self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::audio(
+                    "audio_apt_2400hz.wav",
+                    b.clone(),
+                    "Subportadora AM a 2400 Hz (11,025 Hz mono)",
+                ));
+            }
 
             self.audio_am_samples = Some(am_audio);
             self.path_audio_wav = Some(wav_path);
@@ -681,19 +835,139 @@ impl AptPipeline {
         }
     }
 
-    /// Paso 4: Modulación FM I/Q con tasa SDR seleccionada
+    /// Paso 4: Modulación FM I/Q con tasa SDR seleccionada (optimizado sin congelar WASM)
     pub fn step_modulate_fm(&mut self) {
         if let Some(ref audio) = self.audio_am_samples {
-            self.iq_samples = fm_modulate(audio, 11025, self.sdr_sample_rate, 17_000.0);
-            self.channel_effects_state.is_dirty = true;
-            self.channel_effects_state.processed_iq.clear();
-            self.status_message = format!(
-                "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas). ¡Listo para transmitir!",
-                self.sdr_sample_rate / 1000,
-                self.iq_samples.len()
-            );
+            #[cfg(target_arch = "wasm32")]
+            {
+                // En Web: A tasas de 1.0 MHz o superiores (como 2.0 MHz para HackRF),
+                // modular una ventana representativa óptima para previsualizar cascada y oscilograma
+                // sin desbordar el heap de WebAssembly ni congelar el hilo de JavaScript.
+                let max_audio_samples = if self.sdr_sample_rate >= 2_000_000 {
+                    (2.5 * 11025.0) as usize
+                } else if self.sdr_sample_rate >= 1_000_000 {
+                    (4.0 * 11025.0) as usize
+                } else {
+                    audio.len()
+                };
+
+                let slice = if audio.len() > max_audio_samples {
+                    &audio[..max_audio_samples]
+                } else {
+                    audio
+                };
+
+                self.iq_samples = fm_modulate(slice, 11025, self.sdr_sample_rate, 17_000.0);
+                self.channel_effects_state.is_dirty = true;
+                self.channel_effects_state.processed_iq.clear();
+
+                let dur = self.iq_samples.len() as f32 / self.sdr_sample_rate as f32;
+                if audio.len() > max_audio_samples {
+                    self.status_message = format!(
+                        "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas, {:.1}s representativos para rendimiento web). ¡Listo para transmitir!",
+                        self.sdr_sample_rate / 1000,
+                        self.iq_samples.len(),
+                        dur
+                    );
+                } else {
+                    self.status_message = format!(
+                        "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas). ¡Listo para transmitir!",
+                        self.sdr_sample_rate / 1000,
+                        self.iq_samples.len()
+                    );
+                }
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.iq_samples = fm_modulate(audio, 11025, self.sdr_sample_rate, 17_000.0);
+                self.channel_effects_state.is_dirty = true;
+                self.channel_effects_state.processed_iq.clear();
+                self.status_message = format!(
+                    "Fase 4 completada: Señal FM I/Q generada a {} kHz ({} muestras complejas). ¡Listo para transmitir!",
+                    self.sdr_sample_rate / 1000,
+                    self.iq_samples.len()
+                );
+            }
         }
     }
+
+    /// Reproduce el audio de subportadora AM generado de forma integrada
+    pub fn play_audio(&mut self) {
+        if self.is_playing_audio {
+            self.stop_audio();
+            return;
+        }
+
+        if let Some(ref bytes) = self.bytes_audio_wav {
+            self.is_playing_audio = true;
+            #[cfg(target_arch = "wasm32")]
+            {
+                if let Some(old_url) = self.active_audio_blob_url.take() {
+                    let _ = web_sys::Url::revoke_object_url(&old_url);
+                }
+                if let Ok(url) = crate::web_utils::create_audio_blob_url(bytes) {
+                    let script = format!(
+                        r#"(function(){{var a=document.getElementById('_apt_audio');if(a){{a.pause();a.remove();}}var el=document.createElement('audio');el.id='_apt_audio';el.src='{}';el.play();}})()"#,
+                        url
+                    );
+                    let _ = js_sys::eval(&script);
+                    self.active_audio_blob_url = Some(url);
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = bytes;
+                if let Some(ref p) = self.path_audio_wav {
+                    if let Some(p_str) = p.to_str() {
+                        crate::utils::open_path_or_url(p_str);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Detiene la reproducción de audio
+    pub fn stop_audio(&mut self) {
+        self.is_playing_audio = false;
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(url) = self.active_audio_blob_url.take() {
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+            let _ = js_sys::eval(r#"(function(){var a=document.getElementById('_apt_audio');if(a){a.pause();a.remove();}})()"#);
+        }
+    }
+}
+
+/// Serializa una imagen GrayImage en bytes PNG usando Cursor
+fn encode_gray_to_png(img: &GrayImage) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut bytes);
+    if DynamicImage::ImageLuma8(img.clone()).write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
+        Some(bytes)
+    } else {
+        None
+    }
+}
+
+/// Serializa un buffer PCM i16 en bytes WAV usando Hound y Cursor
+fn encode_wav_to_bytes(samples: &[i16], sample_rate: u32) -> Option<Vec<u8>> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    {
+        let mut writer = hound::WavWriter::new(&mut cursor, spec).ok()?;
+        for &s in samples {
+            writer.write_sample(s).ok()?;
+        }
+        writer.finalize().ok()?;
+    }
+    Some(cursor.into_inner())
 }
 
 /// Guarda un buffer PCM i16 como archivo WAV mono usando Hound

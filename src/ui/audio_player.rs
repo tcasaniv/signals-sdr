@@ -253,7 +253,8 @@ impl AudioPlayerWidget {
                             self.stop_playback();
                         }
 
-                        // Botón Abrir en Reproductor Predeterminado (software externo)
+                        // Botón Abrir en Reproductor Predeterminado (software externo en Desktop)
+                        #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = audio_path {
                             ui.add_space(10.0);
                             let open_player_btn = egui::Button::new(

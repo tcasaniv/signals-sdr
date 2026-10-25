@@ -9,6 +9,7 @@ pub mod sdr;
 pub mod theme;
 pub mod ui;
 pub mod utils;
+pub mod web_utils;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;

@@ -1,5 +1,6 @@
 use crate::theme::AppTheme;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
+use std::sync::{Arc, Mutex};
 
 /// Convierte una imagen en escala de grises de `image` a un `egui::ColorImage`
 pub fn gray_image_to_color_image(img: &image::GrayImage) -> egui::ColorImage {
@@ -197,15 +198,152 @@ pub enum ChannelColor {
     Neutral,
 }
 
-/// Tarjeta para cargar imagen con vista previa interactiva real, fila de URL y botón de archivo local
+/// Estructura para gestionar la carga y vista previa en memoria de imágenes (archivo local o URL)
+/// compatible con WebAssembly y Desktop sin errores de lectura.
+#[derive(Clone, Default)]
+pub struct ImageSlot {
+    /// Nombre para mostrar (ej: "satelite.png" o URL)
+    pub display_name: Option<String>,
+    /// Texto actual ingresado en la caja de URL
+    pub url_input: String,
+    /// Bytes crudos de la imagen
+    pub bytes: Option<Vec<u8>>,
+    /// Imagen decodificada para procesar en el pipeline
+    pub dynamic_image: Option<image::DynamicImage>,
+    /// Imagen egui para vista previa directa en memoria
+    pub color_image: Option<egui::ColorImage>,
+    /// Estado de carga asíncrona
+    pub is_loading: bool,
+    /// Mensaje de error si la carga o decodificación falló
+    pub error_msg: Option<String>,
+    /// Canal interno para recibir resultados asíncronos
+    async_receiver: Option<Arc<Mutex<Option<Result<(String, Vec<u8>), String>>>>>,
+}
+
+impl ImageSlot {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Retorna true si hay una imagen lista para usar
+    pub fn is_some(&self) -> bool {
+        self.dynamic_image.is_some() || self.bytes.is_some()
+    }
+
+    /// Retorna una referencia a la imagen decodificada
+    pub fn get_image(&self) -> Option<&image::DynamicImage> {
+        self.dynamic_image.as_ref()
+    }
+
+    /// Limpia la imagen cargada
+    pub fn clear(&mut self) {
+        self.display_name = None;
+        self.bytes = None;
+        self.dynamic_image = None;
+        self.color_image = None;
+        self.error_msg = None;
+        self.is_loading = false;
+        self.async_receiver = None;
+    }
+
+    /// Asigna bytes y decodifica la imagen
+    pub fn set_bytes(&mut self, name: String, data: Vec<u8>) {
+        match image::load_from_memory(&data) {
+            Ok(dyn_img) => {
+                let color_img = dynamic_image_to_color_image(&dyn_img);
+                self.display_name = Some(name);
+                self.dynamic_image = Some(dyn_img);
+                self.color_image = Some(color_img);
+                self.bytes = Some(data);
+                self.error_msg = None;
+                self.is_loading = false;
+            }
+            Err(e) => {
+                self.error_msg = Some(format!("Error al decodificar imagen: {}", e));
+                self.is_loading = false;
+            }
+        }
+    }
+
+    /// Comprueba si hay tareas asíncronas pendientes completadas
+    pub fn poll(&mut self) {
+        let res = if let Some(ref rx) = self.async_receiver {
+            rx.lock().ok().and_then(|mut guard| guard.take())
+        } else {
+            None
+        };
+
+        if let Some(res) = res {
+            self.async_receiver = None;
+            self.is_loading = false;
+            match res {
+                Ok((name, data)) => {
+                    self.set_bytes(name, data);
+                }
+                Err(e) => {
+                    if e != "Cancelado" {
+                        self.error_msg = Some(e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Inicia la apertura del selector de archivos del sistema / navegador
+    pub fn trigger_pick_file(&mut self) {
+        self.is_loading = true;
+        self.error_msg = None;
+        let slot = Arc::new(Mutex::new(None));
+        self.async_receiver = Some(slot.clone());
+
+        crate::file_dialog::pick_file_async("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"], move |name, bytes| {
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(Ok((name, bytes)));
+            }
+        });
+    }
+
+    /// Inicia la descarga HTTP/HTTPS desde la URL especificada
+    pub fn trigger_load_url(&mut self, url: String) {
+        let clean_url = url.trim().to_string();
+        if clean_url.is_empty() {
+            return;
+        }
+        self.is_loading = true;
+        self.error_msg = None;
+        let slot = Arc::new(Mutex::new(None));
+        self.async_receiver = Some(slot.clone());
+
+        let slot_success = slot.clone();
+        let slot_err = slot.clone();
+        let name_success = clean_url.clone();
+
+        crate::web_utils::fetch_url_bytes(
+            clean_url,
+            move |bytes| {
+                if let Ok(mut guard) = slot_success.lock() {
+                    *guard = Some(Ok((name_success, bytes)));
+                }
+            },
+            move |err| {
+                if let Ok(mut guard) = slot_err.lock() {
+                    *guard = Some(Err(format!("Error descargando URL: {}", err)));
+                }
+            },
+        );
+    }
+}
+
+/// Tarjeta para cargar imagen con vista previa interactiva real en memoria, fila de URL y botón de archivo local
 pub fn image_input_card(
     ui: &mut Ui,
     theme: &AppTheme,
     title: &str,
-    current_path: &mut Option<String>,
-    url_input: &mut String,
+    slot: &mut ImageSlot,
     color: ChannelColor,
 ) {
+    slot.poll();
+
     Frame::new()
         .fill(theme.card_bg())
         .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -226,10 +364,10 @@ pub fn image_input_card(
 
                     ui.label(RichText::new(title).strong().size(14.5).color(theme.text_primary()));
 
-                    if current_path.is_some() {
+                    if slot.is_some() {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button(RichText::new("x Quitar").size(11.5).color(theme.accent_red())).clicked() {
-                                *current_path = None;
+                                slot.clear();
                             }
                         });
                     }
@@ -237,61 +375,54 @@ pub fn image_input_card(
 
                 ui.add_space(10.0);
 
-                // Cuadro de imagen real o zona de carga estilizada
-                if let Some(ref path) = current_path {
-                    let uri = path_to_uri(path);
-                    let preview_height = 150.0;
+                if slot.is_loading {
+                    let loading_box = Frame::new()
+                        .fill(if *theme == AppTheme::Dark { Color32::from_rgb(16, 20, 26) } else { Color32::from_rgb(241, 245, 249) })
+                        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                        .corner_radius(8.0)
+                        .inner_margin(12.0);
 
+                    loading_box.show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(24.0);
+                            ui.spinner();
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("Cargando / descargando imagen...").size(12.5).color(theme.text_secondary()));
+                            ui.add_space(24.0);
+                        });
+                    });
+                } else if let Some(ref color_img) = slot.color_image {
+                    let preview_height = 150.0;
                     let img_box = Frame::new()
                         .fill(if *theme == AppTheme::Dark { Color32::from_rgb(16, 20, 26) } else { Color32::from_rgb(241, 245, 249) })
                         .stroke(Stroke::new(1.0_f32, theme.card_border()))
                         .corner_radius(8.0)
                         .inner_margin(6.0);
 
-                    let img_resp = img_box.show(ui, |ui| {
+                    img_box.show(ui, |ui| {
                         ui.vertical_centered(|ui| {
-                            let img_widget = egui::Image::new(&uri)
+                            let tex = ui.ctx().load_texture(
+                                format!("tex_{}_{}", title, color_img.size[0]),
+                                color_img.clone(),
+                                egui::TextureOptions::LINEAR,
+                            );
+                            let img_widget = egui::Image::new(&tex)
                                 .max_height(preview_height)
-                                .corner_radius(6.0)
-                                .sense(egui::Sense::click());
-                            ui.add(img_widget)
-                        }).inner
-                    }).inner;
-
-                    if img_resp.clicked() {
-                        crate::utils::open_path_or_url(path);
-                    }
-                    if img_resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        img_resp.on_hover_text("Clic para abrir imagen en el visor del sistema");
-                    }
-
-                    ui.add_space(6.0);
-
-                    // Fila de metadatos del archivo y botón para abrir
-                    ui.horizontal(|ui| {
-                        let file_name = std::path::Path::new(path)
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_else(|| path.clone());
-
-                        let short_name = if file_name.len() > 28 {
-                            format!("{}...{}", &file_name[..16], &file_name[file_name.len() - 8..])
-                        } else {
-                            file_name
-                        };
-
-                        ui.label(RichText::new(format!("Archivo: {}", short_name)).size(12.0).color(theme.text_secondary()));
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let open_btn = egui::Button::new(RichText::new("Abrir en visor").size(11.5));
-                            if ui.add(open_btn).clicked() {
-                                crate::utils::open_path_or_url(path);
-                            }
+                                .corner_radius(6.0);
+                            ui.add(img_widget);
                         });
                     });
+
+                    ui.add_space(6.0);
+                    let file_name = slot.display_name.as_deref().unwrap_or(title);
+                    let short_name = if file_name.len() > 32 {
+                        format!("{}...{}", &file_name[..18], &file_name[file_name.len() - 10..])
+                    } else {
+                        file_name.to_string()
+                    };
+                    ui.label(RichText::new(format!("Imagen: {}", short_name)).size(12.0).color(theme.text_secondary()));
                 } else {
-                    // Zona interactiva cuando no hay imagen cargada
+                    // Zona de clic para buscar archivo
                     let drop_height = 135.0;
                     let (rect, drop_resp) = ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), drop_height),
@@ -335,25 +466,25 @@ pub fn image_input_card(
                     );
 
                     if drop_resp.clicked() {
-                        if let Some(file) = crate::file_dialog::FileDialog::new()
-                            .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
-                            .pick_file()
-                        {
-                            *current_path = Some(file.display().to_string());
-                        }
+                        slot.trigger_pick_file();
                     }
+                }
+
+                if let Some(ref err) = slot.error_msg {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(format!("Aviso: {}", err)).size(12.0).color(theme.accent_red()));
                 }
 
                 ui.add_space(10.0);
 
-                // Fila de URL y botón Cargar URL con padding estilizado
+                // Fila de URL y botón Cargar URL
                 ui.horizontal(|ui| {
                     let btn_w = 90.0;
                     let avail = ui.available_width();
                     let edit_w = (avail - btn_w - 8.0).max(100.0);
 
                     ui.add(
-                        egui::TextEdit::singleline(url_input)
+                        egui::TextEdit::singleline(&mut slot.url_input)
                             .hint_text(format!("URL {}", title))
                             .desired_width(edit_w),
                     );
@@ -361,15 +492,14 @@ pub fn image_input_card(
                     let url_btn = egui::Button::new(RichText::new("Cargar URL").size(12.0))
                         .min_size(Vec2::new(btn_w, 28.0));
                     if ui.add(url_btn).clicked() {
-                        if !url_input.trim().is_empty() {
-                            *current_path = Some(url_input.trim().to_string());
-                        }
+                        let url = slot.url_input.clone();
+                        slot.trigger_load_url(url);
                     }
                 });
 
                 ui.add_space(6.0);
 
-                // Botón de ancho completo para Archivo Local con altura cómoda
+                // Botón de ancho completo para Archivo Local
                 let local_btn = egui::Button::new(
                     RichText::new(format!("Explorar Archivo Local ({})", title)).strong().size(12.5),
                 )
@@ -378,18 +508,19 @@ pub fn image_input_card(
                 .min_size(Vec2::new(ui.available_width(), 32.0));
 
                 if ui.add(local_btn).clicked() {
-                    if let Some(file) = crate::file_dialog::FileDialog::new()
-                        .add_filter("Imágenes", &["png", "jpg", "jpeg", "bmp", "webp"])
-                        .pick_file()
-                    {
-                        *current_path = Some(file.display().to_string());
-                    }
+                    slot.trigger_pick_file();
                 }
             });
         });
 }
 
 /// Tarjeta interactiva para productos intermedios del pipeline con renderizado de imagen real
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PreviewCardResponse {
+    pub view_fullscreen: bool,
+    pub download: bool,
+}
+
 pub fn intermediate_preview_card(
     ui: &mut Ui,
     theme: &AppTheme,
@@ -399,7 +530,8 @@ pub fn intermediate_preview_card(
     is_ready: bool,
     color: ChannelColor,
     color_image: Option<&egui::ColorImage>,
-) {
+) -> PreviewCardResponse {
+    let mut action = PreviewCardResponse::default();
     Frame::new()
         .fill(theme.card_bg())
         .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -471,26 +603,37 @@ pub fn intermediate_preview_card(
                         }).inner
                     }).inner;
 
-                    if let Some(ref path_str) = path_str_opt {
-                        if img_resp.clicked() {
-                            crate::utils::open_path_or_url(path_str);
-                        }
-                        if img_resp.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                            img_resp.on_hover_text("Clic para abrir imagen en el visor del sistema");
-                        }
+                    if img_resp.clicked() {
+                        action.view_fullscreen = true;
+                    }
+                    if img_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        img_resp.on_hover_text("Clic para ampliar imagen a pantalla completa con zoom");
+                    }
 
-                        ui.add_space(8.0);
+                    ui.add_space(8.0);
 
-                        let open_btn = egui::Button::new(RichText::new("Abrir Imagen en Visor Predeterminado").size(12.0))
+                    ui.horizontal(|ui| {
+                        let half_w = (ui.available_width() - 8.0) * 0.5;
+                        let view_btn = egui::Button::new(RichText::new("👁 Ampliar").size(12.0))
                             .fill(theme.surface_subtle())
                             .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                            .min_size(Vec2::new(ui.available_width(), 28.0));
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(half_w, 28.0));
 
-                        if ui.add(open_btn).clicked() {
-                            crate::utils::open_path_or_url(path_str);
+                        if ui.add(view_btn).clicked() {
+                            action.view_fullscreen = true;
                         }
-                    }
+
+                        let dl_btn = egui::Button::new(RichText::new("⬇ Descargar").size(12.0).color(Color32::WHITE))
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(half_w, 28.0));
+
+                        if ui.add(dl_btn).clicked() {
+                            action.download = true;
+                        }
+                    });
                 } else {
                     // Placeholder visual cuando la fase aún no se ha ejecutado
                     let pending_height = 80.0;
@@ -519,6 +662,7 @@ pub fn intermediate_preview_card(
                 }
             });
         });
+    action
 }
 
 /// Opciones de configuración para una sección desplegable tipo Google Slides

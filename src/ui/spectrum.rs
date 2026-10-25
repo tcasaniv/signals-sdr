@@ -287,6 +287,31 @@ pub fn render_signal_visualizer(
                         .corner_radius(6.0);
 
                         if ui.add(save_btn).clicked() {
+                            let (samples_i, samples_q): (Vec<f32>, Vec<f32>) =
+                                samples.iter().cloned().unzip();
+                            let chart = render_high_res_scope_chart(
+                                &samples_i,
+                                Some(&samples_q),
+                                sample_rate,
+                                "Oscilograma de Señal I/Q",
+                                state.zoom_x,
+                                state.pan_x,
+                                state.scale_y,
+                            );
+
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                let mut png_bytes = Vec::new();
+                                if let Ok(_) = chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                    let _ = crate::web_utils::trigger_browser_download("oscilograma_iq.png", &png_bytes, "image/png");
+                                    state.status_message = Some((
+                                        "Descarga de 'oscilograma_iq.png' iniciada en el navegador".to_string(),
+                                        false,
+                                    ));
+                                }
+                            }
+
+                            #[cfg(not(target_arch = "wasm32"))]
                             if let Some(path) = crate::file_dialog::FileDialog::new()
                                 .set_file_name("oscilograma_iq.png")
                                 .add_filter("Imagen PNG", &["png"])
@@ -295,17 +320,6 @@ pub fn render_signal_visualizer(
                                 if let Some(parent) = path.parent() {
                                     let _ = std::fs::create_dir_all(parent);
                                 }
-                                let (samples_i, samples_q): (Vec<f32>, Vec<f32>) =
-                                    samples.iter().cloned().unzip();
-                                let chart = render_high_res_scope_chart(
-                                    &samples_i,
-                                    Some(&samples_q),
-                                    sample_rate,
-                                    "Oscilograma de Señal I/Q",
-                                    state.zoom_x,
-                                    state.pan_x,
-                                    state.scale_y,
-                                );
                                 match chart.save(&path) {
                                     Ok(_) => {
                                         state.status_message = Some((
@@ -355,6 +369,31 @@ pub fn render_signal_visualizer(
                             .corner_radius(6.0);
 
                             if ui.add(save_btn).clicked() {
+                                let (samples_i, samples_q): (Vec<f32>, Vec<f32>) =
+                                    samples.iter().cloned().unzip();
+                                let chart = render_high_res_scope_chart(
+                                    &samples_i,
+                                    Some(&samples_q),
+                                    sample_rate,
+                                    "Oscilograma de Señal I/Q",
+                                    state.zoom_x,
+                                    state.pan_x,
+                                    state.scale_y,
+                                );
+
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    let mut png_bytes = Vec::new();
+                                    if let Ok(_) = chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                        let _ = crate::web_utils::trigger_browser_download("oscilograma_iq.png", &png_bytes, "image/png");
+                                        state.status_message = Some((
+                                            "Descarga de 'oscilograma_iq.png' iniciada en el navegador".to_string(),
+                                            false,
+                                        ));
+                                    }
+                                }
+
+                                #[cfg(not(target_arch = "wasm32"))]
                                 if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .set_file_name("oscilograma_iq.png")
                                     .add_filter("Imagen PNG", &["png"])
@@ -363,17 +402,6 @@ pub fn render_signal_visualizer(
                                     if let Some(parent) = path.parent() {
                                         let _ = std::fs::create_dir_all(parent);
                                     }
-                                    let (samples_i, samples_q): (Vec<f32>, Vec<f32>) =
-                                        samples.iter().cloned().unzip();
-                                    let chart = render_high_res_scope_chart(
-                                        &samples_i,
-                                        Some(&samples_q),
-                                        sample_rate,
-                                        "Oscilograma de Señal I/Q",
-                                        state.zoom_x,
-                                        state.pan_x,
-                                        state.scale_y,
-                                    );
                                     match chart.save(&path) {
                                         Ok(_) => {
                                             state.status_message = Some((
@@ -614,6 +642,29 @@ pub fn render_audio_waveform(
 
                         if ui.add(save_btn).clicked() {
                             let default_fn = format!("{}.png", title.to_lowercase().replace(' ', "_"));
+                            let chart = render_high_res_scope_chart(
+                                samples,
+                                None,
+                                sample_rate,
+                                title,
+                                state.zoom_x,
+                                state.pan_x,
+                                state.scale_y,
+                            );
+
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                let mut png_bytes = Vec::new();
+                                if let Ok(_) = chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                    let _ = crate::web_utils::trigger_browser_download(&default_fn, &png_bytes, "image/png");
+                                    state.status_message = Some((
+                                        format!("Descarga de '{}' iniciada en el navegador", default_fn),
+                                        false,
+                                    ));
+                                }
+                            }
+
+                            #[cfg(not(target_arch = "wasm32"))]
                             if let Some(path) = crate::file_dialog::FileDialog::new()
                                 .set_file_name(&default_fn)
                                 .add_filter("Imagen PNG", &["png"])
@@ -622,15 +673,6 @@ pub fn render_audio_waveform(
                                 if let Some(parent) = path.parent() {
                                     let _ = std::fs::create_dir_all(parent);
                                 }
-                                let chart = render_high_res_scope_chart(
-                                    samples,
-                                    None,
-                                    sample_rate,
-                                    title,
-                                    state.zoom_x,
-                                    state.pan_x,
-                                    state.scale_y,
-                                );
                                 match chart.save(&path) {
                                     Ok(_) => {
                                         state.status_message = Some((
@@ -681,6 +723,29 @@ pub fn render_audio_waveform(
 
                             if ui.add(save_btn).clicked() {
                                 let default_fn = format!("{}.png", title.to_lowercase().replace(' ', "_"));
+                                let chart = render_high_res_scope_chart(
+                                    samples,
+                                    None,
+                                    sample_rate,
+                                    title,
+                                    state.zoom_x,
+                                    state.pan_x,
+                                    state.scale_y,
+                                );
+
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    let mut png_bytes = Vec::new();
+                                    if let Ok(_) = chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                        let _ = crate::web_utils::trigger_browser_download(&default_fn, &png_bytes, "image/png");
+                                        state.status_message = Some((
+                                            format!("Descarga de '{}' iniciada en el navegador", default_fn),
+                                            false,
+                                        ));
+                                    }
+                                }
+
+                                #[cfg(not(target_arch = "wasm32"))]
                                 if let Some(path) = crate::file_dialog::FileDialog::new()
                                     .set_file_name(&default_fn)
                                     .add_filter("Imagen PNG", &["png"])
@@ -689,15 +754,6 @@ pub fn render_audio_waveform(
                                     if let Some(parent) = path.parent() {
                                         let _ = std::fs::create_dir_all(parent);
                                     }
-                                    let chart = render_high_res_scope_chart(
-                                        samples,
-                                        None,
-                                        sample_rate,
-                                        title,
-                                        state.zoom_x,
-                                        state.pan_x,
-                                        state.scale_y,
-                                    );
                                     match chart.save(&path) {
                                         Ok(_) => {
                                             state.status_message = Some((

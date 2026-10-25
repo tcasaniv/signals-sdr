@@ -1,6 +1,6 @@
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,13 +47,14 @@ impl IqExportFormat {
     }
 }
 
-/// Exporta muestras I/Q al formato y ruta seleccionados
-pub fn export_iq_file(
-    path: &Path,
+/// Codifica muestras I/Q en memoria (útil para descarga directa en WebAssembly o guardado en disco)
+pub fn export_iq_to_memory(
     samples: &[(f32, f32)],
     sample_rate: u32,
     format: IqExportFormat,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+
     match format {
         IqExportFormat::WavIq16 => {
             let spec = WavSpec {
@@ -62,67 +63,89 @@ pub fn export_iq_file(
                 bits_per_sample: 16,
                 sample_format: SampleFormat::Int,
             };
-            let mut writer = WavWriter::create(path, spec)?;
-            for &(i, q) in samples {
-                let i_s = (i * 32767.0).clamp(-32768.0, 32767.0) as i16;
-                let q_s = (q * 32767.0).clamp(-32768.0, 32767.0) as i16;
-                writer.write_sample(i_s)?;
-                writer.write_sample(q_s)?;
+            let mut buf = Vec::new();
+            {
+                let cursor = Cursor::new(&mut buf);
+                let mut writer = WavWriter::new(cursor, spec)?;
+                for &(i, q) in samples {
+                    let i_s = (i * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                    let q_s = (q * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                    writer.write_sample(i_s)?;
+                    writer.write_sample(q_s)?;
+                }
+                writer.finalize()?;
             }
-            writer.finalize()?;
+            Ok(buf)
         }
         IqExportFormat::RawSc16Q11 => {
-            // bladeRF usa formato SC16_Q11: valores de 16 bits en rango [-2048, 2047]
-            let mut file = File::create(path)?;
+            let mut buf = Vec::with_capacity(samples.len() * 4);
             for &(i, q) in samples {
                 let i_val = (i * 2047.0).clamp(-2048.0, 2047.0) as i16;
                 let q_val = (q * 2047.0).clamp(-2048.0, 2047.0) as i16;
-                file.write_all(&i_val.to_le_bytes())?;
-                file.write_all(&q_val.to_le_bytes())?;
+                buf.extend_from_slice(&i_val.to_le_bytes());
+                buf.extend_from_slice(&q_val.to_le_bytes());
             }
+            Ok(buf)
         }
         IqExportFormat::RawSc16Full => {
-            let mut file = File::create(path)?;
+            let mut buf = Vec::with_capacity(samples.len() * 4);
             for &(i, q) in samples {
                 let i_val = (i * 32767.0).clamp(-32768.0, 32767.0) as i16;
                 let q_val = (q * 32767.0).clamp(-32768.0, 32767.0) as i16;
-                file.write_all(&i_val.to_le_bytes())?;
-                file.write_all(&q_val.to_le_bytes())?;
+                buf.extend_from_slice(&i_val.to_le_bytes());
+                buf.extend_from_slice(&q_val.to_le_bytes());
             }
+            Ok(buf)
         }
         IqExportFormat::RawInt8 => {
-            // HackRF formato int8 entrelazado [-128, 127]
-            let mut file = File::create(path)?;
+            let mut buf = Vec::with_capacity(samples.len() * 2);
             for &(i, q) in samples {
                 let i_val = (i * 127.0).clamp(-128.0, 127.0) as i8;
                 let q_val = (q * 127.0).clamp(-128.0, 127.0) as i8;
-                file.write_all(&[i_val as u8, q_val as u8])?;
+                buf.push(i_val as u8);
+                buf.push(q_val as u8);
             }
+            Ok(buf)
         }
         IqExportFormat::RawFloat32 => {
-            let mut file = File::create(path)?;
+            let mut buf = Vec::with_capacity(samples.len() * 8);
             for &(i, q) in samples {
-                file.write_all(&i.to_le_bytes())?;
-                file.write_all(&q.to_le_bytes())?;
+                buf.extend_from_slice(&i.to_le_bytes());
+                buf.extend_from_slice(&q.to_le_bytes());
             }
+            Ok(buf)
         }
         IqExportFormat::WavAudioMono => {
-            // Extraer componente en fase I o envolvente a audio mono
             let spec = WavSpec {
                 channels: 1,
                 sample_rate,
                 bits_per_sample: 16,
                 sample_format: SampleFormat::Int,
             };
-            let mut writer = WavWriter::create(path, spec)?;
-            for &(i, _) in samples {
-                let i_s = (i * 32767.0).clamp(-32768.0, 32767.0) as i16;
-                writer.write_sample(i_s)?;
+            let mut buf = Vec::new();
+            {
+                let cursor = Cursor::new(&mut buf);
+                let mut writer = WavWriter::new(cursor, spec)?;
+                for &(i, _) in samples {
+                    let i_s = (i * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                    writer.write_sample(i_s)?;
+                }
+                writer.finalize()?;
             }
-            writer.finalize()?;
+            Ok(buf)
         }
     }
+}
 
+/// Exporta muestras I/Q al formato y ruta seleccionados
+pub fn export_iq_file(
+    path: &Path,
+    samples: &[(f32, f32)],
+    sample_rate: u32,
+    format: IqExportFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = export_iq_to_memory(samples, sample_rate, format)?;
+    std::fs::write(path, bytes)?;
     Ok(())
 }
 

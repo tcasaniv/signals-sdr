@@ -412,6 +412,7 @@ pub fn render_spectrogram_widget(
     samples: &[(f32, f32)],
     sample_rate: u32,
     pipeline_name: &str,
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
     target_output_dir: Option<&PathBuf>,
 ) {
     if samples.is_empty() {
@@ -495,39 +496,55 @@ pub fn render_spectrogram_widget(
 
                         if ui.add(save_btn).clicked() {
                             let default_filename = format!("espectrograma_{}.png", pipeline_name);
-                            let save_dest = crate::file_dialog::FileDialog::new()
-                                .set_file_name(&default_filename)
-                                .add_filter("Imagen PNG", &["png"])
-                                .save_file()
-                                .or_else(|| {
-                                    target_output_dir.map(|dir| dir.join(&default_filename))
-                                });
+                            let high_res_chart = render_high_res_spectrogram_chart(
+                                samples,
+                                sample_rate,
+                                pipeline_name,
+                                state.zoom_x,
+                                state.pan_x,
+                                state.zoom_y,
+                                state.pan_y,
+                            );
 
-                            if let Some(path) = save_dest {
-                                if let Some(parent) = path.parent() {
-                                    let _ = std::fs::create_dir_all(parent);
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                let mut png_bytes = Vec::new();
+                                if let Ok(_) = high_res_chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                    let _ = crate::web_utils::trigger_browser_download(&default_filename, &png_bytes, "image/png");
+                                    state.status_message = Some((
+                                        format!("Descarga de '{}' iniciada en el navegador", default_filename),
+                                        false,
+                                    ));
                                 }
-                                let high_res_chart = render_high_res_spectrogram_chart(
-                                    samples,
-                                    sample_rate,
-                                    pipeline_name,
-                                    state.zoom_x,
-                                    state.pan_x,
-                                    state.zoom_y,
-                                    state.pan_y,
-                                );
-                                match high_res_chart.save(&path) {
-                                    Ok(_) => {
-                                        state.status_message = Some((
-                                            format!("Espectrograma en alta resolución guardado: {}", path.display()),
-                                            false,
-                                        ));
+                            }
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                let save_dest = crate::file_dialog::FileDialog::new()
+                                    .set_file_name(&default_filename)
+                                    .add_filter("Imagen PNG", &["png"])
+                                    .save_file()
+                                    .or_else(|| {
+                                        target_output_dir.map(|dir| dir.join(&default_filename))
+                                    });
+
+                                if let Some(path) = save_dest {
+                                    if let Some(parent) = path.parent() {
+                                        let _ = std::fs::create_dir_all(parent);
                                     }
-                                    Err(e) => {
-                                        state.status_message = Some((
-                                            format!("Error al guardar imagen: {}", e),
-                                            true,
-                                        ));
+                                    match high_res_chart.save(&path) {
+                                        Ok(_) => {
+                                            state.status_message = Some((
+                                                format!("Espectrograma en alta resolución guardado: {}", path.display()),
+                                                false,
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            state.status_message = Some((
+                                                format!("Error al guardar imagen: {}", e),
+                                                true,
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -545,39 +562,55 @@ pub fn render_spectrogram_widget(
 
                             if ui.add(save_btn).clicked() {
                                 let default_filename = format!("espectrograma_{}.png", pipeline_name);
-                                let save_dest = crate::file_dialog::FileDialog::new()
-                                    .set_file_name(&default_filename)
-                                    .add_filter("Imagen PNG", &["png"])
-                                    .save_file()
-                                    .or_else(|| {
-                                        target_output_dir.map(|dir| dir.join(&default_filename))
-                                    });
+                                let high_res_chart = render_high_res_spectrogram_chart(
+                                    samples,
+                                    sample_rate,
+                                    pipeline_name,
+                                    state.zoom_x,
+                                    state.pan_x,
+                                    state.zoom_y,
+                                    state.pan_y,
+                                );
 
-                                if let Some(path) = save_dest {
-                                    if let Some(parent) = path.parent() {
-                                        let _ = std::fs::create_dir_all(parent);
+                                #[cfg(target_arch = "wasm32")]
+                                {
+                                    let mut png_bytes = Vec::new();
+                                    if let Ok(_) = high_res_chart.write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png) {
+                                        let _ = crate::web_utils::trigger_browser_download(&default_filename, &png_bytes, "image/png");
+                                        state.status_message = Some((
+                                            format!("Descarga de '{}' iniciada en el navegador", default_filename),
+                                            false,
+                                        ));
                                     }
-                                    let high_res_chart = render_high_res_spectrogram_chart(
-                                        samples,
-                                        sample_rate,
-                                        pipeline_name,
-                                        state.zoom_x,
-                                        state.pan_x,
-                                        state.zoom_y,
-                                        state.pan_y,
-                                    );
-                                    match high_res_chart.save(&path) {
-                                        Ok(_) => {
-                                            state.status_message = Some((
-                                                format!("Espectrograma en alta resolución guardado: {}", path.display()),
-                                                false,
-                                            ));
+                                }
+
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let save_dest = crate::file_dialog::FileDialog::new()
+                                        .set_file_name(&default_filename)
+                                        .add_filter("Imagen PNG", &["png"])
+                                        .save_file()
+                                        .or_else(|| {
+                                            target_output_dir.map(|dir| dir.join(&default_filename))
+                                        });
+
+                                    if let Some(path) = save_dest {
+                                        if let Some(parent) = path.parent() {
+                                            let _ = std::fs::create_dir_all(parent);
                                         }
-                                        Err(e) => {
-                                            state.status_message = Some((
-                                                format!("Error al guardar imagen: {}", e),
-                                                true,
-                                            ));
+                                        match high_res_chart.save(&path) {
+                                            Ok(_) => {
+                                                state.status_message = Some((
+                                                    format!("Espectrograma en alta resolución guardado: {}", path.display()),
+                                                    false,
+                                                ));
+                                            }
+                                            Err(e) => {
+                                                state.status_message = Some((
+                                                    format!("Error al guardar imagen: {}", e),
+                                                    true,
+                                                ));
+                                            }
                                         }
                                     }
                                 }

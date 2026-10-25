@@ -1,5 +1,7 @@
 use crate::config::AppConfig;
-use crate::export::formats::{export_iq_file, IqExportFormat};
+use crate::export::formats::IqExportFormat;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::export::formats::export_iq_file;
 use crate::icons;
 use crate::sdr::{
     detect_detailed_radios, DetectedDeviceInfo, SdrBackend, SdrDeviceOption, SdrHardwareType,
@@ -927,19 +929,54 @@ fn render_file_panel(
 
                 let can_save = !samples.is_empty();
                 if ui.add_enabled(can_save, save_btn).clicked() {
-                    let file_path = target_dir.join(format!("{}.{}", state.output_filename, state.export_format.default_extension()));
-                    match export_iq_file(&file_path, samples, sample_rate, state.export_format) {
-                        Ok(_) => {
-                            state.export_status_message = Some((
-                                format!("Archivo guardado exitosamente en: {}", file_path.display()),
-                                false,
-                            ));
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let filename = format!("{}.{}", state.output_filename, state.export_format.default_extension());
+                        let mime_type = match state.export_format {
+                            crate::export::IqExportFormat::WavIq16 | crate::export::IqExportFormat::WavAudioMono => "audio/wav",
+                            _ => "application/octet-stream",
+                        };
+                        match crate::export::export_iq_to_memory(samples, sample_rate, state.export_format) {
+                            Ok(bytes) => {
+                                match crate::web_utils::trigger_browser_download(&filename, &bytes, mime_type) {
+                                    Ok(_) => {
+                                        state.export_status_message = Some((
+                                            format!("Descarga iniciada en el navegador: {}", filename),
+                                            false,
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        state.export_status_message = Some((
+                                            format!("Error al descargar archivo: {}", e),
+                                            true,
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                state.export_status_message = Some((
+                                    format!("Error al codificar muestras I/Q: {}", e),
+                                    true,
+                                ));
+                            }
                         }
-                        Err(e) => {
-                            state.export_status_message = Some((
-                                format!("Error guardando archivo: {}", e),
-                                true,
-                            ));
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let file_path = target_dir.join(format!("{}.{}", state.output_filename, state.export_format.default_extension()));
+                        match export_iq_file(&file_path, samples, sample_rate, state.export_format) {
+                            Ok(_) => {
+                                state.export_status_message = Some((
+                                    format!("Archivo guardado exitosamente en: {}", file_path.display()),
+                                    false,
+                                ));
+                            }
+                            Err(e) => {
+                                state.export_status_message = Some((
+                                    format!("Error guardando archivo: {}", e),
+                                    true,
+                                ));
+                            }
                         }
                     }
                 }

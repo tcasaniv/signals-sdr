@@ -10,8 +10,14 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+use crate::sdr::SdrTransmissionController;
+
+fn get_host_controller() -> &'static Mutex<SdrTransmissionController> {
+    static CONTROLLER: OnceLock<Mutex<SdrTransmissionController>> = OnceLock::new();
+    CONTROLLER.get_or_init(|| Mutex::new(SdrTransmissionController::new()))
+}
 
 /// Configuración de ejecución del servidor web
 #[derive(Debug, Clone)]
@@ -214,7 +220,7 @@ fn resolve_static_dir(dir: &Path) -> PathBuf {
 }
 
 fn handle_connection(mut stream: TcpStream, static_dir: &Path) -> std::io::Result<()> {
-    let mut buffer = [0u8; 4096];
+    let mut buffer = [0u8; 8192];
     let bytes_read = stream.read(&mut buffer)?;
     if bytes_read == 0 {
         return Ok(());
@@ -228,18 +234,125 @@ fn handle_connection(mut stream: TcpStream, static_dir: &Path) -> std::io::Resul
     };
 
     let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 2 || parts[0] != "GET" {
-        let response = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n";
-        stream.write_all(response.as_bytes())?;
+    if parts.len() < 2 {
         return Ok(());
     }
 
+    let method = parts[0];
     let mut raw_path = parts[1];
     if let Some(idx) = raw_path.find('?') {
         raw_path = &raw_path[..idx];
     }
     if let Some(idx) = raw_path.find('#') {
         raw_path = &raw_path[..idx];
+    }
+
+    // Soporte CORS preflight
+    if method == "OPTIONS" {
+        let response = "HTTP/1.1 204 No Content\r\n\
+                        Access-Control-Allow-Origin: *\r\n\
+                        Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+                        Access-Control-Allow-Headers: Content-Type\r\n\
+                        Content-Length: 0\r\n\r\n";
+        stream.write_all(response.as_bytes())?;
+        return Ok(());
+    }
+
+    // Rutas de API REST para control de transmisión de hardware por LAN
+    if raw_path == "/api/status" && method == "GET" {
+        let st = get_host_controller().lock().unwrap().status();
+        let json = match st {
+            crate::sdr::TransmissionStatus::Idle => {
+                serde_json::json!({ "status": "idle" }).to_string()
+            }
+            crate::sdr::TransmissionStatus::Transmitting { samples_sent, total_samples, elapsed_sec } => {
+                serde_json::json!({
+                    "status": "transmitting",
+                    "samples_sent": samples_sent,
+                    "total_samples": total_samples,
+                    "elapsed_sec": elapsed_sec,
+                }).to_string()
+            }
+            crate::sdr::TransmissionStatus::Finished { total_samples, elapsed_sec } => {
+                serde_json::json!({
+                    "status": "finished",
+                    "total_samples": total_samples,
+                    "elapsed_sec": elapsed_sec,
+                }).to_string()
+            }
+            crate::sdr::TransmissionStatus::Error(msg) => {
+                serde_json::json!({
+                    "status": "error",
+                    "message": msg,
+                }).to_string()
+            }
+        };
+        return serve_json(&mut stream, 200, &json);
+    }
+
+    if raw_path == "/api/devices" && method == "GET" {
+        let devs = crate::sdr::detect_detailed_radios();
+        let json = serde_json::to_string(&devs).unwrap_or_else(|_| "[]".to_string());
+        return serve_json(&mut stream, 200, &json);
+    }
+
+    if raw_path == "/api/transmit" && method == "POST" {
+        let body = if let Some(idx) = request_str.find("\r\n\r\n") {
+            &request_str[idx + 4..]
+        } else {
+            ""
+        };
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+            let mut cfg = crate::sdr::TxConfig::default();
+            if let Some(f) = v["frequency_hz"].as_f64() {
+                cfg.frequency_hz = f;
+            }
+            if let Some(sr) = v["sample_rate_hz"].as_u64() {
+                cfg.sample_rate_hz = sr as u32;
+            }
+            if let Some(hw) = v["hw_type"].as_str() {
+                match hw {
+                    "HackRfSeify" => cfg.hw_type = crate::sdr::SdrHardwareType::HackRfSeify,
+                    "HackRfSoapy" => cfg.hw_type = crate::sdr::SdrHardwareType::HackRfSoapy,
+                    "BladeRfSoapy" => cfg.hw_type = crate::sdr::SdrHardwareType::BladeRfSoapy,
+                    "UsrpSoapy" => cfg.hw_type = crate::sdr::SdrHardwareType::UsrpSoapy,
+                    "PlutoSdrSoapy" => cfg.hw_type = crate::sdr::SdrHardwareType::PlutoSdrSoapy,
+                    "LimeSdrSoapy" => cfg.hw_type = crate::sdr::SdrHardwareType::LimeSdrSoapy,
+                    "Dummy" => cfg.hw_type = crate::sdr::SdrHardwareType::Dummy,
+                    _ => cfg.hw_type = crate::sdr::SdrHardwareType::HackRfSeify,
+                }
+            }
+            if let Some(args) = v["device_args"].as_str() {
+                if !args.is_empty() {
+                    cfg.device_args = args.to_string();
+                }
+            }
+            cfg.repeat = v["repeat"].as_bool().unwrap_or(false);
+
+            let count = v["samples_count"].as_u64().unwrap_or(2_000_000) as usize;
+            let mut samples = Vec::with_capacity(count.min(2_000_000));
+            for i in 0..count.min(2_000_000) {
+                let t = i as f32 / cfg.sample_rate_hz as f32;
+                let phase = 2.0 * std::f32::consts::PI * 1000.0 * t;
+                samples.push((0.7 * phase.cos(), 0.7 * phase.sin()));
+            }
+
+            get_host_controller().lock().unwrap().start(cfg, samples);
+            return serve_json(&mut stream, 200, r#"{"status":"started"}"#);
+        } else {
+            return serve_json(&mut stream, 400, r#"{"error":"Payload JSON no válido"}"#);
+        }
+    }
+
+    if raw_path == "/api/stop" && method == "POST" {
+        get_host_controller().lock().unwrap().stop();
+        return serve_json(&mut stream, 200, r#"{"status":"stopped"}"#);
+    }
+
+    if method != "GET" {
+        let response = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n";
+        stream.write_all(response.as_bytes())?;
+        return Ok(());
     }
 
     let clean_path = raw_path.trim_start_matches('/');
@@ -283,6 +396,30 @@ fn serve_file(stream: &mut TcpStream, path: &Path) -> std::io::Result<()> {
 
     stream.write_all(header.as_bytes())?;
     stream.write_all(&content)?;
+    Ok(())
+}
+
+fn serve_json(stream: &mut TcpStream, status_code: u16, json: &str) -> std::io::Result<()> {
+    let status_line = match status_code {
+        200 => "200 OK",
+        400 => "400 Bad Request",
+        404 => "404 Not Found",
+        _ => "500 Internal Server Error",
+    };
+    let header = format!(
+        "HTTP/1.1 {}\r\n\
+         Content-Type: application/json; charset=utf-8\r\n\
+         Content-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Cache-Control: no-cache\r\n\
+         Connection: close\r\n\r\n",
+        status_line,
+        json.len()
+    );
+    stream.write_all(header.as_bytes())?;
+    stream.write_all(json.as_bytes())?;
     Ok(())
 }
 
