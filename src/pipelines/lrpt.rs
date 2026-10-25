@@ -142,6 +142,7 @@ impl LrptPipeline {
 
             if self.transmission_state.request_open_output_files {
                 self.transmission_state.request_open_output_files = false;
+                self.output_files_modal.sync_from_directory(&config.default_output_dir.join("meteor_lrpt"));
                 self.output_files_modal.open = true;
             }
 
@@ -688,6 +689,18 @@ impl LrptPipeline {
 
         self.channel_effects_state.is_dirty = true;
         self.channel_effects_state.processed_iq.clear();
+
+        if let Ok(wav_bytes) = crate::export::export_iq_to_memory(
+            &self.iq_samples,
+            self.sdr_sample_rate,
+            crate::export::IqExportFormat::WavIq16,
+        ) {
+            self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::audio(
+                "senal_iq_meteor_lrpt.wav",
+                wav_bytes,
+                format!("Señal I/Q modulada OQPSK ({} Hz)", self.sdr_sample_rate),
+            ));
+        }
 
         self.status_message = format!(
             "Fase 3 completada: Modulación digital OQPSK a {} kHz generada con éxito ({} muestras I/Q). ¡Listo para transmitir!",

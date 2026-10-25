@@ -160,6 +160,7 @@ impl AptPipeline {
 
             if self.transmission_state.request_open_output_files {
                 self.transmission_state.request_open_output_files = false;
+                self.output_files_modal.sync_from_directory(&config.default_output_dir.join("noaa_apt"));
                 self.output_files_modal.open = true;
             }
 
