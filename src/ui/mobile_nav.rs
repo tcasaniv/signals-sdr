@@ -3,9 +3,9 @@ use crate::pipelines::PipelineId;
 use crate::theme::AppTheme;
 use crate::ui::desktop_nav::{
     render_m3_filter_chips, render_m3_search_bar, render_pipeline_card, DesktopNavState,
-    NavSection,
+    NavSection, SettingsTab,
 };
-use egui::{Color32, Frame, Margin, Rect, RichText, Sense, Ui, Vec2};
+use egui::{Color32, Frame, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 pub struct MobileNavState {
     pub showing_detail: bool,
@@ -26,10 +26,11 @@ pub fn render_mobile_header(
     state: &mut MobileNavState,
     active_section: NavSection,
     selected_pipeline: PipelineId,
+    active_settings_tab: SettingsTab,
 ) {
     ui.horizontal(|ui| {
-        if active_section == NavSection::Pipelines && state.showing_detail {
-            // Botón de retorno (flecha atrás vectorial)
+        if state.showing_detail {
+            // Botón de retorno (flecha atrás vectorial sin texto)
             let (back_rect, back_resp) = ui.allocate_exact_size(Vec2::new(34.0, 34.0), Sense::click());
             if back_resp.clicked() {
                 state.showing_detail = false;
@@ -40,22 +41,26 @@ pub fn render_mobile_header(
             icons::draw_back_arrow(ui, back_rect, theme.text_primary());
 
             ui.add_space(6.0);
-            ui.label(RichText::new(selected_pipeline.title()).strong().size(15.0).color(theme.text_primary()));
+            if active_section == NavSection::Pipelines {
+                ui.label(RichText::new(selected_pipeline.title()).strong().size(15.0).color(theme.text_primary()));
 
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                Frame::new()
-                    .fill(theme.surface_container_high())
-                    .corner_radius(4.0)
-                    .inner_margin(Margin::symmetric(6, 2))
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(selected_pipeline.frequency_badge())
-                                .monospace()
-                                .size(10.5)
-                                .color(theme.accent_blue()),
-                        );
-                    });
-            });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    Frame::new()
+                        .fill(theme.surface_container_high())
+                        .corner_radius(4.0)
+                        .inner_margin(Margin::symmetric(6, 2))
+                        .show(ui, |ui| {
+                            ui.label(
+                                RichText::new(selected_pipeline.frequency_badge())
+                                    .monospace()
+                                    .size(10.5)
+                                    .color(theme.accent_blue()),
+                            );
+                        });
+                });
+            } else {
+                ui.label(RichText::new(active_settings_tab.title()).strong().size(15.0).color(theme.text_primary()));
+            }
         } else if active_section == NavSection::Pipelines {
             ui.add(
                 egui::Image::new(egui::include_image!("../../assets/icon_256.png"))
@@ -66,7 +71,7 @@ pub fn render_mobile_header(
             ui.label(RichText::new("Signals SDR").strong().size(15.0).color(theme.accent_blue()));
             ui.label(RichText::new("Transmisores").size(12.0).color(theme.text_secondary()));
         } else {
-            ui.label(RichText::new("Ajustes y Rutas").strong().size(15.0).color(theme.text_primary()));
+            ui.label(RichText::new("Ajustes del Sistema").strong().size(15.0).color(theme.text_primary()));
         }
     });
 }
@@ -212,6 +217,67 @@ pub fn render_mobile_pipeline_grid(
                 ui.label(RichText::new("No se encontraron transmisores").size(12.0).color(theme.text_secondary()));
                 ui.label(RichText::new("Prueba con otros términos de búsqueda").size(11.0).color(theme.text_secondary()));
             });
+        }
+    });
+}
+
+/// Renderiza la lista móvil vertical de opciones de Ajustes
+pub fn render_mobile_settings_grid(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    desktop_nav: &mut DesktopNavState,
+    mobile_state: &mut MobileNavState,
+) {
+    ui.vertical(|ui| {
+        ui.label(RichText::new("Opciones de Configuración").strong().size(14.5).color(theme.text_primary()));
+        ui.label(RichText::new("Seleccione una sección para ver o modificar sus parámetros:").size(12.0).color(theme.text_secondary()));
+        ui.add_space(10.0);
+
+        for &tab in SettingsTab::all() {
+            let card_frame = Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(10.0)
+                .inner_margin(Margin::symmetric(14, 12));
+
+            let resp = card_frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(tab.icon())
+                            .size(22.0)
+                            .color(theme.accent_blue()),
+                    );
+                    ui.add_space(8.0);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(tab.title())
+                                .strong()
+                                .size(13.5)
+                                .color(theme.text_primary()),
+                        );
+                        ui.add_space(2.0);
+                        ui.label(
+                            RichText::new(tab.description())
+                                .size(11.0)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(crate::icons::ICON_CHEVRON_RIGHT.codepoint).size(18.0).color(theme.text_secondary()));
+                    });
+                });
+            });
+
+            let interact_resp = ui.interact(resp.response.rect, resp.response.id, Sense::click());
+            if interact_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if interact_resp.clicked() {
+                desktop_nav.active_settings_tab = tab;
+                mobile_state.showing_detail = true;
+            }
+
+            ui.add_space(6.0);
         }
     });
 }

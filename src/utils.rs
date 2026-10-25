@@ -23,9 +23,15 @@ pub fn open_path_or_url(target: &str) {
     {
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("cmd")
-                .args(["/C", "start", "", target])
-                .spawn();
+            if target.starts_with("http://") || target.starts_with("https://") {
+                let _ = std::process::Command::new("rundll32")
+                    .args(["url.dll,FileProtocolHandler", target])
+                    .spawn();
+            } else {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", target])
+                    .spawn();
+            }
         }
 
         #[cfg(target_os = "macos")]

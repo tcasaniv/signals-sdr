@@ -110,6 +110,7 @@ impl SignalsSdrApp {
                     &mut self.mobile_nav,
                     self.desktop_nav.active_section,
                     self.selected_pipeline,
+                    self.desktop_nav.active_settings_tab,
                 );
             });
 
@@ -137,7 +138,18 @@ impl SignalsSdrApp {
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.set_max_width(ui.available_width());
                     match self.desktop_nav.active_section {
-                        NavSection::Settings => self.render_settings_detail(ui, theme),
+                        NavSection::Settings => {
+                            if self.mobile_nav.showing_detail {
+                                self.render_settings_detail(ui, theme);
+                            } else {
+                                crate::ui::mobile_nav::render_mobile_settings_grid(
+                                    ui,
+                                    theme,
+                                    &mut self.desktop_nav,
+                                    &mut self.mobile_nav,
+                                );
+                            }
+                        }
                         NavSection::Pipelines => {
                             if self.mobile_nav.showing_detail {
                                 self.render_active_pipeline(ui, theme);
@@ -258,51 +270,26 @@ impl SignalsSdrApp {
     }
 
     fn render_settings_detail(&mut self, ui: &mut Ui, theme: &AppTheme) {
-        // En vista móvil o cuando la barra lateral está oculta, selector horizontal rápido
-        if !self.desktop_nav.side_panel_expanded || ui.available_width() < 700.0 {
-            ui.horizontal_wrapped(|ui| {
-                let tabs = [
-                    SettingsTab::General,
-                    SettingsTab::SoapySdr,
-                    SettingsTab::License,
-                    SettingsTab::About,
-                ];
-                for tab in tabs {
-                    let is_sel = self.desktop_nav.active_settings_tab == tab;
-                    let label = format!("{} {}", tab.icon(), tab.title());
-                    if ui.selectable_label(is_sel, label).clicked() {
-                        self.desktop_nav.active_settings_tab = tab;
-                    }
-                }
-            });
-            ui.add_space(8.0);
-            let line_rect = ui.available_rect_before_wrap();
-            ui.painter().line_segment(
-                [line_rect.left_top(), egui::Pos2::new(line_rect.right(), line_rect.top())],
-                Stroke::new(1.0_f32, theme.card_border()),
-            );
-            ui.add_space(8.0);
-        }
-
         match self.desktop_nav.active_settings_tab {
             SettingsTab::General => self.render_settings_general(ui, theme),
+            SettingsTab::Appearance => self.render_settings_appearance(ui, theme),
             SettingsTab::SoapySdr => self.render_settings_soapy(ui, theme),
             SettingsTab::License => self.render_settings_license(ui, theme),
             SettingsTab::About => self.render_settings_about(ui, theme),
         }
     }
 
-    fn render_settings_general(&mut self, ui: &mut Ui, theme: &AppTheme) {
+    fn render_settings_appearance(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            ui.label(RichText::new("Rutas y Salidas").strong().size(18.0).color(theme.text_primary()));
+            ui.label(RichText::new("Apariencia y Tema Visual").strong().size(18.0).color(theme.text_primary()));
             ui.label(
-                RichText::new("Configure el almacenamiento de señales y la apariencia general.")
+                RichText::new("Personalice el modo de color y contraste visual de la interfaz.")
                     .size(13.0)
                     .color(theme.text_secondary()),
             );
             ui.add_space(14.0);
 
-            // Tarjeta de apariencia y tema visual
+            // Tarjeta de modo de color
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -310,22 +297,24 @@ impl SignalsSdrApp {
                 .inner_margin(14.0)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Apariencia y Tema Visual").strong().size(14.0).color(theme.accent_blue()));
+                        ui.label(RichText::new("Modo de Color").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
                         ui.label(
-                            RichText::new("Seleccione el modo visual para la aplicación:")
+                            RichText::new("Seleccione el tema visual para el entorno de trabajo:")
                                 .size(12.0)
                                 .color(theme.text_secondary()),
                         );
                         ui.add_space(8.0);
 
                         ui.horizontal(|ui| {
-                            if ui.selectable_label(self.dark_mode, "Modo Oscuro").clicked() {
+                            let dark_label = format!("{} Modo Oscuro", crate::icons::ICON_DARK_MODE.codepoint);
+                            if ui.selectable_label(self.dark_mode, dark_label).clicked() {
                                 self.dark_mode = true;
                                 self.config.is_dark_mode = true;
                                 self.config.save();
                             }
-                            if ui.selectable_label(!self.dark_mode, "Modo Claro").clicked() {
+                            let light_label = format!("{} Modo Claro", crate::icons::ICON_LIGHT_MODE.codepoint);
+                            if ui.selectable_label(!self.dark_mode, light_label).clicked() {
                                 self.dark_mode = false;
                                 self.config.is_dark_mode = false;
                                 self.config.save();
@@ -333,7 +322,17 @@ impl SignalsSdrApp {
                         });
                     });
                 });
+        });
+    }
 
+    fn render_settings_general(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("Rutas y Salidas").strong().size(18.0).color(theme.text_primary()));
+            ui.label(
+                RichText::new("Configure el almacenamiento de señales y exportaciones en disco.")
+                    .size(13.0)
+                    .color(theme.text_secondary()),
+            );
             ui.add_space(14.0);
 
             // Tarjeta de almacenamiento
@@ -738,7 +737,7 @@ impl SignalsSdrApp {
                             .min_size(Vec2::new(220.0, 34.0));
 
                             if ui.add(repo_btn).clicked() {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/tcasaniv/signals-sdr"));
+                                crate::utils::open_path_or_url("https://github.com/tcasaniv/signals-sdr");
                             }
 
                             let issues_btn = egui::Button::new(
@@ -751,17 +750,16 @@ impl SignalsSdrApp {
                             .min_size(Vec2::new(220.0, 34.0));
 
                             if ui.add(issues_btn).clicked() {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/tcasaniv/signals-sdr/issues"));
+                                crate::utils::open_path_or_url("https://github.com/tcasaniv/signals-sdr/issues");
                             }
                         });
 
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("URL:").size(11.5).color(theme.text_secondary()));
-                            ui.hyperlink_to(
-                                "https://github.com/tcasaniv/signals-sdr",
-                                "https://github.com/tcasaniv/signals-sdr",
-                            );
+                            if ui.link("https://github.com/tcasaniv/signals-sdr").clicked() {
+                                crate::utils::open_path_or_url("https://github.com/tcasaniv/signals-sdr");
+                            }
                         });
                     });
                 });

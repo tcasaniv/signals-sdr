@@ -45,15 +45,27 @@ impl PipelineFilterCategory {
 pub enum SettingsTab {
     #[default]
     General,
+    Appearance,
     SoapySdr,
     License,
     About,
 }
 
 impl SettingsTab {
+    pub fn all() -> &'static [SettingsTab] {
+        &[
+            SettingsTab::General,
+            SettingsTab::Appearance,
+            SettingsTab::SoapySdr,
+            SettingsTab::License,
+            SettingsTab::About,
+        ]
+    }
+
     pub fn title(&self) -> &'static str {
         match self {
             Self::General => "Rutas y Salidas",
+            Self::Appearance => "Apariencia y Tema",
             Self::SoapySdr => "Controlador SoapySDR",
             Self::License => "Licencia GPLv3",
             Self::About => "Acerca del Proyecto",
@@ -63,6 +75,7 @@ impl SettingsTab {
     pub fn icon(&self) -> &'static str {
         match self {
             Self::General => icons::ICON_FOLDER.codepoint,
+            Self::Appearance => icons::ICON_PALETTE.codepoint,
             Self::SoapySdr => icons::ICON_SETTINGS.codepoint,
             Self::License => icons::ICON_DESCRIPTION.codepoint,
             Self::About => icons::ICON_INFO.codepoint,
@@ -72,6 +85,7 @@ impl SettingsTab {
     pub fn description(&self) -> &'static str {
         match self {
             Self::General => "Carpeta base y subdirectorios de exportación",
+            Self::Appearance => "Modo claro, oscuro y personalización visual",
             Self::SoapySdr => "Ruta de bibliotecas SoapySDR y Radioconda",
             Self::License => "Términos de la GNU General Public License v3",
             Self::About => "Versión, repositorio GitHub y documentación",
@@ -587,19 +601,14 @@ pub fn render_desktop_settings_list(
         ui.horizontal(|ui| {
             ui.label(RichText::new("Ajustes del Sistema").strong().size(14.5).color(theme.text_primary()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new("4 secciones").size(10.5).color(theme.text_secondary()));
+                ui.label(RichText::new(format!("{} secciones", SettingsTab::all().len())).size(10.5).color(theme.text_secondary()));
             });
         });
         ui.add_space(8.0);
 
-        let tabs = [
-            SettingsTab::General,
-            SettingsTab::SoapySdr,
-            SettingsTab::License,
-            SettingsTab::About,
-        ];
+        let tabs = SettingsTab::all();
 
-        for tab in tabs {
+        for &tab in tabs {
             let is_active = state.active_settings_tab == tab;
             let bg_color = if is_active {
                 theme.active_pill()
