@@ -60,14 +60,16 @@ pub struct VirtualSinkModal {
     pub last_tick: Option<Instant>,
     // Configuración FFT / Espectro
     pub fft_size: usize,
-    pub peak_hold: bool,
-    pub peak_buffer: Vec<f32>,
-    pub avg_buffer: Vec<f32>,
+    pub show_max_peak: bool,
+    pub show_min_peak: bool,
+    pub max_peak_buffer: Vec<f32>,
+    pub min_peak_buffer: Vec<f32>,
     pub db_min: f32,
     pub db_max: f32,
     // Cascada Waterfall
     pub waterfall_history: VecDeque<Vec<f32>>,
     pub max_waterfall_rows: usize,
+    pub waterfall_resolution_mode: usize, // 0=64, 1=128, 2=256, 3=512, 4=Nativa
     // Dominio del tiempo
     pub show_i: bool,
     pub show_q: bool,
@@ -75,6 +77,7 @@ pub struct VirtualSinkModal {
     pub time_window_samples: usize,
     // Constelación
     pub constellation_points: usize,
+    pub constellation_zoom: f32,
 }
 
 impl Default for VirtualSinkModal {
@@ -87,18 +90,21 @@ impl Default for VirtualSinkModal {
             sample_cursor: 0,
             last_tick: None,
             fft_size: 1024,
-            peak_hold: true,
-            peak_buffer: Vec::new(),
-            avg_buffer: Vec::new(),
+            show_max_peak: true,
+            show_min_peak: false,
+            max_peak_buffer: Vec::new(),
+            min_peak_buffer: Vec::new(),
             db_min: -80.0,
             db_max: 0.0,
             waterfall_history: VecDeque::new(),
             max_waterfall_rows: 80,
+            waterfall_resolution_mode: 2, // 256 columnas (Alta)
             show_i: true,
             show_q: true,
             show_envelope: true,
             time_window_samples: 512,
             constellation_points: 1024,
+            constellation_zoom: 1.0,
         }
     }
 }
@@ -106,6 +112,11 @@ impl Default for VirtualSinkModal {
 impl VirtualSinkModal {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn reset_peaks(&mut self) {
+        self.max_peak_buffer.clear();
+        self.min_peak_buffer.clear();
     }
 
     pub fn open_modal(&mut self) {
@@ -225,6 +236,75 @@ impl VirtualSinkModal {
 
             ui.add_space(8.0);
 
+            // Sub-barra contextual de opciones según pestaña activa
+            ui.horizontal_wrapped(|ui| {
+                match self.active_tab {
+                    VirtualSinkTab::Spectrum => {
+                        ui.checkbox(&mut self.show_max_peak, RichText::new("Max Peak (Amarillo)").size(11.5).color(Color32::from_rgb(234, 179, 8)));
+                        ui.checkbox(&mut self.show_min_peak, RichText::new("Min Peak (Magenta)").size(11.5).color(Color32::from_rgb(236, 72, 153)));
+                        if ui.button(RichText::new(format!("{} Limpiar Picos", icons::ICON_CLEAR_ALL.codepoint)).size(11.0)).clicked() {
+                            self.reset_peaks();
+                        }
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB").show_value(true));
+                        ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB").show_value(true));
+                    }
+                    VirtualSinkTab::Waterfall => {
+                        ui.label(RichText::new("Resolución de Cascada:").size(11.5).color(theme.text_secondary()));
+                        egui::ComboBox::from_id_salt("sink_waterfall_res")
+                            .selected_text(match self.waterfall_resolution_mode {
+                                0 => "Baja (64 columnas)",
+                                1 => "Media (128 columnas)",
+                                2 => "Alta (256 columnas)",
+                                3 => "Ultra (512 columnas)",
+                                _ => "Nativa (Resolución FFT completa)",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.waterfall_resolution_mode, 0, "Baja (64 columnas)");
+                                ui.selectable_value(&mut self.waterfall_resolution_mode, 1, "Media (128 columnas)");
+                                ui.selectable_value(&mut self.waterfall_resolution_mode, 2, "Alta (256 columnas)");
+                                ui.selectable_value(&mut self.waterfall_resolution_mode, 3, "Ultra (512 columnas)");
+                                ui.selectable_value(&mut self.waterfall_resolution_mode, 4, "Nativa (Resolución FFT completa)");
+                            });
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                        ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                    }
+                    VirtualSinkTab::TimeDomain => {
+                        ui.checkbox(&mut self.show_i, RichText::new("I(t) Fase").size(11.5).color(Color32::from_rgb(59, 130, 246)));
+                        ui.checkbox(&mut self.show_q, RichText::new("Q(t) Cuadratura").size(11.5).color(Color32::from_rgb(16, 185, 129)));
+                        ui.checkbox(&mut self.show_envelope, RichText::new("|IQ| Envolvente").size(11.5).color(Color32::from_rgb(245, 158, 11)));
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
+                    }
+                    VirtualSinkTab::Constellation => {
+                        ui.label(RichText::new("Zoom Constelación:").size(11.5).color(theme.text_secondary()));
+                        egui::ComboBox::from_id_salt("sink_const_zoom")
+                            .selected_text(format!("{:.1}x", self.constellation_zoom))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x (Normal)");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
+                            });
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
+                        ui.add(egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"));
+                    }
+                    VirtualSinkTab::Metrics => {
+                        ui.label(RichText::new("Cálculo en vivo de parámetros de RF y calidad de la señal modulada").size(11.5).color(theme.text_secondary()));
+                    }
+                }
+            });
+
+            ui.add_space(4.0);
+
             // 2. Área principal de graficación
             let avail_size = Vec2::new(ui.available_width(), (ui.available_height() - 72.0).max(300.0));
             Frame::new()
@@ -285,7 +365,7 @@ impl VirtualSinkModal {
             let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
             if ui.add(reset_btn).clicked() {
                 self.sample_cursor = 0;
-                self.peak_buffer.clear();
+                self.reset_peaks();
                 self.waterfall_history.clear();
             }
 
@@ -319,7 +399,7 @@ impl VirtualSinkModal {
                 );
             }
 
-            // Selector de velocidad
+            // Selector de velocidad y FFT
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 egui::ComboBox::from_id_salt("sink_fft_size")
                     .selected_text(format!("FFT: {}", self.fft_size))
@@ -327,6 +407,9 @@ impl VirtualSinkModal {
                         ui.selectable_value(&mut self.fft_size, 512, "512 bins");
                         ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
                         ui.selectable_value(&mut self.fft_size, 2048, "2048 bins");
+                        ui.selectable_value(&mut self.fft_size, 4096, "4096 bins");
+                        ui.selectable_value(&mut self.fft_size, 8192, "8192 bins");
+                        ui.selectable_value(&mut self.fft_size, 16384, "16384 bins");
                     });
 
                 egui::ComboBox::from_id_salt("sink_speed_combo")
@@ -371,12 +454,20 @@ impl VirtualSinkModal {
             db_vals[i] = db;
         }
 
-        // Actualizar Peak Hold
-        if self.peak_buffer.len() != n {
-            self.peak_buffer = db_vals.clone();
-        } else if self.peak_hold {
+        // Actualizar Peak Holds
+        if self.max_peak_buffer.len() != n {
+            self.max_peak_buffer = db_vals.clone();
+        } else if self.show_max_peak {
             for i in 0..n {
-                self.peak_buffer[i] = self.peak_buffer[i].max(db_vals[i]) * 0.999 + db_vals[i] * 0.001;
+                self.max_peak_buffer[i] = self.max_peak_buffer[i].max(db_vals[i]) * 0.999 + db_vals[i] * 0.001;
+            }
+        }
+
+        if self.min_peak_buffer.len() != n {
+            self.min_peak_buffer = db_vals.clone();
+        } else if self.show_min_peak {
+            for i in 0..n {
+                self.min_peak_buffer[i] = self.min_peak_buffer[i].min(db_vals[i]) * 0.999 + db_vals[i] * 0.001;
             }
         }
 
@@ -404,7 +495,7 @@ impl VirtualSinkModal {
         // Fondo oscuro de cuadrícula
         painter.rect_filled(rect, 4.0, if *theme == AppTheme::Dark { Color32::from_rgb(6, 10, 16) } else { Color32::from_rgb(245, 247, 250) });
 
-        let margin_l = 45.0;
+        let margin_l = 48.0;
         let margin_b = 25.0;
         let plot_rect = Rect::from_min_max(
             Pos2::new(rect.min.x + margin_l, rect.min.y + 10.0),
@@ -414,13 +505,15 @@ impl VirtualSinkModal {
         let grid_col = if *theme == AppTheme::Dark { Color32::from_rgb(30, 40, 55) } else { Color32::from_rgb(225, 232, 240) };
         let text_col = theme.text_secondary();
 
-        // Líneas de cuadrícula horizontal (dB: 0, -20, -40, -60, -80)
-        let db_ticks = [0.0, -20.0, -40.0, -60.0, -80.0];
-        for &db in &db_ticks {
-            let t = (db - self.db_min) / (self.db_max - self.db_min);
+        // Líneas de cuadrícula horizontal dinámicas
+        let db_step = if (self.db_max - self.db_min) > 80.0 { 20.0 } else { 10.0 };
+        let mut cur_db = (self.db_max / db_step).floor() * db_step;
+        while cur_db >= self.db_min - 0.1 {
+            let t = ((cur_db - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
             let y = plot_rect.max.y - t * plot_rect.height();
             painter.line_segment([Pos2::new(plot_rect.min.x, y), Pos2::new(plot_rect.max.x, y)], Stroke::new(1.0, grid_col));
-            painter.text(Pos2::new(rect.min.x + 36.0, y), egui::Align2::RIGHT_CENTER, format!("{:.0} dB", db), egui::FontId::monospace(10.0), text_col);
+            painter.text(Pos2::new(rect.min.x + 40.0, y), egui::Align2::RIGHT_CENTER, format!("{:.0} dB", cur_db), egui::FontId::monospace(10.0), text_col);
+            cur_db -= db_step;
         }
 
         // Líneas de cuadrícula vertical (Frecuencia: -Fs/2 a +Fs/2)
@@ -448,20 +541,33 @@ impl VirtualSinkModal {
         );
 
         if n > 1 {
-            // 1. Trazado Peak Hold (Amarillo)
-            if self.peak_hold && self.peak_buffer.len() == n {
+            // 1. Trazado Min Peak Hold (Magenta)
+            if self.show_min_peak && self.min_peak_buffer.len() == n {
+                let min_pts: Vec<Pos2> = (0..n).map(|i| {
+                    let tx = i as f32 / (n - 1) as f32;
+                    let ty = ((self.min_peak_buffer[i] - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+                    Pos2::new(plot_rect.min.x + tx * plot_rect.width(), plot_rect.max.y - ty * plot_rect.height())
+                }).collect();
+
+                for w in min_pts.windows(2) {
+                    painter.line_segment([w[0], w[1]], Stroke::new(1.0, Color32::from_rgb(236, 72, 153).gamma_multiply(0.85)));
+                }
+            }
+
+            // 2. Trazado Max Peak Hold (Amarillo)
+            if self.show_max_peak && self.max_peak_buffer.len() == n {
                 let peak_pts: Vec<Pos2> = (0..n).map(|i| {
                     let tx = i as f32 / (n - 1) as f32;
-                    let ty = ((self.peak_buffer[i] - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+                    let ty = ((self.max_peak_buffer[i] - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
                     Pos2::new(plot_rect.min.x + tx * plot_rect.width(), plot_rect.max.y - ty * plot_rect.height())
                 }).collect();
 
                 for w in peak_pts.windows(2) {
-                    painter.line_segment([w[0], w[1]], Stroke::new(1.0, Color32::from_rgb(234, 179, 8).gamma_multiply(0.8)));
+                    painter.line_segment([w[0], w[1]], Stroke::new(1.0, Color32::from_rgb(234, 179, 8).gamma_multiply(0.85)));
                 }
             }
 
-            // 2. Trazado Espectro Activo (Cian brillante con relleno)
+            // 3. Trazado Espectro Activo (Cian brillante)
             let live_pts: Vec<Pos2> = (0..n).map(|i| {
                 let tx = i as f32 / (n - 1) as f32;
                 let ty = ((db_vals[i] - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
@@ -474,12 +580,18 @@ impl VirtualSinkModal {
         }
 
         // Leyenda
-        let legend_pos = Pos2::new(plot_rect.max.x - 140.0, plot_rect.min.y + 12.0);
-        painter.rect_filled(Rect::from_min_size(legend_pos, Vec2::new(130.0, 36.0)), 4.0, Color32::from_black_alpha(160));
-        painter.circle_filled(legend_pos + Vec2::new(12.0, 12.0), 4.0, Color32::from_rgb(56, 189, 248));
-        painter.text(legend_pos + Vec2::new(22.0, 12.0), egui::Align2::LEFT_CENTER, "Espectro I/Q", egui::FontId::proportional(11.0), Color32::WHITE);
-        painter.circle_filled(legend_pos + Vec2::new(12.0, 26.0), 4.0, Color32::from_rgb(234, 179, 8));
-        painter.text(legend_pos + Vec2::new(22.0, 26.0), egui::Align2::LEFT_CENTER, "Peak Hold", egui::FontId::proportional(11.0), Color32::WHITE);
+        let legend_pos = Pos2::new(plot_rect.max.x - 130.0, plot_rect.min.y + 10.0);
+        painter.rect_filled(Rect::from_min_size(legend_pos, Vec2::new(120.0, 48.0)), 4.0, Color32::from_black_alpha(160));
+        painter.circle_filled(legend_pos + Vec2::new(10.0, 10.0), 3.5, Color32::from_rgb(56, 189, 248));
+        painter.text(legend_pos + Vec2::new(20.0, 10.0), egui::Align2::LEFT_CENTER, "Espectro I/Q", egui::FontId::proportional(10.5), Color32::WHITE);
+        if self.show_max_peak {
+            painter.circle_filled(legend_pos + Vec2::new(10.0, 22.0), 3.5, Color32::from_rgb(234, 179, 8));
+            painter.text(legend_pos + Vec2::new(20.0, 22.0), egui::Align2::LEFT_CENTER, "Max Peak", egui::FontId::proportional(10.5), Color32::WHITE);
+        }
+        if self.show_min_peak {
+            painter.circle_filled(legend_pos + Vec2::new(10.0, 34.0), 3.5, Color32::from_rgb(236, 72, 153));
+            painter.text(legend_pos + Vec2::new(20.0, 34.0), egui::Align2::LEFT_CENTER, "Min Peak", egui::FontId::proportional(10.5), Color32::WHITE);
+        }
     }
 
     // ==========================================
@@ -519,11 +631,23 @@ impl VirtualSinkModal {
             let y0 = rect.min.y + r_idx as f32 * row_height;
             let y1 = y0 + row_height.max(1.0);
             let n_cols = row_db.len();
-            let col_step = (n_cols / 64).max(1);
+
+            let target_cols = match self.waterfall_resolution_mode {
+                0 => 64,
+                1 => 128,
+                2 => 256,
+                3 => 512,
+                _ => n_cols,
+            };
+            let col_step = if self.waterfall_resolution_mode >= 4 {
+                1
+            } else {
+                (n_cols / target_cols).max(1)
+            };
 
             for c in (0..n_cols).step_by(col_step) {
                 let t_x0 = c as f32 / n_cols as f32;
-                let t_x1 = (c + col_step) as f32 / n_cols as f32;
+                let t_x1 = (c + col_step).min(n_cols) as f32 / n_cols as f32;
                 let x0 = rect.min.x + t_x0 * rect.width();
                 let x1 = rect.min.x + t_x1 * rect.width();
 
@@ -653,24 +777,73 @@ impl VirtualSinkModal {
 
         painter.rect_filled(rect, 4.0, if *theme == AppTheme::Dark { Color32::from_rgb(6, 10, 16) } else { Color32::from_rgb(245, 247, 250) });
 
-        let plot_side = rect.width().min(rect.height()) - 30.0;
+        let plot_side = (rect.width().min(rect.height()) - 40.0).max(100.0);
         let plot_rect = Rect::from_center_size(rect.center(), Vec2::splat(plot_side));
 
         let center = plot_rect.center();
-        let scale = plot_side * 0.42;
+        let scale = plot_side * 0.40 * self.constellation_zoom;
 
         let grid_col = if *theme == AppTheme::Dark { Color32::from_rgb(30, 42, 58) } else { Color32::from_rgb(220, 228, 238) };
+        let tick_text_col = theme.text_secondary();
 
         // Círculos concéntricos de referencia (r = 0.5, 1.0)
         painter.circle_stroke(center, scale * 0.5, Stroke::new(1.0, grid_col));
         painter.circle_stroke(center, scale * 1.0, Stroke::new(1.5, grid_col));
 
-        // Ejes ortogonales I y Q
-        painter.line_segment([Pos2::new(plot_rect.min.x, center.y), Pos2::new(plot_rect.max.x, center.y)], Stroke::new(1.0, grid_col));
-        painter.line_segment([Pos2::new(center.x, plot_rect.min.y), Pos2::new(center.x, plot_rect.max.y)], Stroke::new(1.0, grid_col));
+        // Retícula secundaria en ±1.0 y ±0.5
+        for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
+            let px = center.x + v * scale;
+            if px >= plot_rect.min.x && px <= plot_rect.max.x {
+                painter.line_segment(
+                    [Pos2::new(px, plot_rect.min.y), Pos2::new(px, plot_rect.max.y)],
+                    Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
+                );
+            }
+            let py = center.y - v * scale;
+            if py >= plot_rect.min.y && py <= plot_rect.max.y {
+                painter.line_segment(
+                    [Pos2::new(plot_rect.min.x, py), Pos2::new(plot_rect.max.x, py)],
+                    Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
+                );
+            }
+        }
 
-        painter.text(Pos2::new(plot_rect.max.x - 8.0, center.y - 12.0), egui::Align2::RIGHT_CENTER, "+I (Fase)", egui::FontId::monospace(11.0), theme.accent_blue());
-        painter.text(Pos2::new(center.x + 8.0, plot_rect.min.y + 12.0), egui::Align2::LEFT_CENTER, "+Q (Cuadratura)", egui::FontId::monospace(11.0), theme.accent_blue());
+        // Ejes ortogonales I y Q principales
+        painter.line_segment([Pos2::new(plot_rect.min.x, center.y), Pos2::new(plot_rect.max.x, center.y)], Stroke::new(1.5, grid_col));
+        painter.line_segment([Pos2::new(center.x, plot_rect.min.y), Pos2::new(center.x, plot_rect.max.y)], Stroke::new(1.5, grid_col));
+
+        // Marcas (ticks) y números en eje I (horizontal)
+        for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
+            let px = center.x + v * scale;
+            if px >= plot_rect.min.x + 15.0 && px <= plot_rect.max.x - 15.0 {
+                painter.line_segment([Pos2::new(px, center.y - 4.0), Pos2::new(px, center.y + 4.0)], Stroke::new(1.5, theme.accent_blue()));
+                painter.text(
+                    Pos2::new(px, center.y + 12.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("{:+.1}", v),
+                    egui::FontId::monospace(10.0),
+                    tick_text_col,
+                );
+            }
+        }
+
+        // Marcas (ticks) y números en eje Q (vertical)
+        for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
+            let py = center.y - v * scale;
+            if py >= plot_rect.min.y + 15.0 && py <= plot_rect.max.y - 15.0 {
+                painter.line_segment([Pos2::new(center.x - 4.0, py), Pos2::new(center.x + 4.0, py)], Stroke::new(1.5, theme.accent_blue()));
+                painter.text(
+                    Pos2::new(center.x - 14.0, py),
+                    egui::Align2::RIGHT_CENTER,
+                    format!("{:+.1}", v),
+                    egui::FontId::monospace(10.0),
+                    tick_text_col,
+                );
+            }
+        }
+
+        painter.text(Pos2::new(plot_rect.max.x - 8.0, center.y - 14.0), egui::Align2::RIGHT_CENTER, "+I (Fase)", egui::FontId::monospace(11.0), theme.accent_blue());
+        painter.text(Pos2::new(center.x + 10.0, plot_rect.min.y + 12.0), egui::Align2::LEFT_CENTER, "+Q (Cuadratura)", egui::FontId::monospace(11.0), theme.accent_blue());
 
         if samples.is_empty() {
             return;
@@ -829,9 +1002,15 @@ mod tests {
     fn test_fft_computation() {
         let mut sink = VirtualSinkModal::new();
         sink.fft_size = 512;
+        sink.show_max_peak = true;
+        sink.show_min_peak = true;
         let samples = vec![(1.0f32, 0.0f32); 1024];
         let db = sink.compute_current_fft(&samples);
         assert_eq!(db.len(), 512);
-        assert_eq!(sink.peak_buffer.len(), 512);
+        assert_eq!(sink.max_peak_buffer.len(), 512);
+        assert_eq!(sink.min_peak_buffer.len(), 512);
+        sink.reset_peaks();
+        assert!(sink.max_peak_buffer.is_empty());
+        assert!(sink.min_peak_buffer.is_empty());
     }
 }
