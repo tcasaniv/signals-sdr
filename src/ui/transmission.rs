@@ -18,6 +18,7 @@ pub enum TransmissionDestination {
     IqFile,
     GnuRadioNetwork,
     RtlTcpServer,
+    VirtualSink,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +49,8 @@ pub struct TransmissionTabState {
     pub rtl_tcp_error: Option<String>,
     // Controlador de red
     pub network_controller: NetworkTxController,
+    // Instrumento Virtual
+    pub virtual_sink: crate::ui::virtual_sink::VirtualSinkModal,
     // Estado de Remuestreo SDR / Archivo
     pub target_sample_rate: u32,
     pub resampled_samples: Option<Vec<(f32, f32)>>,
@@ -80,6 +83,7 @@ impl Default for TransmissionTabState {
             rtl_tcp_port: 1234,
             rtl_tcp_error: None,
             network_controller: NetworkTxController::new(),
+            virtual_sink: crate::ui::virtual_sink::VirtualSinkModal::default(),
             target_sample_rate: 2_000_000,
             resampled_samples: None,
             resampled_rate: 0,
@@ -134,7 +138,7 @@ pub fn render_transmission_tab(
     let needs_resample = is_rate_different && !has_valid_resample;
 
     ui.vertical(|ui| {
-        // 1. Selector de destino interactivo estilo pills (Hardware SDR, Archivo IQ, GNU Radio, RTL-TCP)
+        // 1. Selector de destino interactivo estilo pills (Hardware SDR, Archivo IQ, GNU Radio, RTL-TCP, Instrumento Virtual)
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Destino de la señal:").strong().size(14.0).color(theme.text_primary()));
             ui.add_space(8.0);
@@ -143,6 +147,7 @@ pub fn render_transmission_tab(
             let file_selected = state.destination == TransmissionDestination::IqFile;
             let gnuradio_selected = state.destination == TransmissionDestination::GnuRadioNetwork;
             let rtl_tcp_selected = state.destination == TransmissionDestination::RtlTcpServer;
+            let vs_selected = state.destination == TransmissionDestination::VirtualSink;
 
             let sdr_label = format!("{} Hardware SDR", icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
             if ui.selectable_label(sdr_selected, RichText::new(sdr_label).strong()).clicked() {
@@ -162,6 +167,11 @@ pub fn render_transmission_tab(
             let rtl_tcp_label = format!("{} Servidor RTL-TCP", icons::ICON_ROUTER.codepoint);
             if ui.selectable_label(rtl_tcp_selected, RichText::new(rtl_tcp_label).strong()).clicked() {
                 state.destination = TransmissionDestination::RtlTcpServer;
+            }
+
+            let vs_label = format!("{} Instrumento Virtual", icons::ICON_QUERY_STATS.codepoint);
+            if ui.selectable_label(vs_selected, RichText::new(vs_label).strong()).clicked() {
+                state.destination = TransmissionDestination::VirtualSink;
             }
         });
 
@@ -385,6 +395,17 @@ pub fn render_transmission_tab(
                     needs_resample,
                 );
             }
+            TransmissionDestination::VirtualSink => {
+                render_virtual_sink_panel(
+                    ui,
+                    theme,
+                    state,
+                    samples,
+                    sample_rate,
+                    default_rf_freq_hz,
+                    needs_resample,
+                );
+            }
         }
 
         ui.add_space(10.0);
@@ -394,6 +415,9 @@ pub fn render_transmission_tab(
             (samples, sample_rate)
         };
         crate::ui::spectrum::render_signal_visualizer(ui, theme, viz_samples, viz_rate);
+
+        // Modal a pantalla completa del Instrumento Virtual de Laboratorio
+        state.virtual_sink.show(ui.ctx(), theme, viz_samples, viz_rate, default_rf_freq_hz);
     });
 }
 
@@ -1702,6 +1726,153 @@ fn render_rtl_tcp_panel(
                             });
                         });
                 }
+            });
+        });
+}
+
+fn render_virtual_sink_panel(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    state: &mut TransmissionTabState,
+    samples: &[(f32, f32)],
+    sample_rate: u32,
+    default_rf_freq_hz: f64,
+    needs_resample: bool,
+) {
+    Frame::new()
+        .fill(theme.card_bg())
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
+        .inner_margin(14.0)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Instrumento Virtual de Laboratorio")
+                            .strong()
+                            .size(15.0)
+                            .color(theme.accent_blue()),
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (badge_txt, badge_col) = if state.virtual_sink.open {
+                            ("VENTANA ABIERTA", Color32::from_rgb(34, 197, 94))
+                        } else {
+                            ("LISTO", Color32::from_rgb(56, 189, 248))
+                        };
+                        let badge_frame = Frame::new()
+                            .fill(if *theme == AppTheme::Dark { Color32::from_rgb(20, 25, 34) } else { Color32::from_rgb(240, 245, 250) })
+                            .stroke(Stroke::new(1.0, badge_col))
+                            .corner_radius(4.0)
+                            .inner_margin(egui::Margin::symmetric(6, 2));
+                        badge_frame.show(ui, |ui| {
+                            ui.label(RichText::new(badge_txt).size(10.5).strong().color(badge_col));
+                        });
+                    });
+                });
+
+                ui.add_space(6.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Simula la recepción de la señal emitida en un instrumento de análisis por software en tiempo real \
+                             : espectro FFT con retención de picos (Peak Hold), cascada 2D temporal (Waterfall), \
+                             osciloscopio digital en dominio del tiempo (canales I, Q y envolvente) y diagrama de constelación en el plano complejo."
+                        )
+                        .size(12.0)
+                        .color(theme.text_secondary())
+                    )
+                    .wrap()
+                );
+                ui.add_space(12.0);
+
+                // Botón principal destacado para abrir el instrumento modal a pantalla completa
+                let open_btn = egui::Button::new(
+                    RichText::new(format!(
+                        "{} Abrir Instrumento de Laboratorio (Pantalla Completa)",
+                        icons::ICON_FULLSCREEN.codepoint
+                    ))
+                    .strong()
+                    .size(13.5)
+                    .color(Color32::WHITE),
+                )
+                .fill(theme.accent_blue())
+                .corner_radius(8.0)
+                .min_size(Vec2::new(320.0, 40.0));
+
+                let active_samples_count = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                    state.resampled_samples.as_ref().unwrap().len()
+                } else {
+                    samples.len()
+                };
+
+                let can_open = active_samples_count > 0 && !needs_resample;
+                if ui.add_enabled(can_open, open_btn).clicked() {
+                    state.virtual_sink.open_modal();
+                }
+
+                if needs_resample {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("(Debes remuestrear la señal en el panel superior antes de abrir el instrumento)")
+                            .size(12.0)
+                            .color(Color32::from_rgb(234, 179, 8)),
+                    );
+                } else if samples.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("(Primero genera la señal en el paso 2)").size(12.0).color(theme.text_secondary()));
+                }
+
+                ui.add_space(12.0);
+
+                // Selector de pestaña predeterminada para el instrumento
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Pestaña inicial al abrir:");
+                    let tabs = [
+                        (crate::ui::virtual_sink::VirtualSinkTab::Spectrum, "Espectro FFT"),
+                        (crate::ui::virtual_sink::VirtualSinkTab::Waterfall, "Cascada"),
+                        (crate::ui::virtual_sink::VirtualSinkTab::TimeDomain, "Dominio del Tiempo"),
+                        (crate::ui::virtual_sink::VirtualSinkTab::Constellation, "Constelación"),
+                        (crate::ui::virtual_sink::VirtualSinkTab::Metrics, "Métricas"),
+                    ];
+                    for (tab, label) in tabs {
+                        let is_active = state.virtual_sink.active_tab == tab;
+                        if ui.selectable_label(is_active, label).clicked() {
+                            state.virtual_sink.active_tab = tab;
+                        }
+                    }
+                });
+
+                ui.add_space(10.0);
+
+                // Cuadro resumen de parámetros activos
+                let summary_bg = if *theme == AppTheme::Dark { Color32::from_rgb(16, 22, 32) } else { Color32::from_rgb(243, 247, 252) };
+                Frame::new()
+                    .fill(summary_bg)
+                    .stroke(Stroke::new(1.0, theme.card_border()))
+                    .corner_radius(6.0)
+                    .inner_margin(10.0)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            let active_rate = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                                state.resampled_rate
+                            } else {
+                                sample_rate
+                            };
+                            ui.label(RichText::new(format!("Tasa de Muestreo: {} Sps", active_rate)).size(11.5).strong());
+                            ui.label("•");
+                            if default_rf_freq_hz > 0.0 {
+                                ui.label(RichText::new(format!("Portadora RF: {:.3} MHz", default_rf_freq_hz / 1e6)).size(11.5));
+                            } else {
+                                ui.label(RichText::new("Banda base (0 Hz)").size(11.5));
+                            }
+                            ui.label("•");
+                            ui.label(RichText::new(format!("Muestras: {}", active_samples_count)).size(11.5));
+                            ui.label("•");
+                            let total_sec = if active_rate > 0 { active_samples_count as f32 / active_rate as f32 } else { 0.0 };
+                            ui.label(RichText::new(format!("Duración: {:.2} s", total_sec)).size(11.5).color(theme.accent_blue()));
+                        });
+                    });
             });
         });
 }

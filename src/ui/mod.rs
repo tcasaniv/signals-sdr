@@ -8,3 +8,4 @@ pub mod output_files_modal;
 pub mod spectrogram;
 pub mod spectrum;
 pub mod transmission;
+pub mod virtual_sink;
