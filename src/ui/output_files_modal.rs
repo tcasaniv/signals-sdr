@@ -375,16 +375,15 @@ impl OutputFilesModal {
     }
 
     fn download_file(file: &OutputFile) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = crate::web_utils::trigger_browser_download(&file.name, &file.bytes, file.mime_type());
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                let path = dir.join(&file.name);
-                let _ = std::fs::write(&path, &file.bytes);
-            }
-        }
+        let ext = file.name.rsplit('.').next().unwrap_or("bin");
+        let filter_name = format!("Archivo {} (*.{})", ext.to_uppercase(), ext);
+        let exts = [ext];
+        let _ = crate::file_dialog::save_or_download_file(
+            &file.name,
+            &filter_name,
+            &exts,
+            file.mime_type(),
+            &file.bytes,
+        );
     }
 }

@@ -334,6 +334,12 @@ impl ImageSlot {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ImageInputResponse {
+    pub clicked: bool,
+    pub removed: bool,
+}
+
 /// Tarjeta para cargar imagen con vista previa interactiva real en memoria, fila de URL y botón de archivo local
 pub fn image_input_card(
     ui: &mut Ui,
@@ -341,7 +347,8 @@ pub fn image_input_card(
     title: &str,
     slot: &mut ImageSlot,
     color: ChannelColor,
-) {
+) -> ImageInputResponse {
+    let mut resp = ImageInputResponse::default();
     slot.poll();
 
     Frame::new()
@@ -369,6 +376,7 @@ pub fn image_input_card(
                             let remove_label = format!("{} Quitar", crate::icons::ICON_CLOSE.codepoint);
                             if ui.button(RichText::new(remove_label).size(11.5).color(theme.accent_red())).clicked() {
                                 slot.clear();
+                                resp.removed = true;
                             }
                         });
                     }
@@ -409,8 +417,14 @@ pub fn image_input_card(
                             );
                             let img_widget = egui::Image::new(&tex)
                                 .max_height(preview_height)
-                                .corner_radius(6.0);
-                            ui.add(img_widget);
+                                .corner_radius(6.0)
+                                .sense(egui::Sense::click());
+                            let img_resp = ui.add(img_widget)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text("Clic para ampliar imagen en el visor");
+                            if img_resp.clicked() {
+                                resp.clicked = true;
+                            }
                         });
                     });
 
@@ -513,6 +527,8 @@ pub fn image_input_card(
                 }
             });
         });
+
+    resp
 }
 
 /// Tarjeta interactiva para productos intermedios del pipeline con renderizado de imagen real

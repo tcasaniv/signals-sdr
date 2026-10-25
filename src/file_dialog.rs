@@ -119,3 +119,36 @@ where
         }
     }
 }
+
+/// Guarda o descarga un archivo de forma transparente:
+/// - En Desktop: Abre el diálogo nativo "Guardar como..." (rfd::FileDialog) para que el usuario elija ubicación y nombre.
+/// - En Web: Dispara la descarga directa en el navegador.
+pub fn save_or_download_file(
+    default_filename: &str,
+    filter_name: &str,
+    extensions: &[&str],
+    #[allow(unused_variables)] mime_type: &str,
+    bytes: &[u8],
+) -> Result<Option<std::path::PathBuf>, String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::web_utils::trigger_browser_download(default_filename, bytes, mime_type)
+            .map_err(|e| format!("Error en descarga web: {:?}", e))?;
+        Ok(None)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dialog = rfd::FileDialog::new()
+            .set_file_name(default_filename)
+            .add_filter(filter_name, extensions);
+        if let Some(path) = dialog.save_file() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::write(&path, bytes).map_err(|e| format!("Error al escribir archivo: {}", e))?;
+            Ok(Some(path))
+        } else {
+            Ok(None) // Usuario canceló el diálogo
+        }
+    }
+}

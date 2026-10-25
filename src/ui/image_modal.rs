@@ -301,26 +301,16 @@ impl ImageViewerModal {
             });
     }
 
-    /// Descarga el archivo de imagen en el navegador (WASM) o lo abre en Desktop.
+    /// Descarga el archivo de imagen en el navegador (WASM) o abre diálogo nativo en Desktop.
     fn trigger_download(&self) {
         if let Some(bytes) = &self.image_bytes {
-            #[cfg(target_arch = "wasm32")]
-            {
-                let _ = crate::web_utils::trigger_browser_download(
-                    &self.download_name,
-                    bytes,
-                    "image/png",
-                );
-            }
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                // En Desktop, guardar en la carpeta de salida del usuario
-                if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                    let path = dir.join(&self.download_name);
-                    let _ = std::fs::write(&path, bytes);
-                    crate::utils::open_path_or_url(&path.to_string_lossy());
-                }
-            }
+            let _ = crate::file_dialog::save_or_download_file(
+                &self.download_name,
+                "Imagen (*.png;*.jpg;*.jpeg)",
+                &["png", "jpg", "jpeg"],
+                "image/png",
+                bytes,
+            );
         }
     }
 }

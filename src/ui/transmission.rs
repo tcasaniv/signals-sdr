@@ -31,6 +31,7 @@ pub struct TransmissionTabState {
     pub output_filename: String,
     pub custom_output_dir: Option<PathBuf>,
     pub export_status_message: Option<(String, bool)>, // (Mensaje, es_error)
+    pub request_open_output_files: bool,
     // Estado de Remuestreo SDR / Archivo
     pub target_sample_rate: u32,
     pub resampled_samples: Option<Vec<(f32, f32)>>,
@@ -52,6 +53,7 @@ impl Default for TransmissionTabState {
             output_filename: "senal_iq".to_string(),
             custom_output_dir: None,
             export_status_message: None,
+            request_open_output_files: false,
             target_sample_rate: 2_000_000,
             resampled_samples: None,
             resampled_rate: 0,
@@ -1156,12 +1158,23 @@ fn render_file_panel(
                     );
                 });
                 ui.add_space(4.0);
-                let folder_label = format!("{} Cambiar Carpeta Destino...", icons::ICON_FOLDER_OPEN.codepoint);
-                if ui.button(folder_label).clicked() {
-                    if let Some(folder) = crate::file_dialog::FileDialog::new().pick_folder() {
-                        state.custom_output_dir = Some(folder);
+                ui.horizontal_wrapped(|ui| {
+                    let folder_label = format!("{} Cambiar Carpeta Destino...", icons::ICON_FOLDER_OPEN.codepoint);
+                    if ui.button(folder_label).clicked() {
+                        if let Some(folder) = crate::file_dialog::FileDialog::new().pick_folder() {
+                            state.custom_output_dir = Some(folder);
+                        }
                     }
-                }
+
+                    let view_files_label = format!("{} Ver Archivos Generados", icons::ICON_FOLDER.codepoint);
+                    if ui.button(view_files_label).clicked() {
+                        state.request_open_output_files = true;
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let _ = crate::utils::open_folder(&target_dir);
+                        }
+                    }
+                });
 
                 ui.add_space(10.0);
 

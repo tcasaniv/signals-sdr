@@ -29,6 +29,8 @@ pub struct LrptPipeline {
     pub channel_effects_state: ChannelEffectsState,
     pub sdr_sample_rate: u32,
     pub transmission_state: TransmissionTabState,
+    pub image_modal: crate::ui::image_modal::ImageViewerModal,
+    pub output_files_modal: crate::ui::output_files_modal::OutputFilesModal,
 }
 
 impl Default for LrptPipeline {
@@ -52,6 +54,8 @@ impl Default for LrptPipeline {
             channel_effects_state: ChannelEffectsState::new_for_pipeline("meteor_lrpt", 137.9),
             sdr_sample_rate: 288_000,
             transmission_state: TransmissionTabState::default(),
+            image_modal: crate::ui::image_modal::ImageViewerModal::new(),
+            output_files_modal: crate::ui::output_files_modal::OutputFilesModal::new(),
         }
     }
 }
@@ -135,6 +139,14 @@ impl LrptPipeline {
                 }
                 _ => {}
             }
+
+            if self.transmission_state.request_open_output_files {
+                self.transmission_state.request_open_output_files = false;
+                self.output_files_modal.open = true;
+            }
+
+            self.output_files_modal.show(ui.ctx(), theme, &mut self.image_modal);
+            self.image_modal.show(ui.ctx(), theme);
         });
     }
 
@@ -153,62 +165,97 @@ impl LrptPipeline {
 
             ui.add_space(8.0);
 
+            let mut click_1 = false;
+            let mut click_2 = false;
+            let mut click_3 = false;
+
             let avail_w = ui.available_width();
             if avail_w >= 750.0 {
                 let cols_count = self.num_channels;
                 ui.columns(cols_count, |cols| {
-                    image_input_card(
+                    click_1 = image_input_card(
                         &mut cols[0],
                         theme,
                         "Canal 1 (APID 64)",
                         &mut self.img1,
                         crate::ui::components::ChannelColor::Blue,
-                    );
+                    ).clicked;
                     if self.num_channels >= 2 {
-                        image_input_card(
+                        click_2 = image_input_card(
                             &mut cols[1],
                             theme,
                             "Canal 2 (APID 65)",
                             &mut self.img2,
                             crate::ui::components::ChannelColor::Green,
-                        );
+                        ).clicked;
                     }
                     if self.num_channels >= 3 {
-                        image_input_card(
+                        click_3 = image_input_card(
                             &mut cols[2],
                             theme,
                             "Canal 3 (APID 66)",
                             &mut self.img3,
                             crate::ui::components::ChannelColor::Neutral,
-                        );
+                        ).clicked;
                     }
                 });
             } else {
-                image_input_card(
+                click_1 = image_input_card(
                     ui,
                     theme,
                     "Canal 1 (APID 64)",
                     &mut self.img1,
                     crate::ui::components::ChannelColor::Blue,
-                );
+                ).clicked;
                 if self.num_channels >= 2 {
                     ui.add_space(10.0);
-                    image_input_card(
+                    click_2 = image_input_card(
                         ui,
                         theme,
                         "Canal 2 (APID 65)",
                         &mut self.img2,
                         crate::ui::components::ChannelColor::Green,
-                    );
+                    ).clicked;
                 }
                 if self.num_channels >= 3 {
                     ui.add_space(10.0);
-                    image_input_card(
+                    click_3 = image_input_card(
                         ui,
                         theme,
                         "Canal 3 (APID 66)",
                         &mut self.img3,
                         crate::ui::components::ChannelColor::Neutral,
+                    ).clicked;
+                }
+            }
+
+            if click_1 {
+                if let Some(ref ci) = self.img1.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Canal 1 (APID 64)",
+                        ci.clone(),
+                        self.img1.display_name.clone().unwrap_or_else(|| "canal_1.png".to_string()),
+                        self.img1.bytes.clone(),
+                    );
+                }
+            }
+            if click_2 {
+                if let Some(ref ci) = self.img2.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Canal 2 (APID 65)",
+                        ci.clone(),
+                        self.img2.display_name.clone().unwrap_or_else(|| "canal_2.png".to_string()),
+                        self.img2.bytes.clone(),
+                    );
+                }
+            }
+            if click_3 {
+                if let Some(ref ci) = self.img3.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Canal 3 (APID 66)",
+                        ci.clone(),
+                        self.img3.display_name.clone().unwrap_or_else(|| "canal_3.png".to_string()),
+                        self.img3.bytes.clone(),
                     );
                 }
             }

@@ -158,6 +158,11 @@ impl AptPipeline {
                 _ => {}
             }
 
+            if self.transmission_state.request_open_output_files {
+                self.transmission_state.request_open_output_files = false;
+                self.output_files_modal.open = true;
+            }
+
             // Renderizado de modales interactivos (Overlay a pantalla completa)
             self.output_files_modal.show(ui.ctx(), theme, &mut self.image_modal);
             self.image_modal.show(ui.ctx(), theme);
@@ -173,40 +178,63 @@ impl AptPipeline {
             );
             ui.add_space(8.0);
 
+            let mut click_a = false;
+            let mut click_b = false;
             let avail_w = ui.available_width();
             if avail_w >= 680.0 {
                 ui.columns(2, |cols| {
-                    image_input_card(
+                    click_a = image_input_card(
                         &mut cols[0],
                         theme,
                         "Imagen A",
                         &mut self.img_a,
                         ChannelColor::Blue,
-                    );
-                    image_input_card(
+                    ).clicked;
+                    click_b = image_input_card(
                         &mut cols[1],
                         theme,
                         "Imagen B",
                         &mut self.img_b,
                         ChannelColor::Green,
-                    );
+                    ).clicked;
                 });
             } else {
-                image_input_card(
+                click_a = image_input_card(
                     ui,
                     theme,
                     "Imagen A",
                     &mut self.img_a,
                     ChannelColor::Blue,
-                );
+                ).clicked;
                 ui.add_space(10.0);
-                image_input_card(
+                click_b = image_input_card(
                     ui,
                     theme,
                     "Imagen B",
                     &mut self.img_b,
                     ChannelColor::Green,
-                );
+                ).clicked;
+            }
+
+            if click_a {
+                if let Some(ref ci) = self.img_a.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Imagen Original - Canal A",
+                        ci.clone(),
+                        self.img_a.display_name.clone().unwrap_or_else(|| "canal_a.png".to_string()),
+                        self.img_a.bytes.clone(),
+                    );
+                }
+            }
+            if click_b {
+                if let Some(ref ci) = self.img_b.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Imagen Original - Canal B",
+                        ci.clone(),
+                        self.img_b.display_name.clone().unwrap_or_else(|| "canal_b.png".to_string()),
+                        self.img_b.bytes.clone(),
+                    );
+                }
             }
 
             ui.add_space(16.0);
@@ -380,12 +408,13 @@ impl AptPipeline {
                     }
                     if action_a.download {
                         if let Some(ref bytes) = self.bytes_preprocessed_a {
-                            #[cfg(target_arch = "wasm32")]
-                            let _ = crate::web_utils::trigger_browser_download("preprocesado_a.png", bytes, "image/png");
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                                let _ = std::fs::write(dir.join("preprocesado_a.png"), bytes);
-                            }
+                            let _ = crate::file_dialog::save_or_download_file(
+                                "preprocesado_a.png",
+                                "Imagen PNG (*.png)",
+                                &["png"],
+                                "image/png",
+                                bytes,
+                            );
                         }
                     }
 
@@ -401,12 +430,13 @@ impl AptPipeline {
                     }
                     if action_b.download {
                         if let Some(ref bytes) = self.bytes_preprocessed_b {
-                            #[cfg(target_arch = "wasm32")]
-                            let _ = crate::web_utils::trigger_browser_download("preprocesado_b.png", bytes, "image/png");
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                                let _ = std::fs::write(dir.join("preprocesado_b.png"), bytes);
-                            }
+                            let _ = crate::file_dialog::save_or_download_file(
+                                "preprocesado_b.png",
+                                "Imagen PNG (*.png)",
+                                &["png"],
+                                "image/png",
+                                bytes,
+                            );
                         }
                     }
                 },
@@ -492,12 +522,13 @@ impl AptPipeline {
                     }
                     if action_apt.download {
                         if let Some(ref bytes) = self.bytes_apt_image {
-                            #[cfg(target_arch = "wasm32")]
-                            let _ = crate::web_utils::trigger_browser_download("apt_compuesta.png", bytes, "image/png");
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                                let _ = std::fs::write(dir.join("apt_compuesta.png"), bytes);
-                            }
+                            let _ = crate::file_dialog::save_or_download_file(
+                                "apt_compuesta.png",
+                                "Imagen PNG (*.png)",
+                                &["png"],
+                                "image/png",
+                                bytes,
+                            );
                         }
                     }
                 },
@@ -585,12 +616,13 @@ impl AptPipeline {
 
                                 if ui.add(dl_wav_btn).clicked() {
                                     if let Some(ref bytes) = self.bytes_audio_wav {
-                                        #[cfg(target_arch = "wasm32")]
-                                        let _ = crate::web_utils::trigger_browser_download("audio_apt_2400hz.wav", bytes, "audio/wav");
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                                            let _ = std::fs::write(dir.join("audio_apt_2400hz.wav"), bytes);
-                                        }
+                                        let _ = crate::file_dialog::save_or_download_file(
+                                            "audio_apt_2400hz.wav",
+                                            "Audio WAV (*.wav)",
+                                            &["wav"],
+                                            "audio/wav",
+                                            bytes,
+                                        );
                                     }
                                 }
                             }

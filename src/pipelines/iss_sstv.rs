@@ -29,6 +29,8 @@ pub struct IssSstvPipeline {
     pub channel_effects_state: ChannelEffectsState,
     pub sdr_sample_rate: u32,
     pub transmission_state: TransmissionTabState,
+    pub image_modal: crate::ui::image_modal::ImageViewerModal,
+    pub output_files_modal: crate::ui::output_files_modal::OutputFilesModal,
 }
 
 impl Default for IssSstvPipeline {
@@ -50,6 +52,8 @@ impl Default for IssSstvPipeline {
             channel_effects_state: ChannelEffectsState::new_for_pipeline("iss_sstv", 145.8),
             sdr_sample_rate: 48_000,
             transmission_state: TransmissionTabState::default(),
+            image_modal: crate::ui::image_modal::ImageViewerModal::new(),
+            output_files_modal: crate::ui::output_files_modal::OutputFilesModal::new(),
         }
     }
 }
@@ -133,6 +137,14 @@ impl IssSstvPipeline {
                 }
                 _ => {}
             }
+
+            if self.transmission_state.request_open_output_files {
+                self.transmission_state.request_open_output_files = false;
+                self.output_files_modal.open = true;
+            }
+
+            self.output_files_modal.show(ui.ctx(), theme, &mut self.image_modal);
+            self.image_modal.show(ui.ctx(), theme);
         });
     }
 
@@ -145,13 +157,24 @@ impl IssSstvPipeline {
             );
             ui.add_space(8.0);
 
-            image_input_card(
+            let resp = image_input_card(
                 ui,
                 theme,
                 "Imagen para ISS SSTV",
                 &mut self.img,
                 crate::ui::components::ChannelColor::Blue,
             );
+
+            if resp.clicked {
+                if let Some(ref ci) = self.img.color_image {
+                    self.image_modal.open_with_color_image(
+                        "Imagen Fuente ISS SSTV",
+                        ci.clone(),
+                        self.img.display_name.clone().unwrap_or_else(|| "iss_sstv.png".to_string()),
+                        self.img.bytes.clone(),
+                    );
+                }
+            }
 
             ui.add_space(16.0);
             if self.img.is_some() {
@@ -343,22 +366,32 @@ impl IssSstvPipeline {
 
                                 if ui.add(dl_wav_btn).clicked() {
                                     if let Some(ref bytes) = self.bytes_wav {
-                                        #[cfg(target_arch = "wasm32")]
-                                        let _ = crate::web_utils::trigger_browser_download("audio_iss_sstv.wav", bytes, "audio/wav");
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        if let Some(dir) = dirs::download_dir().or_else(dirs::home_dir) {
-                                            let _ = std::fs::write(dir.join("audio_iss_sstv.wav"), bytes);
-                                        }
+                                        let _ = crate::file_dialog::save_or_download_file(
+                                            "audio_iss_sstv.wav",
+                                            "Audio WAV (*.wav)",
+                                            &["wav"],
+                                            "audio/wav",
+                                            bytes,
+                                        );
                                     }
                                 }
                             }
 
-                            #[cfg(not(target_arch = "wasm32"))]
-                            {
-                                let out_dir = config.get_pipeline_dir("iss_sstv");
-                                let folder_btn = egui::Button::new(RichText::new("Abrir Carpeta de Salida").size(12.5))
-                                    .min_size(Vec2::new(0.0, 32.0));
-                                if ui.add(folder_btn).clicked() {
+                            // Botón Archivos Generados
+                            let files_label = format!("{} Archivos Generados ({})", crate::icons::ICON_FOLDER_OPEN.codepoint, self.output_files_modal.files.len());
+                            let files_btn = egui::Button::new(
+                                RichText::new(files_label).size(12.5)
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(0.0, 32.0));
+
+                            if ui.add(files_btn).clicked() {
+                                self.output_files_modal.open = true;
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let out_dir = config.get_pipeline_dir("iss_sstv");
                                     crate::utils::open_folder(&out_dir);
                                 }
                             }
@@ -498,6 +531,11 @@ impl IssSstvPipeline {
                 self.bytes_wav = encode_wav_to_bytes(&samples_i16, 48_000);
                 if let Some(ref b) = self.bytes_wav {
                     self.audio_player.load_bytes("audio_iss_sstv.wav", b.clone());
+                    self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::audio(
+                        "audio_iss_sstv.wav",
+                        b.clone(),
+                        format!("Audio ISS SSTV ({:?}, 48 kHz)", self.selected_mode),
+                    ));
                 }
 
                 self.audio_wav_path = Some(wav_path);
