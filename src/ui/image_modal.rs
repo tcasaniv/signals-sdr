@@ -126,118 +126,203 @@ impl ImageViewerModal {
                         ui.set_max_size(Vec2::new(modal_width, modal_height));
 
                         // --- Encabezado ---
+                        let is_narrow = modal_width < 550.0;
+                        let header_h = if is_narrow { 78.0 } else { 52.0 };
+
                         Frame::new()
                             .fill(theme.surface_subtle())
-                            .inner_margin(egui::Margin::symmetric(16, 10))
+                            .inner_margin(egui::Margin::symmetric(14, 8))
                             .corner_radius(12.0)
                             .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{} {}",
-                                            crate::icons::ICON_IMAGE.codepoint,
-                                            self.title
-                                        ))
-                                        .strong()
-                                        .size(14.0)
-                                        .color(theme.text_primary()),
-                                    );
-
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            // Botón cerrar
-                                            let close_label = format!(
-                                                "{} Cerrar",
-                                                crate::icons::ICON_CLOSE.codepoint
+                                if is_narrow {
+                                    ui.vertical(|ui| {
+                                        // Fila 1: Título y botón cerrar
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} {}",
+                                                    crate::icons::ICON_IMAGE.codepoint,
+                                                    self.title
+                                                ))
+                                                .strong()
+                                                .size(13.5)
+                                                .color(theme.text_primary()),
                                             );
-                                            let close_btn = egui::Button::new(
-                                                RichText::new(close_label)
-                                                    .size(13.0)
-                                                    .color(theme.text_secondary()),
-                                            )
-                                            .fill(Color32::TRANSPARENT)
-                                            .stroke(Stroke::new(
-                                                1.0_f32,
-                                                theme.card_border(),
-                                            ))
-                                            .corner_radius(6.0)
-                                            .min_size(Vec2::new(0.0, 28.0));
-                                            if ui.add(close_btn).clicked() {
-                                                self.open = false;
-                                            }
 
-                                            // Botón descargar
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                let close_btn = egui::Button::new(
+                                                    RichText::new(crate::icons::ICON_CLOSE.codepoint).size(16.0).color(theme.text_secondary()),
+                                                )
+                                                .fill(Color32::TRANSPARENT)
+                                                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(30.0, 26.0));
+                                                if ui.add(close_btn).clicked() {
+                                                    self.open = false;
+                                                }
+                                            });
+                                        });
+
+                                        ui.add_space(4.0);
+
+                                        // Fila 2: Descarga y controles de zoom
+                                        ui.horizontal(|ui| {
                                             if self.image_bytes.is_some() {
-                                                ui.add_space(6.0);
-                                                let dl_label = format!(
-                                                    "{} Descargar",
-                                                    crate::icons::ICON_DOWNLOAD.codepoint
-                                                );
+                                                let dl_label = format!("{} Descargar", crate::icons::ICON_DOWNLOAD.codepoint);
                                                 let dl_btn = egui::Button::new(
-                                                    RichText::new(dl_label)
-                                                        .size(13.0)
-                                                        .color(Color32::WHITE),
+                                                    RichText::new(dl_label).size(11.5).color(Color32::WHITE),
                                                 )
                                                 .fill(theme.accent_blue())
                                                 .corner_radius(6.0)
-                                                .min_size(Vec2::new(0.0, 28.0));
+                                                .min_size(Vec2::new(0.0, 26.0));
                                                 if ui.add(dl_btn).clicked() {
                                                     self.trigger_download();
                                                 }
-                                            }
-
-                                            // Controles de zoom
-                                            ui.add_space(12.0);
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "Zoom: {:.0}%",
-                                                    self.zoom * 100.0
-                                                ))
-                                                .size(12.0)
-                                                .color(theme.text_secondary()),
-                                            );
-
-                                            let zoom_in_label = crate::icons::ICON_ZOOM_IN.codepoint.to_string();
-                                            let zoom_in = egui::Button::new(
-                                                RichText::new(zoom_in_label).size(15.0),
-                                            )
-                                            .corner_radius(6.0)
-                                            .min_size(Vec2::new(30.0, 28.0));
-                                            if ui.add(zoom_in).clicked() {
-                                                self.zoom = (self.zoom * 1.25).min(8.0);
+                                                ui.add_space(4.0);
                                             }
 
                                             let zoom_out_label = crate::icons::ICON_ZOOM_OUT.codepoint.to_string();
-                                            let zoom_out = egui::Button::new(
-                                                RichText::new(zoom_out_label).size(15.0),
-                                            )
-                                            .corner_radius(6.0)
-                                            .min_size(Vec2::new(30.0, 28.0));
+                                            let zoom_out = egui::Button::new(RichText::new(zoom_out_label).size(13.0))
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(26.0, 26.0));
                                             if ui.add(zoom_out).clicked() {
                                                 self.zoom = (self.zoom / 1.25).max(0.1);
                                             }
 
-                                            let fit_label = format!(
-                                                "{} Ajustar",
-                                                crate::icons::ICON_FIT_SCREEN.codepoint
+                                            ui.label(
+                                                RichText::new(format!("{:.0}%", self.zoom * 100.0))
+                                                    .size(11.5)
+                                                    .monospace()
+                                                    .color(theme.text_secondary()),
                                             );
-                                            let fit_btn = egui::Button::new(
-                                                RichText::new(fit_label).size(12.0),
-                                            )
-                                            .corner_radius(6.0)
-                                            .min_size(Vec2::new(0.0, 28.0));
+
+                                            let zoom_in_label = crate::icons::ICON_ZOOM_IN.codepoint.to_string();
+                                            let zoom_in = egui::Button::new(RichText::new(zoom_in_label).size(13.0))
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(26.0, 26.0));
+                                            if ui.add(zoom_in).clicked() {
+                                                self.zoom = (self.zoom * 1.25).min(8.0);
+                                            }
+
+                                            let fit_label = format!("{} Ajustar", crate::icons::ICON_FIT_SCREEN.codepoint);
+                                            let fit_btn = egui::Button::new(RichText::new(fit_label).size(11.5))
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(0.0, 26.0));
                                             if ui.add(fit_btn).clicked() {
                                                 self.zoom = 1.0;
                                                 self.pan = Vec2::ZERO;
                                             }
-                                        },
-                                    );
-                                });
+                                        });
+                                    });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{} {}",
+                                                crate::icons::ICON_IMAGE.codepoint,
+                                                self.title
+                                            ))
+                                            .strong()
+                                            .size(14.0)
+                                            .color(theme.text_primary()),
+                                        );
+
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                // Botón cerrar
+                                                let close_label = format!(
+                                                    "{} Cerrar",
+                                                    crate::icons::ICON_CLOSE.codepoint
+                                                );
+                                                let close_btn = egui::Button::new(
+                                                    RichText::new(close_label)
+                                                        .size(13.0)
+                                                        .color(theme.text_secondary()),
+                                                )
+                                                .fill(Color32::TRANSPARENT)
+                                                .stroke(Stroke::new(
+                                                    1.0_f32,
+                                                    theme.card_border(),
+                                                ))
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(0.0, 28.0));
+                                                if ui.add(close_btn).clicked() {
+                                                    self.open = false;
+                                                }
+
+                                                // Botón descargar
+                                                if self.image_bytes.is_some() {
+                                                    ui.add_space(6.0);
+                                                    let dl_label = format!(
+                                                        "{} Descargar",
+                                                        crate::icons::ICON_DOWNLOAD.codepoint
+                                                    );
+                                                    let dl_btn = egui::Button::new(
+                                                        RichText::new(dl_label)
+                                                            .size(13.0)
+                                                            .color(Color32::WHITE),
+                                                    )
+                                                    .fill(theme.accent_blue())
+                                                    .corner_radius(6.0)
+                                                    .min_size(Vec2::new(0.0, 28.0));
+                                                    if ui.add(dl_btn).clicked() {
+                                                        self.trigger_download();
+                                                    }
+                                                }
+
+                                                // Controles de zoom
+                                                ui.add_space(12.0);
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "Zoom: {:.0}%",
+                                                        self.zoom * 100.0
+                                                    ))
+                                                    .size(12.0)
+                                                    .color(theme.text_secondary()),
+                                                );
+
+                                                let zoom_in_label = crate::icons::ICON_ZOOM_IN.codepoint.to_string();
+                                                let zoom_in = egui::Button::new(
+                                                    RichText::new(zoom_in_label).size(15.0),
+                                                )
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(30.0, 28.0));
+                                                if ui.add(zoom_in).clicked() {
+                                                    self.zoom = (self.zoom * 1.25).min(8.0);
+                                                }
+
+                                                let zoom_out_label = crate::icons::ICON_ZOOM_OUT.codepoint.to_string();
+                                                let zoom_out = egui::Button::new(
+                                                    RichText::new(zoom_out_label).size(15.0),
+                                                )
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(30.0, 28.0));
+                                                if ui.add(zoom_out).clicked() {
+                                                    self.zoom = (self.zoom / 1.25).max(0.1);
+                                                }
+
+                                                let fit_label = format!(
+                                                    "{} Ajustar",
+                                                    crate::icons::ICON_FIT_SCREEN.codepoint
+                                                );
+                                                let fit_btn = egui::Button::new(
+                                                    RichText::new(fit_label).size(12.0),
+                                                )
+                                                .corner_radius(6.0)
+                                                .min_size(Vec2::new(0.0, 28.0));
+                                                if ui.add(fit_btn).clicked() {
+                                                    self.zoom = 1.0;
+                                                    self.pan = Vec2::ZERO;
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
                             });
 
                         // --- Área de visualización ---
-                        let avail_h = modal_height - 52.0; // restar encabezado
+                        let avail_h = modal_height - header_h;
                         egui::ScrollArea::both()
                             .id_salt("image_modal_scroll")
                             .auto_shrink([false; 2])
