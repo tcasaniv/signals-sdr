@@ -687,6 +687,15 @@ impl ChannelEffectsState {
         }
     }
 
+    /// Libera vectores pesados e imágenes de memoria cuando el pipeline está inactivo.
+    pub fn release_memory(&mut self) {
+        self.processed_iq.clear();
+        self.processed_iq.shrink_to_fit();
+        self.is_dirty = true;
+        self.is_computing = false;
+        self.spectrogram_state.release_memory();
+    }
+
     /// Recoge el resultado del cómputo asíncrono si está listo. Devuelve true si se actualizó.
     pub fn poll_compute_result(&mut self) -> bool {
         if let Ok(mut guard) = self.compute_result.try_lock() {

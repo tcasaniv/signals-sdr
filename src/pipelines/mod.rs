@@ -105,3 +105,34 @@ pub struct PipelinesState {
     pub generic_iq: GenericIqPipeline,
     pub hrpt: HrptPipeline,
 }
+
+impl PipelinesState {
+    /// Libera la memoria pesada (muestras I/Q intermedias, efectos, espectrogramas y audio)
+    /// de todos los pipelines inactivos para evitar acumulaciones de RAM.
+    pub fn release_inactive(&mut self, active: PipelineId) {
+        if active != PipelineId::NoaaApt {
+            self.apt.release_heavy_memory();
+        }
+        if active != PipelineId::MeteorLrpt {
+            self.lrpt.release_heavy_memory();
+        }
+        if active != PipelineId::IssSstv {
+            self.iss_sstv.release_heavy_memory();
+        }
+        if active != PipelineId::GenericSstv {
+            self.generic_sstv.release_heavy_memory();
+        }
+        if active != PipelineId::GenericFm {
+            self.generic_fm.release_heavy_memory();
+        }
+        if active != PipelineId::GenericAm {
+            self.generic_am.release_heavy_memory();
+        }
+        if active != PipelineId::GenericIq {
+            self.generic_iq.release_heavy_memory();
+        }
+        if active != PipelineId::NoaaHrpt {
+            self.hrpt.release_heavy_memory();
+        }
+    }
+}

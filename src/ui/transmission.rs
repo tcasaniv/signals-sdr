@@ -31,6 +31,11 @@ pub struct TransmissionTabState {
     pub output_filename: String,
     pub custom_output_dir: Option<PathBuf>,
     pub export_status_message: Option<(String, bool)>, // (Mensaje, es_error)
+    // Estado de Remuestreo SDR / Archivo
+    pub target_sample_rate: u32,
+    pub resampled_samples: Option<Vec<(f32, f32)>>,
+    pub resampled_rate: u32,
+    pub resampling_status: Option<String>,
 }
 
 impl Default for TransmissionTabState {
@@ -46,6 +51,10 @@ impl Default for TransmissionTabState {
             output_filename: "senal_iq".to_string(),
             custom_output_dir: None,
             export_status_message: None,
+            target_sample_rate: 2_000_000,
+            resampled_samples: None,
+            resampled_rate: 0,
+            resampling_status: None,
         }
     }
 }
@@ -53,6 +62,16 @@ impl Default for TransmissionTabState {
 impl TransmissionTabState {
     pub fn ensure_devices_probed(&mut self) {
         // Las opciones se derivan dinámicamente de SdrDeviceOption::for_backend
+    }
+
+    /// Libera muestras remuestreadas para ahorro de memoria RAM cuando el pipeline está inactivo.
+    pub fn release_memory(&mut self) {
+        if let Some(mut s) = self.resampled_samples.take() {
+            s.clear();
+            s.shrink_to_fit();
+        }
+        self.resampled_rate = 0;
+        self.resampling_status = None;
     }
 }
 

@@ -57,6 +57,14 @@ impl Default for LrptPipeline {
 }
 
 impl LrptPipeline {
+    pub fn release_heavy_memory(&mut self) {
+        self.iq_samples.clear();
+        self.iq_samples.shrink_to_fit();
+        self.spectrogram_state.release_memory();
+        self.channel_effects_state.release_memory();
+        self.transmission_state.release_memory();
+    }
+
     pub fn get_effective_iq(&self) -> &[(f32, f32)] {
         crate::channel::select_effective_iq(
             self.channel_effects_state.active_tab,

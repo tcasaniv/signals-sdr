@@ -24,6 +24,15 @@ pub struct SpectrogramState {
     pub status_message: Option<(String, bool)>, // (mensaje, es_error)
 }
 
+impl SpectrogramState {
+    pub fn release_memory(&mut self) {
+        self.texture = None;
+        self.raw_image = None;
+        self.cached_samples_len = 0;
+        self.cached_sample_rate = 0;
+    }
+}
+
 impl Default for SpectrogramState {
     fn default() -> Self {
         Self {

@@ -220,6 +220,11 @@ impl AudioPlayerWidget {
         self.current_time_sec = 0.0;
     }
 
+    /// Alias para stop_playback
+    pub fn stop(&mut self) {
+        self.stop_playback();
+    }
+
     /// Busca una posición específica en segundos
     pub fn seek(&mut self, sec: f32) {
         let target_sec = sec.clamp(0.0, self.total_duration_sec.max(0.0));

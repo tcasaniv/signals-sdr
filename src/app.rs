@@ -16,6 +16,7 @@ pub struct SignalsSdrApp {
     pub config: AppConfig,
     pub dark_mode: bool,
     pub selected_pipeline: PipelineId,
+    pub previous_pipeline: Option<PipelineId>,
     pub desktop_nav: DesktopNavState,
     pub mobile_nav: MobileNavState,
     pub pipelines: PipelinesState,
@@ -30,6 +31,7 @@ impl Default for SignalsSdrApp {
             config,
             dark_mode,
             selected_pipeline: PipelineId::NoaaApt,
+            previous_pipeline: Some(PipelineId::NoaaApt),
             desktop_nav: DesktopNavState::default(),
             mobile_nav: MobileNavState::default(),
             pipelines: PipelinesState::default(),
@@ -68,6 +70,12 @@ impl eframe::App for SignalsSdrApp {
         }
 
         theme.apply_to_context(ui.ctx());
+
+        // Liberar recursos de pipelines inactivos si cambió el pipeline seleccionado
+        if self.previous_pipeline != Some(self.selected_pipeline) {
+            self.pipelines.release_inactive(self.selected_pipeline);
+            self.previous_pipeline = Some(self.selected_pipeline);
+        }
 
         let screen_width = ui.ctx().viewport_rect().width();
         let is_mobile = screen_width < 720.0;

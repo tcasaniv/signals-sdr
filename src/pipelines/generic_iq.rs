@@ -50,6 +50,14 @@ impl Default for GenericIqPipeline {
 }
 
 impl GenericIqPipeline {
+    pub fn release_heavy_memory(&mut self) {
+        self.processed_iq_samples.clear();
+        self.processed_iq_samples.shrink_to_fit();
+        self.spectrogram_state.release_memory();
+        self.channel_effects_state.release_memory();
+        self.transmission_state.release_memory();
+    }
+
     pub fn get_effective_iq(&self) -> &[(f32, f32)] {
         let base = if !self.processed_iq_samples.is_empty() {
             &self.processed_iq_samples
