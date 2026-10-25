@@ -366,7 +366,8 @@ pub fn image_input_card(
 
                     if slot.is_some() {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button(RichText::new("x Quitar").size(11.5).color(theme.accent_red())).clicked() {
+                            let remove_label = format!("{} Quitar", crate::icons::ICON_CLOSE.codepoint);
+                            if ui.button(RichText::new(remove_label).size(11.5).color(theme.accent_red())).clicked() {
                                 slot.clear();
                             }
                         });
@@ -615,7 +616,8 @@ pub fn intermediate_preview_card(
 
                     ui.horizontal(|ui| {
                         let half_w = (ui.available_width() - 8.0) * 0.5;
-                        let view_btn = egui::Button::new(RichText::new("👁 Ampliar").size(12.0))
+                        let view_label = format!("{} Ampliar", crate::icons::ICON_VISIBILITY.codepoint);
+                        let view_btn = egui::Button::new(RichText::new(view_label).size(12.0))
                             .fill(theme.surface_subtle())
                             .stroke(Stroke::new(1.0_f32, theme.card_border()))
                             .corner_radius(6.0)
@@ -625,7 +627,8 @@ pub fn intermediate_preview_card(
                             action.view_fullscreen = true;
                         }
 
-                        let dl_btn = egui::Button::new(RichText::new("⬇ Descargar").size(12.0).color(Color32::WHITE))
+                        let dl_label = format!("{} Descargar", crate::icons::ICON_DOWNLOAD.codepoint);
+                        let dl_btn = egui::Button::new(RichText::new(dl_label).size(12.0).color(Color32::WHITE))
                             .fill(theme.accent_blue())
                             .corner_radius(6.0)
                             .min_size(Vec2::new(half_w, 28.0));
@@ -746,7 +749,7 @@ pub fn accordion_section<R>(
             let chevron_center = egui::pos2(header_rect.left() + 12.0, header_rect.center().y);
             let chevron_stroke = Stroke::new(1.8_f32, if is_hovered { theme.accent_blue() } else { theme.text_secondary() });
             if is_open {
-                // Chevron hacia abajo '⌵'
+                // Chevron hacia abajo
                 ui.painter().line_segment([
                     chevron_center + egui::vec2(-4.5, -2.5),
                     chevron_center + egui::vec2(0.0, 2.5),
@@ -756,7 +759,7 @@ pub fn accordion_section<R>(
                     chevron_center + egui::vec2(4.5, -2.5),
                 ], chevron_stroke);
             } else {
-                // Chevron hacia la derecha '›'
+                // Chevron hacia la derecha
                 ui.painter().line_segment([
                     chevron_center + egui::vec2(-2.5, -4.5),
                     chevron_center + egui::vec2(2.5, 0.0),

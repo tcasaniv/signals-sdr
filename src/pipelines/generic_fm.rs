@@ -11,11 +11,14 @@ use fm_modulator::{
     apply_pre_emphasis, fm_modulate, load_audio_file, AudioData, FmPreset, PreEmphasisMode,
 };
 
+use std::sync::{Arc, Mutex};
+
 pub struct GenericFmPipeline {
     pub current_step: usize,
     pub audio_path: Option<String>,
     pub audio_data: Option<AudioData>,
     pub audio_player: AudioPlayerWidget,
+    pub async_audio_receiver: Option<Arc<Mutex<Option<(String, Vec<u8>)>>>>,
     // Modulación
     pub preset: FmPreset,
     pub custom_deviation: f32,
@@ -36,6 +39,7 @@ impl Default for GenericFmPipeline {
             audio_path: None,
             audio_data: None,
             audio_player: AudioPlayerWidget::new(),
+            async_audio_receiver: None,
             preset: FmPreset::BroadcastWfm,
             custom_deviation: 75_000.0,
             pre_emphasis_mode: PreEmphasisMode::Eu50us,
@@ -135,6 +139,17 @@ impl GenericFmPipeline {
     }
 
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
+        // Sondeo de archivo de audio cargado asíncronamente
+        let loaded_async = if let Some(ref rx) = self.async_audio_receiver {
+            rx.lock().ok().and_then(|mut guard| guard.take())
+        } else {
+            None
+        };
+        if let Some((name, bytes)) = loaded_async {
+            self.async_audio_receiver = None;
+            self.load_audio_bytes(&name, bytes);
+        }
+
         ui.vertical(|ui| {
             Frame::new()
                 .fill(theme.card_bg())
@@ -147,21 +162,33 @@ impl GenericFmPipeline {
                         ui.add_space(6.0);
 
                         ui.horizontal_wrapped(|ui| {
-                            let pick_btn = egui::Button::new("Examinar Audio (WAV, MP3)...")
+                            let pick_label = format!(
+                                "{} Examinar Audio (WAV, MP3)...",
+                                crate::icons::ICON_FOLDER_OPEN.codepoint
+                            );
+                            let pick_btn = egui::Button::new(RichText::new(pick_label).size(12.5))
                                 .fill(theme.surface_subtle())
                                 .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
-                                if let Some(path) = crate::file_dialog::FileDialog::new()
-                                    .add_filter("Archivos de audio", &["wav", "mp3", "flac", "ogg"])
-                                    .pick_file()
-                                {
-                                    let path_str = path.display().to_string();
-                                    self.load_audio(&path_str);
-                                }
+                                let slot = Arc::new(Mutex::new(None));
+                                self.async_audio_receiver = Some(slot.clone());
+                                crate::file_dialog::pick_file_async(
+                                    "Archivos de audio",
+                                    &["wav", "mp3", "flac", "ogg"],
+                                    move |name, bytes| {
+                                        if let Ok(mut guard) = slot.lock() {
+                                            *guard = Some((name, bytes));
+                                        }
+                                    },
+                                );
                             }
 
-                            if ui.button("Generar Tono 1 kHz de Prueba").clicked() {
+                            let synth_label = format!(
+                                "{} Generar Tono 1 kHz de Prueba",
+                                crate::icons::ICON_TUNE.codepoint
+                            );
+                            if ui.button(RichText::new(synth_label).size(12.5)).clicked() {
                                 self.generate_test_tone(config);
                             }
                         });
@@ -194,8 +221,12 @@ impl GenericFmPipeline {
 
             ui.add_space(10.0);
             if self.audio_data.is_some() {
+                let next_label = format!(
+                    "Continuar a Parámetros de Modulación {}",
+                    crate::icons::ICON_ARROW_FORWARD.codepoint
+                );
                 if ui
-                    .button(RichText::new("Continuar a Parámetros de Modulación ->").strong())
+                    .button(RichText::new(next_label).strong())
                     .clicked()
                 {
                     self.current_step = 1;
@@ -391,12 +422,38 @@ impl GenericFmPipeline {
         });
     }
 
+    pub fn load_audio_bytes(&mut self, filename: &str, bytes: Vec<u8>) {
+        let ext = std::path::Path::new(filename)
+            .extension()
+            .and_then(|e| e.to_str());
+        match crate::utils::load_audio_from_memory(&bytes, ext) {
+            Ok(data) => {
+                let duration = data.samples.len() as f32 / data.sample_rate as f32;
+                self.audio_player.load_bytes(filename, bytes);
+                self.audio_player.total_duration_sec = duration;
+                self.audio_path = Some(filename.to_string());
+                self.status_message = format!("Audio cargado exitosamente: {:.1} seg, {} muestras.", duration, data.samples.len());
+                self.audio_data = Some(data);
+            }
+            Err(e) => {
+                self.status_message = format!("Error al decodificar audio: {}", e);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     fn load_audio(&mut self, path: &str) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Ok(bytes) = std::fs::read(path) {
+            self.load_audio_bytes(path, bytes);
+            return;
+        }
+
         match load_audio_file(path) {
             Ok(data) => {
                 let duration = data.samples.len() as f32 / data.sample_rate as f32;
+                self.audio_player.load_path(path);
                 self.audio_player.total_duration_sec = duration;
-                self.audio_player.current_time_sec = 0.0;
                 self.audio_path = Some(path.to_string());
                 self.status_message = format!("Audio cargado exitosamente: {:.1} seg, {} muestras.", duration, data.samples.len());
                 self.audio_data = Some(data);
@@ -421,27 +478,41 @@ impl GenericFmPipeline {
             i16_samples.push((val * 32767.0) as i16);
         }
 
-        let out_dir = config.get_pipeline_dir("generic_fm");
-        let wav_path = out_dir.join("tono_1khz.wav");
         let spec = hound::WavSpec {
             channels: 1,
             sample_rate,
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
-        if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+
+        // Generar en memoria (WASM & Desktop)
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        if let Ok(mut writer) = hound::WavWriter::new(&mut cursor, spec) {
             for &s in &i16_samples {
                 let _ = writer.write_sample(s);
             }
             let _ = writer.finalize();
+        }
+        let wav_bytes = cursor.into_inner();
+
+        // En Desktop, guardar también en disco
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let out_dir = config.get_pipeline_dir("generic_fm");
+            let wav_path = out_dir.join("tono_1khz.wav");
+            let _ = std::fs::write(&wav_path, &wav_bytes);
             self.audio_path = Some(wav_path.to_string_lossy().to_string());
-        } else {
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = config;
             self.audio_path = Some("tono_1khz.wav".to_string());
         }
 
+        self.audio_player.load_bytes("tono_1khz.wav", wav_bytes);
         self.audio_player.total_duration_sec = duration_sec;
         self.audio_player.current_time_sec = 0.0;
-        self.status_message = "Generado tono sintético sinusoidal de 1000 Hz (3 segundos, WAV guardado).".to_string();
+        self.status_message = "Generado tono sintético sinusoidal de 1000 Hz (3 segundos).".to_string();
         self.audio_data = Some(AudioData {
             samples,
             sample_rate,

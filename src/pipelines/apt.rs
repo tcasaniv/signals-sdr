@@ -28,6 +28,7 @@ pub struct AptPipeline {
     pub bytes_preprocessed_b: Option<Vec<u8>>,
     pub bytes_apt_image: Option<Vec<u8>>,
     pub bytes_audio_wav: Option<Vec<u8>>,
+    pub audio_player: crate::ui::audio_player::AudioPlayerWidget,
     pub image_modal: crate::ui::image_modal::ImageViewerModal,
     pub output_files_modal: crate::ui::output_files_modal::OutputFilesModal,
     pub is_modulating_fm: bool,
@@ -61,6 +62,7 @@ impl Default for AptPipeline {
             audio_am_samples: None,
             path_audio_wav: None,
             bytes_audio_wav: None,
+            audio_player: crate::ui::audio_player::AudioPlayerWidget::new(),
             image_modal: crate::ui::image_modal::ImageViewerModal::new(),
             output_files_modal: crate::ui::output_files_modal::OutputFilesModal::new(),
             is_modulating_fm: false,
@@ -559,25 +561,14 @@ impl AptPipeline {
                         );
 
                         ui.add_space(8.0);
+                        self.audio_player.render(ui, theme, None);
+
+                        ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
-                            // Botón Reproducir / Detener Audio
-                            let play_label = if self.is_playing_audio {
-                                "⏹ Detener Audio APT"
-                            } else {
-                                "▶ Reproducir Audio APT (.wav)"
-                            };
-                            let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.5).color(Color32::WHITE))
-                                .fill(if self.is_playing_audio { Color32::from_rgb(239, 68, 68) } else { theme.accent_blue() })
-                                .corner_radius(6.0)
-                                .min_size(Vec2::new(0.0, 32.0));
-
-                            if ui.add(play_btn).clicked() {
-                                self.play_audio();
-                            }
-
                             // Botón Descargar WAV
                             if self.bytes_audio_wav.is_some() || self.path_audio_wav.is_some() {
-                                let dl_wav_btn = egui::Button::new(RichText::new("⬇ Descargar Audio (.wav)").size(12.5))
+                                let dl_label = format!("{} Descargar Audio (.wav)", crate::icons::ICON_DOWNLOAD.codepoint);
+                                let dl_wav_btn = egui::Button::new(RichText::new(dl_label).size(12.5))
                                     .fill(theme.surface_subtle())
                                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                                     .corner_radius(6.0)
@@ -595,9 +586,10 @@ impl AptPipeline {
                                 }
                             }
 
-                            // Botón Archivos Generados (sustituto interactivo de abrir carpeta en web)
+                            // Botón Archivos Generados
+                            let files_label = format!("{} Archivos Generados ({})", crate::icons::ICON_FOLDER_OPEN.codepoint, self.output_files_modal.files.len());
                             let files_btn = egui::Button::new(
-                                RichText::new(format!("📁 Archivos Generados ({})", self.output_files_modal.files.len())).size(12.5)
+                                RichText::new(files_label).size(12.5)
                             )
                             .fill(theme.surface_subtle())
                             .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -821,6 +813,7 @@ impl AptPipeline {
             self.bytes_audio_wav = encode_wav_to_bytes(&am_audio, 11025);
 
             if let Some(ref b) = self.bytes_audio_wav {
+                self.audio_player.load_bytes("audio_apt_2400hz.wav", b.clone());
                 self.output_files_modal.push_file(crate::ui::output_files_modal::OutputFile::audio(
                     "audio_apt_2400hz.wav",
                     b.clone(),

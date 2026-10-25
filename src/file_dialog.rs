@@ -55,17 +55,67 @@ where
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn pick_file_async<F>(filter_name: &'static str, extensions: &'static [&'static str], on_loaded: F)
+pub fn pick_file_async<F>(_filter_name: &'static str, extensions: &'static [&'static str], on_loaded: F)
 where
     F: FnOnce(String, Vec<u8>) + 'static,
 {
-    wasm_bindgen_futures::spawn_local(async move {
-        let mut dialog = rfd::AsyncFileDialog::new();
-        dialog = dialog.add_filter(filter_name, extensions);
-        if let Some(handle) = dialog.pick_file().await {
-            let filename = handle.file_name();
-            let bytes = handle.read().await;
-            on_loaded(filename, bytes);
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::{JsCast, JsValue};
+
+    let accept = extensions
+        .iter()
+        .map(|ext| {
+            if ext.starts_with('.') {
+                ext.to_string()
+            } else {
+                format!(".{}", ext)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let mut callback_slot = Some(on_loaded);
+    let closure = Closure::once(move |name: String, u8_array: js_sys::Uint8Array| {
+        if let Some(cb) = callback_slot.take() {
+            let bytes = u8_array.to_vec();
+            cb(name, bytes);
         }
     });
+
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Inyección de seguridad por si no estuviese en el HTML
+    let _ = js_sys::eval(r#"
+        if (!window._signals_sdr_pick_file) {
+            window._signals_sdr_pick_file = function(accept, callback) {
+                const input = document.createElement('input');
+                input.type = 'file';
+                if (accept) input.accept = accept;
+                input.style.display = 'none';
+                input.onchange = function() {
+                    if (!input.files || input.files.length === 0) return;
+                    const file = input.files[0];
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const u8 = new Uint8Array(reader.result);
+                        callback(file.name, u8);
+                    };
+                    reader.readAsArrayBuffer(file);
+                };
+                document.body.appendChild(input);
+                input.click();
+                setTimeout(() => { if (input.parentNode) input.parentNode.removeChild(input); }, 60000);
+            };
+        }
+    "#);
+
+    if let Ok(func) = js_sys::Reflect::get(&window, &JsValue::from_str("_signals_sdr_pick_file")) {
+        if let Some(f) = func.dyn_ref::<js_sys::Function>() {
+            let _ = f.call2(&window, &JsValue::from_str(&accept), closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+    }
 }

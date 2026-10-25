@@ -1,6 +1,7 @@
 /// Modal "Archivos Generados" que reemplaza el botón "Abrir Carpeta de Salida" en web.
-/// Muestra los archivos generados con opciones de descarga, apertura inline (audio/imagen).
+/// Muestra los archivos generados con opciones de descarga, apertura inline (audio/imagen) y reproductor interactivo.
 use crate::theme::AppTheme;
+use crate::ui::audio_player::AudioPlayerWidget;
 use crate::ui::image_modal::ImageViewerModal;
 use egui::{Color32, Frame, Pos2, RichText, Stroke, Vec2};
 
@@ -49,11 +50,11 @@ impl OutputFile {
         }
     }
 
-    fn icon(&self) -> &'static str {
+    fn icon(&self) -> egui_icons::MaterialIcon {
         match self.kind {
-            OutputFileType::Image => "🖼",
-            OutputFileType::Audio => "🎵",
-            OutputFileType::Binary => "📄",
+            OutputFileType::Image => crate::icons::ICON_IMAGE,
+            OutputFileType::Audio => crate::icons::ICON_AUDIOTRACK,
+            OutputFileType::Binary => crate::icons::ICON_DESCRIPTION,
         }
     }
 
@@ -82,11 +83,9 @@ pub struct OutputFilesModal {
     pub open: bool,
     pub title: String,
     pub files: Vec<OutputFile>,
-    /// Índice del archivo de audio seleccionado para reproducir inline (WASM)
-    inline_audio_index: Option<usize>,
-    /// URL del blob de audio activo (WASM)
-    #[cfg(target_arch = "wasm32")]
-    active_audio_blob_url: Option<String>,
+    pub audio_player: AudioPlayerWidget,
+    /// Índice del archivo de audio actualmente seleccionado en el reproductor
+    pub inline_audio_index: Option<usize>,
 }
 
 impl Default for OutputFilesModal {
@@ -101,9 +100,8 @@ impl OutputFilesModal {
             open: false,
             title: "Archivos Generados".to_string(),
             files: Vec::new(),
+            audio_player: AudioPlayerWidget::new(),
             inline_audio_index: None,
-            #[cfg(target_arch = "wasm32")]
-            active_audio_blob_url: None,
         }
     }
 
@@ -113,11 +111,11 @@ impl OutputFilesModal {
         self.title = title.into();
         self.files = files;
         self.inline_audio_index = None;
+        self.audio_player.stop_playback();
     }
 
     /// Agrega un archivo a la lista (útil para ir acumulando durante el pipeline)
     pub fn push_file(&mut self, file: OutputFile) {
-        // Evitar duplicados por nombre
         if let Some(existing) = self.files.iter_mut().find(|f| f.name == file.name) {
             *existing = file;
         } else {
@@ -131,7 +129,11 @@ impl OutputFilesModal {
             return;
         }
 
-        let screen_rect = ctx.input(|i| i.viewport().inner_rect.unwrap_or(egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 720.0))));
+        let screen_rect = ctx.input(|i| {
+            i.viewport()
+                .inner_rect
+                .unwrap_or(egui::Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 720.0)))
+        });
 
         // Overlay oscuro
         egui::Area::new(egui::Id::new("output_modal_overlay"))
@@ -142,6 +144,7 @@ impl OutputFilesModal {
                 let overlay_resp = ui.allocate_rect(screen_rect, egui::Sense::click());
                 ui.painter().rect_filled(screen_rect, 0.0, Color32::from_black_alpha(180));
                 if overlay_resp.clicked() {
+                    self.audio_player.stop_playback();
                     self.open = false;
                 }
             });
@@ -159,14 +162,14 @@ impl OutputFilesModal {
             .interactable(true)
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(theme.surface_container_low())
-                    .stroke(Stroke::new(1.5_f32, theme.accent_blue()))
+                    .fill(theme.surface_container())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
                     .corner_radius(12.0)
-                    .shadow(egui::Shadow {
-                        offset: [0, 4].into(),
-                        blur: 16,
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 8],
+                        blur: 24,
                         spread: 0,
-                        color: Color32::from_black_alpha(100),
+                        color: Color32::from_black_alpha(140),
                     })
                     .show(ui, |ui| {
                         ui.set_min_size(Vec2::new(modal_width, modal_height));
@@ -179,21 +182,32 @@ impl OutputFilesModal {
                             .corner_radius(12.0)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
+                                    let header_text = format!(
+                                        "{} {} ({} archivos)",
+                                        crate::icons::ICON_FOLDER_OPEN.codepoint,
+                                        self.title,
+                                        self.files.len()
+                                    );
                                     ui.label(
-                                        RichText::new(format!("📁 {} ({} archivos)", self.title, self.files.len()))
+                                        RichText::new(header_text)
                                             .strong()
                                             .size(14.0)
                                             .color(theme.text_primary()),
                                     );
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let close_label = format!(
+                                            "{} Cerrar",
+                                            crate::icons::ICON_CLOSE.codepoint
+                                        );
                                         let close_btn = egui::Button::new(
-                                            RichText::new("✕  Cerrar").size(13.0).color(theme.text_secondary()),
+                                            RichText::new(close_label).size(13.0).color(theme.text_secondary()),
                                         )
                                         .fill(Color32::TRANSPARENT)
                                         .stroke(Stroke::new(1.0_f32, theme.card_border()))
                                         .corner_radius(6.0)
                                         .min_size(Vec2::new(0.0, 28.0));
                                         if ui.add(close_btn).clicked() {
+                                            self.audio_player.stop_playback();
                                             self.open = false;
                                         }
                                     });
@@ -221,7 +235,7 @@ impl OutputFilesModal {
 
                                 let mut open_image_idx: Option<usize> = None;
                                 let mut download_idx: Option<usize> = None;
-                                let mut play_audio_idx: Option<usize> = None;
+                                let mut select_audio_idx: Option<usize> = None;
 
                                 for (idx, file) in self.files.iter().enumerate() {
                                     ui.add_space(4.0);
@@ -232,9 +246,9 @@ impl OutputFilesModal {
                                         .inner_margin(12.0)
                                         .show(ui, |ui| {
                                             ui.horizontal_wrapped(|ui| {
-                                                // Icono + nombre
+                                                // Icono Material + nombre
                                                 ui.label(
-                                                    RichText::new(format!("{} {}", file.icon(), file.name))
+                                                    RichText::new(format!("{} {}", file.icon().codepoint, file.name))
                                                         .strong()
                                                         .size(13.5)
                                                         .color(theme.text_primary()),
@@ -256,9 +270,10 @@ impl OutputFilesModal {
 
                                             ui.add_space(6.0);
                                             ui.horizontal_wrapped(|ui| {
-                                                // Botón Descargar (siempre disponible)
+                                                // Botón Descargar (Material Design)
+                                                let dl_label = format!("{} Descargar", crate::icons::ICON_DOWNLOAD.codepoint);
                                                 let dl_btn = egui::Button::new(
-                                                    RichText::new("⬇ Descargar").size(12.5).color(Color32::WHITE),
+                                                    RichText::new(dl_label).size(12.5).color(Color32::WHITE),
                                                 )
                                                 .fill(theme.accent_blue())
                                                 .corner_radius(6.0)
@@ -270,8 +285,9 @@ impl OutputFilesModal {
                                                 // Botón Ver (imágenes)
                                                 if file.kind == OutputFileType::Image {
                                                     ui.add_space(4.0);
+                                                    let view_label = format!("{} Ver", crate::icons::ICON_VISIBILITY.codepoint);
                                                     let view_btn = egui::Button::new(
-                                                        RichText::new("🖼 Ver").size(12.5),
+                                                        RichText::new(view_label).size(12.5),
                                                     )
                                                     .fill(theme.surface_subtle())
                                                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -282,27 +298,38 @@ impl OutputFilesModal {
                                                     }
                                                 }
 
-                                                // Botón Reproducir (audio)
+                                                // Botón Reproductor (audio)
                                                 if file.kind == OutputFileType::Audio {
                                                     ui.add_space(4.0);
-                                                    let is_playing = self.inline_audio_index == Some(idx);
-                                                    let play_label = if is_playing { "⏹ Detener" } else { "▶ Reproducir" };
+                                                    let is_current = self.inline_audio_index == Some(idx);
+                                                    let btn_icon = if is_current && self.audio_player.is_playing {
+                                                        crate::icons::ICON_PAUSE.codepoint
+                                                    } else {
+                                                        crate::icons::ICON_PLAY_ARROW.codepoint
+                                                    };
+                                                    let play_label = format!("{} Reproductor", btn_icon);
                                                     let play_btn = egui::Button::new(
                                                         RichText::new(play_label).size(12.5),
                                                     )
-                                                    .fill(if is_playing { theme.surface_subtle() } else { theme.surface_subtle() })
+                                                    .fill(if is_current { theme.accent_blue() } else { theme.surface_subtle() })
                                                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                                                     .corner_radius(6.0)
                                                     .min_size(Vec2::new(0.0, 28.0));
                                                     if ui.add(play_btn).clicked() {
-                                                        play_audio_idx = Some(idx);
+                                                        select_audio_idx = Some(idx);
                                                     }
                                                 }
                                             });
+
+                                            // Si es el audio seleccionado, mostrar reproductor integrado interactivo
+                                            if file.kind == OutputFileType::Audio && self.inline_audio_index == Some(idx) {
+                                                ui.add_space(8.0);
+                                                self.audio_player.render(ui, theme, None);
+                                            }
                                         });
                                 }
 
-                                // Procesar acciones recolectadas (evita borrow mutuo)
+                                // Procesar acciones recolectadas
                                 if let Some(idx) = download_idx {
                                     if let Some(file) = self.files.get(idx) {
                                         Self::download_file(file);
@@ -327,17 +354,18 @@ impl OutputFilesModal {
                                     }
                                 }
 
-                                if let Some(idx) = play_audio_idx {
+                                if let Some(idx) = select_audio_idx {
                                     if self.inline_audio_index == Some(idx) {
-                                        // Detener
-                                        self.inline_audio_index = None;
-                                        self.stop_inline_audio();
+                                        if self.audio_player.is_playing {
+                                            self.audio_player.pause_playback();
+                                        } else {
+                                            self.audio_player.start_playback();
+                                        }
                                     } else {
-                                        // Reproducir
                                         self.inline_audio_index = Some(idx);
-                                        let bytes_opt = self.files.get(idx).map(|f| f.bytes.clone());
-                                        if let Some(bytes) = bytes_opt {
-                                            self.play_inline_audio(&bytes, ctx);
+                                        if let Some(file) = self.files.get(idx) {
+                                            self.audio_player.load_bytes(&file.name, file.bytes.clone());
+                                            self.audio_player.start_playback();
                                         }
                                     }
                                 }
@@ -357,74 +385,6 @@ impl OutputFilesModal {
                 let path = dir.join(&file.name);
                 let _ = std::fs::write(&path, &file.bytes);
             }
-        }
-    }
-
-    fn play_inline_audio(&mut self, _bytes: &[u8], _ctx: &egui::Context) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            // Revocar URL anterior si existe
-            if let Some(old_url) = self.active_audio_blob_url.take() {
-                web_sys::Url::revoke_object_url(&old_url).ok();
-            }
-
-            if let (Some(window), Ok(blob_url)) = (
-                web_sys::window(),
-                crate::web_utils::create_audio_blob_url(_bytes),
-            ) {
-                if let Some(_doc) = window.document() {
-                    // Crear elemento <audio> y reproducirlo via JS eval
-                    let script = format!(
-                        r#"
-                        (function() {{
-                            var old = document.getElementById('_sdr_inline_audio');
-                            if (old) {{ old.pause(); old.remove(); }}
-                            var a = document.createElement('audio');
-                            a.id = '_sdr_inline_audio';
-                            a.src = '{}';
-                            a.controls = false;
-                            a.style.display = 'none';
-                            document.body.appendChild(a);
-                            a.play();
-                        }})()
-                        "#,
-                        blob_url
-                    );
-                    let _ = js_sys::eval(&script);
-                    self.active_audio_blob_url = Some(blob_url);
-                }
-            }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // En Desktop usamos rodio desde bytes
-            let bytes_owned = _bytes.to_vec();
-            std::thread::spawn(move || {
-                use std::io::Cursor;
-                if let Ok(device_sink) = rodio::DeviceSinkBuilder::open_default_sink() {
-                    let player = rodio::Player::connect_new(&device_sink.mixer());
-                    let cursor = Cursor::new(bytes_owned);
-                    if let Ok(source) = rodio::Decoder::try_from(cursor) {
-                        player.append(source);
-                        // Esperar a que termine
-                        while !player.empty() {
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                        }
-                    }
-                }
-            });
-        }
-    }
-
-    fn stop_inline_audio(&mut self) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(url) = self.active_audio_blob_url.take() {
-                web_sys::Url::revoke_object_url(&url).ok();
-            }
-            let _ = js_sys::eval(
-                r#"(function(){var a=document.getElementById('_sdr_inline_audio');if(a){a.pause();a.remove();}})()"#,
-            );
         }
     }
 }

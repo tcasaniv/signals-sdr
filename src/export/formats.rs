@@ -149,16 +149,17 @@ pub fn export_iq_file(
     Ok(())
 }
 
-/// Lee un archivo I/Q cargado (para el pipeline Generic IQ)
-pub fn read_iq_file(
-    path: &Path,
+/// Lee muestras I/Q directamente desde un buffer en memoria (compatible con Web y Desktop)
+pub fn read_iq_from_memory(
+    bytes: &[u8],
     format: IqExportFormat,
 ) -> Result<(Vec<(f32, f32)>, u32), Box<dyn std::error::Error>> {
-    let mut file = File::open(path)?;
+    use std::io::Cursor;
 
     match format {
         IqExportFormat::WavIq16 => {
-            let mut reader = hound::WavReader::open(path)?;
+            let cursor = Cursor::new(bytes);
+            let mut reader = hound::WavReader::new(cursor)?;
             let sample_rate = reader.spec().sample_rate;
             let mut samples = Vec::new();
             let mut i_val = 0.0f32;
@@ -177,10 +178,8 @@ pub fn read_iq_file(
             Ok((samples, sample_rate))
         }
         IqExportFormat::RawSc16Q11 => {
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            let mut samples = Vec::with_capacity(buffer.len() / 4);
-            for chunk in buffer.chunks_exact(4) {
+            let mut samples = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
                 let i = i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 2048.0;
                 let q = i16::from_le_bytes([chunk[2], chunk[3]]) as f32 / 2048.0;
                 samples.push((i, q));
@@ -188,10 +187,8 @@ pub fn read_iq_file(
             Ok((samples, 288_000))
         }
         IqExportFormat::RawSc16Full => {
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            let mut samples = Vec::with_capacity(buffer.len() / 4);
-            for chunk in buffer.chunks_exact(4) {
+            let mut samples = Vec::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
                 let i = i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0;
                 let q = i16::from_le_bytes([chunk[2], chunk[3]]) as f32 / 32768.0;
                 samples.push((i, q));
@@ -199,10 +196,8 @@ pub fn read_iq_file(
             Ok((samples, 288_000))
         }
         IqExportFormat::RawInt8 => {
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            let mut samples = Vec::with_capacity(buffer.len() / 2);
-            for chunk in buffer.chunks_exact(2) {
+            let mut samples = Vec::with_capacity(bytes.len() / 2);
+            for chunk in bytes.chunks_exact(2) {
                 let i = (chunk[0] as i8 as f32) / 128.0;
                 let q = (chunk[1] as i8 as f32) / 128.0;
                 samples.push((i, q));
@@ -210,10 +205,8 @@ pub fn read_iq_file(
             Ok((samples, 2_000_000))
         }
         IqExportFormat::RawFloat32 => {
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            let mut samples = Vec::with_capacity(buffer.len() / 8);
-            for chunk in buffer.chunks_exact(8) {
+            let mut samples = Vec::with_capacity(bytes.len() / 8);
+            for chunk in bytes.chunks_exact(8) {
                 let i = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
                 let q = f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
                 samples.push((i, q));
@@ -221,7 +214,8 @@ pub fn read_iq_file(
             Ok((samples, 1_000_000))
         }
         IqExportFormat::WavAudioMono => {
-            let mut reader = hound::WavReader::open(path)?;
+            let cursor = Cursor::new(bytes);
+            let mut reader = hound::WavReader::new(cursor)?;
             let sample_rate = reader.spec().sample_rate;
             let mut samples = Vec::new();
             for sample in reader.samples::<i16>() {
@@ -231,4 +225,15 @@ pub fn read_iq_file(
             Ok((samples, sample_rate))
         }
     }
+}
+
+/// Lee un archivo I/Q cargado (para el pipeline Generic IQ)
+pub fn read_iq_file(
+    path: &Path,
+    format: IqExportFormat,
+) -> Result<(Vec<(f32, f32)>, u32), Box<dyn std::error::Error>> {
+    let mut file = File::open(path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    read_iq_from_memory(&buffer, format)
 }

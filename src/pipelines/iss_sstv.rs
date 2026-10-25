@@ -19,6 +19,7 @@ pub struct IssSstvPipeline {
     pub audio_samples: Option<Vec<i16>>,
     pub audio_wav_path: Option<PathBuf>,
     pub bytes_wav: Option<Vec<u8>>,
+    pub audio_player: crate::ui::audio_player::AudioPlayerWidget,
     pub is_playing_audio: bool,
     #[cfg(target_arch = "wasm32")]
     pub active_audio_blob_url: Option<String>,
@@ -39,6 +40,7 @@ impl Default for IssSstvPipeline {
             audio_samples: None,
             audio_wav_path: None,
             bytes_wav: None,
+            audio_player: crate::ui::audio_player::AudioPlayerWidget::new(),
             is_playing_audio: false,
             #[cfg(target_arch = "wasm32")]
             active_audio_blob_url: None,
@@ -317,25 +319,14 @@ impl IssSstvPipeline {
                         );
 
                         ui.add_space(8.0);
+                        self.audio_player.render(ui, theme, None);
+
+                        ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
-                            // Botón Reproducir / Detener Audio SSTV
-                            let play_label = if self.is_playing_audio {
-                                "⏹ Detener Audio SSTV"
-                            } else {
-                                "▶ Reproducir Audio SSTV (.wav)"
-                            };
-                            let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.5).color(Color32::WHITE))
-                                .fill(if self.is_playing_audio { Color32::from_rgb(239, 68, 68) } else { theme.accent_blue() })
-                                .corner_radius(6.0)
-                                .min_size(Vec2::new(0.0, 32.0));
-
-                            if ui.add(play_btn).clicked() {
-                                self.play_audio();
-                            }
-
                             // Botón Descargar WAV
                             if self.bytes_wav.is_some() || self.audio_wav_path.is_some() {
-                                let dl_wav_btn = egui::Button::new(RichText::new("⬇ Descargar Audio (.wav)").size(12.5))
+                                let dl_label = format!("{} Descargar Audio (.wav)", crate::icons::ICON_DOWNLOAD.codepoint);
+                                let dl_wav_btn = egui::Button::new(RichText::new(dl_label).size(12.5))
                                     .fill(theme.surface_subtle())
                                     .stroke(Stroke::new(1.0_f32, theme.card_border()))
                                     .corner_radius(6.0)
@@ -500,6 +491,9 @@ impl IssSstvPipeline {
                 let wav_path = out_dir.join("audio_iss_sstv.wav");
                 let _ = save_wav_file(&wav_path, &samples_i16, 48_000);
                 self.bytes_wav = encode_wav_to_bytes(&samples_i16, 48_000);
+                if let Some(ref b) = self.bytes_wav {
+                    self.audio_player.load_bytes("audio_iss_sstv.wav", b.clone());
+                }
 
                 self.audio_wav_path = Some(wav_path);
                 self.audio_samples = Some(samples_i16);

@@ -817,9 +817,9 @@ fn render_with_effects_view(
 
                 // Botón Aplicar — deshabilitado mientras computa
                 let apply_label = if is_computing {
-                    "  ⏳ Calculando…  "
+                    format!("  {} Calculando...  ", crate::icons::ICON_REFRESH.codepoint)
                 } else {
-                    "  ⟳ Aplicar Efectos de Canal  "
+                    format!("  {} Aplicar Efectos de Canal  ", crate::icons::ICON_REFRESH.codepoint)
                 };
                 let apply_btn = egui::Button::new(
                     RichText::new(apply_label)
@@ -847,20 +847,27 @@ fn render_with_effects_view(
                 ui.add_space(8.0);
                 if is_computing {
                     ui.label(
-                        RichText::new("⏳ Calculando efectos de canal en segundo plano…")
-                            .color(theme.accent_blue())
-                            .strong(),
+                        RichText::new(format!(
+                            "{} Calculando efectos de canal en segundo plano...",
+                            crate::icons::ICON_REFRESH.codepoint
+                        ))
+                        .color(theme.accent_blue())
+                        .strong(),
                     );
                 } else if state.is_dirty {
                     ui.label(
-                        RichText::new("⚠ Hay cambios de canal pendientes de aplicar.")
-                            .color(Color32::from_rgb(234, 179, 8))
-                            .strong(),
+                        RichText::new(format!(
+                            "{} Hay cambios de canal pendientes de aplicar.",
+                            crate::icons::ICON_WARNING.codepoint
+                        ))
+                        .color(Color32::from_rgb(234, 179, 8))
+                        .strong(),
                     );
                 } else if !state.processed_iq.is_empty() {
                     ui.label(
                         RichText::new(format!(
-                            "✓ Efectos aplicados en {:.1} ms (Muestras procesadas: {})",
+                            "{} Efectos aplicados en {:.1} ms (Muestras procesadas: {})",
+                            crate::icons::ICON_CHECK_CIRCLE.codepoint,
                             state.last_processing_ms,
                             state.processed_iq.len()
                         ))
@@ -870,9 +877,13 @@ fn render_with_effects_view(
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let next_label = format!(
+                        "Continuar a Transmisión {}",
+                        crate::icons::ICON_ARROW_FORWARD.codepoint
+                    );
                     if ui
                         .button(
-                            RichText::new("Continuar a Transmisión ->")
+                            RichText::new(next_label)
                                 .strong()
                                 .size(13.0),
                         )

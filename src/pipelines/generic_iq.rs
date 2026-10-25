@@ -7,6 +7,7 @@ use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{accordion_section, info_card, step_bar, AccordionOptions};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
 use egui::{Color32, Frame, RichText, Stroke, Ui};
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 
 pub struct GenericIqPipeline {
@@ -16,6 +17,7 @@ pub struct GenericIqPipeline {
     pub sample_rate: u32,
     pub raw_iq_samples: Vec<(f32, f32)>,
     pub processed_iq_samples: Vec<(f32, f32)>,
+    pub async_file_receiver: Option<Arc<Mutex<Option<(String, Vec<u8>)>>>>,
     // Ajustes de procesamiento
     pub gain_factor: f32,
     pub freq_shift_hz: f32,
@@ -35,6 +37,7 @@ impl Default for GenericIqPipeline {
             sample_rate: 288_000,
             raw_iq_samples: Vec::new(),
             processed_iq_samples: Vec::new(),
+            async_file_receiver: None,
             gain_factor: 1.0,
             freq_shift_hz: 0.0,
             remove_dc: true,
@@ -132,7 +135,44 @@ impl GenericIqPipeline {
         }
     }
 
+    pub fn load_iq_bytes(&mut self, filename: &str, bytes: Vec<u8>) {
+        self.input_file_path = Some(PathBuf::from(filename));
+        if let Some(ext) = std::path::Path::new(filename).extension().and_then(|e| e.to_str()) {
+            if ext.eq_ignore_ascii_case("wav") {
+                self.input_format = IqExportFormat::WavIq16;
+            }
+        }
+        match crate::export::formats::read_iq_from_memory(&bytes, self.input_format) {
+            Ok((samples, detected_sr)) => {
+                self.sample_rate = detected_sr;
+                let count = samples.len();
+                self.raw_iq_samples = samples;
+                self.process_samples();
+                self.status_message = format!(
+                    "Archivo cargado exitosamente: {} muestras a {} Hz ({:.2} seg).",
+                    count,
+                    self.sample_rate,
+                    count as f32 / self.sample_rate as f32
+                );
+            }
+            Err(e) => {
+                self.status_message = format!("Error al cargar archivo I/Q: {}", e);
+            }
+        }
+    }
+
     fn render_step_source(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        // Sondeo de archivo I/Q cargado asíncronamente
+        let loaded_async = if let Some(ref rx) = self.async_file_receiver {
+            rx.lock().ok().and_then(|mut guard| guard.take())
+        } else {
+            None
+        };
+        if let Some((name, bytes)) = loaded_async {
+            self.async_file_receiver = None;
+            self.load_iq_bytes(&name, bytes);
+        }
+
         ui.vertical(|ui| {
             Frame::new()
                 .fill(theme.card_bg())
@@ -144,28 +184,34 @@ impl GenericIqPipeline {
                         ui.label(RichText::new("Seleccionar Archivo de Muestras I/Q").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
-                            let pick_btn = egui::Button::new("Examinar Archivo I/Q...")
+                        ui.horizontal_wrapped(|ui| {
+                            let pick_label = format!(
+                                "{} Examinar Archivo I/Q...",
+                                crate::icons::ICON_FOLDER_OPEN.codepoint
+                            );
+                            let pick_btn = egui::Button::new(RichText::new(pick_label).size(12.5))
                                 .fill(theme.surface_subtle())
                                 .stroke(Stroke::new(1.0_f32, theme.card_border()));
 
                             if ui.add(pick_btn).clicked() {
-                                if let Some(path) = crate::file_dialog::FileDialog::new()
-                                    .add_filter("Muestras I/Q o WAV", &["wav", "raw", "iq", "bin", "sc16", "dat"])
-                                    .pick_file()
-                                {
-                                    self.input_file_path = Some(path.clone());
-                                    // Auto-detección por extensión
-                                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                                        if ext.eq_ignore_ascii_case("wav") {
-                                            self.input_format = IqExportFormat::WavIq16;
+                                let slot = Arc::new(Mutex::new(None));
+                                self.async_file_receiver = Some(slot.clone());
+                                crate::file_dialog::pick_file_async(
+                                    "Muestras I/Q o WAV",
+                                    &["wav", "raw", "iq", "bin", "sc16", "dat"],
+                                    move |name, bytes| {
+                                        if let Ok(mut guard) = slot.lock() {
+                                            *guard = Some((name, bytes));
                                         }
-                                    }
-                                    self.load_selected_file();
-                                }
+                                    },
+                                );
                             }
 
-                            if ui.button("Generar Tono I/Q Sintético").clicked() {
+                            let synth_label = format!(
+                                "{} Generar Tono I/Q Sintético",
+                                crate::icons::ICON_TUNE.codepoint
+                            );
+                            if ui.button(RichText::new(synth_label).size(12.5)).clicked() {
                                 self.generate_synthetic_iq();
                             }
                         });
@@ -212,8 +258,12 @@ impl GenericIqPipeline {
 
             ui.add_space(10.0);
             if !self.raw_iq_samples.is_empty() {
+                let next_label = format!(
+                    "Continuar a Procesamiento y Análisis {}",
+                    crate::icons::ICON_ARROW_FORWARD.codepoint
+                );
                 if ui
-                    .button(RichText::new("Continuar a Procesamiento y Análisis ->").strong())
+                    .button(RichText::new(next_label).strong())
                     .clicked()
                 {
                     self.process_samples();

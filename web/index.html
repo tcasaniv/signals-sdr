@@ -105,6 +105,74 @@
                 }
             }, 1200);
         });
+
+        // Selector web nativo directo sin ventana intermedia de confirmación
+        window._signals_sdr_pick_file = function(accept, callback) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            if (accept) input.accept = accept;
+            input.style.display = 'none';
+            input.onchange = function() {
+                if (!input.files || input.files.length === 0) return;
+                const file = input.files[0];
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const u8 = new Uint8Array(reader.result);
+                    callback(file.name, u8);
+                };
+                reader.readAsArrayBuffer(file);
+            };
+            document.body.appendChild(input);
+            input.click();
+            setTimeout(() => { if (input.parentNode) input.parentNode.removeChild(input); }, 60000);
+        };
+
+        // Controlador de audio global unificado con parada y sincronización instantánea
+        window._signals_sdr_audio = {
+            element: null,
+            init() {
+                if (!this.element) {
+                    this.element = document.createElement('audio');
+                    this.element.id = '_signals_sdr_audio_elem';
+                    this.element.style.display = 'none';
+                    document.body.appendChild(this.element);
+                }
+            },
+            play(url, startTime) {
+                this.init();
+                if (this.element.src !== url) {
+                    this.element.src = url;
+                }
+                if (typeof startTime === 'number' && !isNaN(startTime) && startTime >= 0) {
+                    try { this.element.currentTime = startTime; } catch(e) {}
+                }
+                this.element.play().catch(e => console.warn("Signals SDR audio play:", e));
+            },
+            pause() {
+                if (this.element) {
+                    this.element.pause();
+                }
+            },
+            stop() {
+                if (this.element) {
+                    this.element.pause();
+                    try { this.element.currentTime = 0; } catch(e) {}
+                }
+            },
+            seek(time) {
+                if (this.element && typeof time === 'number' && !isNaN(time)) {
+                    try { this.element.currentTime = time; } catch(e) {}
+                }
+            },
+            status() {
+                if (!this.element) return JSON.stringify({ playing: false, currentTime: 0, duration: 0 });
+                return JSON.stringify({
+                    playing: !this.element.paused && !this.element.ended,
+                    currentTime: this.element.currentTime || 0,
+                    duration: isFinite(this.element.duration) ? (this.element.duration || 0) : 0
+                });
+            }
+        };
     </script>
 </body>
 </html>

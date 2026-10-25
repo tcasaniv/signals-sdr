@@ -153,10 +153,18 @@ where
 }
 
 /// Crea una URL de objeto Blob para reproducción de audio en el navegador.
-/// Solo disponible en WASM.
+/// Detecta automáticamente el tipo MIME (WAV o MP3) según el contenido. Solo disponible en WASM.
 #[cfg(target_arch = "wasm32")]
 pub fn create_audio_blob_url(audio_bytes: &[u8]) -> Result<String, String> {
     use web_sys::{Blob, BlobPropertyBag, Url};
+
+    let mime = if audio_bytes.starts_with(b"ID3")
+        || (audio_bytes.len() >= 2 && audio_bytes[0] == 0xFF && (audio_bytes[1] & 0xE0) == 0xE0)
+    {
+        "audio/mpeg"
+    } else {
+        "audio/wav"
+    };
 
     let array = js_sys::Uint8Array::new_with_length(audio_bytes.len() as u32);
     array.copy_from(audio_bytes);
@@ -165,7 +173,7 @@ pub fn create_audio_blob_url(audio_bytes: &[u8]) -> Result<String, String> {
     parts.push(&array.buffer());
 
     let bag = BlobPropertyBag::new();
-    bag.set_type("audio/wav");
+    bag.set_type(mime);
 
     let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &bag)
         .map_err(|e| format!("Error creando Blob de audio: {:?}", e))?;
@@ -177,4 +185,47 @@ pub fn create_audio_blob_url(audio_bytes: &[u8]) -> Result<String, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn create_audio_blob_url(_audio_bytes: &[u8]) -> Result<String, String> {
     Err("create_audio_blob_url solo disponible en WebAssembly".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn web_audio_play(url: &str, start_time: f32) {
+    let script = format!(
+        r#"if (window._signals_sdr_audio) {{ window._signals_sdr_audio.play('{}', {}); }}"#,
+        url, start_time
+    );
+    let _ = js_sys::eval(&script);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn web_audio_pause() {
+    let _ = js_sys::eval(r#"if (window._signals_sdr_audio) { window._signals_sdr_audio.pause(); }"#);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn web_audio_stop() {
+    let _ = js_sys::eval(r#"if (window._signals_sdr_audio) { window._signals_sdr_audio.stop(); }"#);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn web_audio_seek(time: f32) {
+    let script = format!(
+        r#"if (window._signals_sdr_audio) {{ window._signals_sdr_audio.seek({}); }}"#,
+        time
+    );
+    let _ = js_sys::eval(&script);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn web_audio_status() -> Option<(bool, f32, f32)> {
+    if let Ok(val) = js_sys::eval(r#"window._signals_sdr_audio ? window._signals_sdr_audio.status() : null"#) {
+        if let Some(s) = val.as_string() {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&s) {
+                let playing = parsed.get("playing").and_then(|v| v.as_bool()).unwrap_or(false);
+                let current = parsed.get("currentTime").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let duration = parsed.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                return Some((playing, current, duration));
+            }
+        }
+    }
+    None
 }
