@@ -46,6 +46,9 @@ pub struct TransmissionTabState {
     // Estado Servidor RTL-TCP
     pub rtl_tcp_host: String,
     pub rtl_tcp_port: u16,
+    pub rtl_tcp_loop: bool,
+    pub rtl_tcp_simulate_hardware: bool,
+    pub rtl_tcp_attenuation_db: f32,
     pub rtl_tcp_error: Option<String>,
     // Controlador de red
     pub network_controller: NetworkTxController,
@@ -81,6 +84,9 @@ impl Default for TransmissionTabState {
             gnuradio_error: None,
             rtl_tcp_host: "0.0.0.0".to_string(),
             rtl_tcp_port: 1234,
+            rtl_tcp_loop: true,
+            rtl_tcp_simulate_hardware: true,
+            rtl_tcp_attenuation_db: 0.0,
             rtl_tcp_error: None,
             network_controller: NetworkTxController::new(),
             virtual_sink: crate::ui::virtual_sink::VirtualSinkModal::default(),
@@ -1627,6 +1633,47 @@ fn render_rtl_tcp_panel(
                         }
                     }
                 });
+                ui.add_space(8.0);
+
+                // Opciones de transmisión y simulación didáctica
+                ui.horizontal_wrapped(|ui| {
+                    let loop_resp = ui.checkbox(&mut state.rtl_tcp_loop, "Repetir señal en bucle continuo");
+                    if loop_resp.changed() && stats.is_running {
+                        state.network_controller.set_loop(state.rtl_tcp_loop);
+                    }
+                    if !state.rtl_tcp_loop {
+                        ui.label(RichText::new("(Al terminar emitirá piso de ruido base)").size(11.0).color(theme.text_secondary()));
+                    }
+                });
+                ui.add_space(4.0);
+
+                ui.horizontal_wrapped(|ui| {
+                    let sim_resp = ui.checkbox(
+                        &mut state.rtl_tcp_simulate_hardware,
+                        "Simular efectos de hardware RTL-SDR (Atenuación por ganancia y piso de ruido)",
+                    );
+                    if sim_resp.changed() && stats.is_running {
+                        state.network_controller.set_simulate_hardware(state.rtl_tcp_simulate_hardware);
+                    }
+                });
+                ui.add_space(6.0);
+
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Atenuación / Potencia TX Docente:").size(12.5).color(theme.text_primary()));
+                    let att_slider = egui::Slider::new(&mut state.rtl_tcp_attenuation_db, -60.0..=0.0)
+                        .suffix(" dB")
+                        .custom_formatter(|n, _| format!("{:.1} dB", n));
+                    if ui.add(att_slider).changed() && stats.is_running {
+                        state.network_controller.set_tx_attenuation(state.rtl_tcp_attenuation_db);
+                    }
+                    ui.label(RichText::new(if state.rtl_tcp_attenuation_db >= -0.5 {
+                        "(Máxima potencia nominal)"
+                    } else if state.rtl_tcp_attenuation_db <= -40.0 {
+                        "(Señal extremadamente débil)"
+                    } else {
+                        "(Atenuación intermedia)"
+                    }).size(11.0).color(theme.text_secondary()));
+                });
                 ui.add_space(10.0);
 
                 let active_samples = if let Some(ref r) = state.resampled_samples {
@@ -1647,18 +1694,33 @@ fn render_rtl_tcp_panel(
                 let can_start = !active_samples.is_empty() && !needs_resample;
 
                 if stats.is_running {
-                    let stop_btn = egui::Button::new(
-                        RichText::new(format!("{} Detener Servidor RTL-TCP", icons::ICON_STOP.codepoint))
-                            .strong()
-                            .color(Color32::WHITE),
-                    )
-                    .fill(Color32::from_rgb(220, 38, 38))
-                    .corner_radius(6.0)
-                    .min_size(Vec2::new(240.0, 34.0));
+                    ui.horizontal_wrapped(|ui| {
+                        let stop_btn = egui::Button::new(
+                            RichText::new(format!("{} Detener Servidor RTL-TCP", icons::ICON_STOP.codepoint))
+                                .strong()
+                                .color(Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(220, 38, 38))
+                        .corner_radius(6.0)
+                        .min_size(Vec2::new(200.0, 34.0));
 
-                    if ui.add(stop_btn).clicked() {
-                        state.network_controller.stop();
-                    }
+                        if ui.add(stop_btn).clicked() {
+                            state.network_controller.stop();
+                        }
+
+                        let retrans_btn = egui::Button::new(
+                            RichText::new(format!("{} Re-transmitir Señal", icons::ICON_REPLAY.codepoint))
+                                .strong()
+                                .color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(6.0)
+                        .min_size(Vec2::new(180.0, 34.0));
+
+                        if ui.add(retrans_btn).on_hover_text("Vuelve a reproducir la señal I/Q desde el principio sin desconectar al cliente SDR").clicked() {
+                            state.network_controller.retrigger();
+                        }
+                    });
                 } else {
                     let start_btn = egui::Button::new(
                         RichText::new(format!("{} Iniciar Servidor RTL-TCP", icons::ICON_ROUTER.codepoint))
@@ -1675,6 +1737,9 @@ fn render_rtl_tcp_panel(
                             active_rate,
                             state.rtl_tcp_host.clone(),
                             state.rtl_tcp_port,
+                            state.rtl_tcp_loop,
+                            state.rtl_tcp_simulate_hardware,
+                            state.rtl_tcp_attenuation_db,
                         ) {
                             Ok(_) => {
                                 state.rtl_tcp_error = None;
@@ -1715,7 +1780,22 @@ fn render_rtl_tcp_panel(
                             ui.vertical(|ui| {
                                 ui.label(RichText::new(&stats.status_message).size(12.0).color(theme.accent_blue()));
                                 ui.add_space(4.0);
-                                ui.horizontal(|ui| {
+
+                                ui.horizontal_wrapped(|ui| {
+                                    let state_badge = if stats.is_playing_signal {
+                                        RichText::new("EMITIENDO SEÑAL I/Q").size(11.0).strong().color(Color32::from_rgb(34, 197, 94))
+                                    } else {
+                                        RichText::new("EMITIENDO RUIDO BASE").size(11.0).strong().color(Color32::from_rgb(234, 179, 8))
+                                    };
+                                    ui.label(state_badge);
+                                    ui.label("•");
+                                    ui.label(RichText::new(format!("Ganancia Cliente SDR: {:.1} dB", stats.client_gain_db)).size(11.5).strong().color(theme.text_primary()));
+                                    ui.label("•");
+                                    ui.label(RichText::new(format!("Atenuación TX: {:.1} dB", state.rtl_tcp_attenuation_db)).size(11.5));
+                                });
+                                ui.add_space(2.0);
+
+                                ui.horizontal_wrapped(|ui| {
                                     ui.label(RichText::new(format!("Clientes SDR conectados: {}", stats.clients_connected)).size(11.5));
                                     ui.label("•");
                                     let sent_mb = stats.bytes_sent as f32 / (1024.0 * 1024.0);

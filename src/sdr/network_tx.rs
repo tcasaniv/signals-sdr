@@ -4,9 +4,36 @@
 //! 1. Streaming GNU Radio via TCP (servidor local para bloque TCP Source) o UDP (emisor para bloque UDP Source) en formatos fc32 y sc16.
 //! 2. Servidor emulador RTL-TCP (puerto 1234) para clientes como SDR#, GQRX, SDR++, WebSDR o GNU Radio rtl_tcp source.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+/// Generador de números pseudoaleatorios ultrarrápido y ligero para ruido AWGN
+#[derive(Debug, Clone)]
+struct FastRng(u64);
+
+impl FastRng {
+    fn new(seed: u64) -> Self {
+        Self(if seed == 0 { 0x853c49e6748fea9b } else { seed })
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (self.0 >> 32) as u32
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        (self.next_u32() as f32) / (u32::MAX as f32)
+    }
+
+    fn next_gaussian(&mut self) -> (f32, f32) {
+        let u1 = self.next_f32().max(1e-7);
+        let u2 = self.next_f32();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+        (r * theta.cos(), r * theta.sin())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GnuRadioProtocol {
@@ -56,6 +83,8 @@ pub struct NetworkStreamStats {
     pub elapsed_secs: f32,
     pub throughput_kbps: f32,
     pub status_message: String,
+    pub is_playing_signal: bool,
+    pub client_gain_db: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +94,12 @@ pub struct NetworkStreamHandle {
     pub clients_connected: Arc<Mutex<usize>>,
     pub start_time: Instant,
     pub status: Arc<Mutex<String>>,
+    pub loop_signal: Arc<AtomicBool>,
+    pub retrigger_requested: Arc<AtomicBool>,
+    pub simulate_hardware: Arc<AtomicBool>,
+    pub tx_attenuation_bits: Arc<AtomicU32>,
+    pub client_gain_tenths: Arc<AtomicU32>,
+    pub is_playing_signal: Arc<AtomicBool>,
 }
 
 /// Controlador unificado de streaming en red
@@ -93,6 +128,30 @@ impl NetworkTxController {
         self.handle = None;
     }
 
+    pub fn retrigger(&self) {
+        if let Some(ref h) = self.handle {
+            h.retrigger_requested.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_loop(&self, enabled: bool) {
+        if let Some(ref h) = self.handle {
+            h.loop_signal.store(enabled, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_simulate_hardware(&self, sim: bool) {
+        if let Some(ref h) = self.handle {
+            h.simulate_hardware.store(sim, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_tx_attenuation(&self, att_db: f32) {
+        if let Some(ref h) = self.handle {
+            h.tx_attenuation_bits.store(att_db.to_bits(), Ordering::Relaxed);
+        }
+    }
+
     pub fn get_stats(&self) -> NetworkStreamStats {
         if let Some(ref h) = self.handle {
             let is_running = !h.stop_signal.load(Ordering::Relaxed);
@@ -101,6 +160,8 @@ impl NetworkTxController {
             let kbps = (bytes as f32 / 1024.0) / elapsed;
             let clients = *h.clients_connected.lock().unwrap_or_else(|e| e.into_inner());
             let status = h.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let is_playing_signal = h.is_playing_signal.load(Ordering::Relaxed);
+            let client_gain_db = (h.client_gain_tenths.load(Ordering::Relaxed) as f32) / 10.0;
 
             NetworkStreamStats {
                 is_running,
@@ -109,6 +170,8 @@ impl NetworkTxController {
                 elapsed_secs: elapsed,
                 throughput_kbps: kbps,
                 status_message: status,
+                is_playing_signal,
+                client_gain_db,
             }
         } else {
             NetworkStreamStats::default()
@@ -147,6 +210,12 @@ impl NetworkTxController {
             clients_connected: clients_connected.clone(),
             start_time: Instant::now(),
             status: status.clone(),
+            loop_signal: Arc::new(AtomicBool::new(continuous_loop)),
+            retrigger_requested: Arc::new(AtomicBool::new(false)),
+            simulate_hardware: Arc::new(AtomicBool::new(false)),
+            tx_attenuation_bits: Arc::new(AtomicU32::new(0.0_f32.to_bits())),
+            client_gain_tenths: Arc::new(AtomicU32::new(300)),
+            is_playing_signal: Arc::new(AtomicBool::new(true)),
         };
 
         match protocol {
@@ -334,6 +403,9 @@ impl NetworkTxController {
         sample_rate: u32,
         host: String,
         port: u16,
+        continuous_loop: bool,
+        simulate_hardware: bool,
+        tx_attenuation_db: f32,
     ) -> Result<(), String> {
         self.stop();
 
@@ -357,25 +429,29 @@ impl NetworkTxController {
 
         *status.lock().unwrap() = format!("Servidor RTL-TCP listo en {}. Esperando cliente (SDR#, GQRX, SDR++, etc.)...", bind_addr);
 
+        let loop_signal = Arc::new(AtomicBool::new(continuous_loop));
+        let retrigger_requested = Arc::new(AtomicBool::new(false));
+        let simulate_hardware_atom = Arc::new(AtomicBool::new(simulate_hardware));
+        let tx_attenuation_bits = Arc::new(AtomicU32::new(tx_attenuation_db.to_bits()));
+        let client_gain_tenths = Arc::new(AtomicU32::new(297)); // 29.7 dB por defecto
+        let is_playing_signal = Arc::new(AtomicBool::new(true));
+
         let handle = NetworkStreamHandle {
             stop_signal: stop_signal.clone(),
             bytes_sent: bytes_sent.clone(),
             clients_connected: clients_connected.clone(),
             start_time: Instant::now(),
             status: status.clone(),
+            loop_signal: loop_signal.clone(),
+            retrigger_requested: retrigger_requested.clone(),
+            simulate_hardware: simulate_hardware_atom.clone(),
+            tx_attenuation_bits: tx_attenuation_bits.clone(),
+            client_gain_tenths: client_gain_tenths.clone(),
+            is_playing_signal: is_playing_signal.clone(),
         };
 
         std::thread::spawn(move || {
             use std::io::{Read, Write};
-
-            // Convertir muestras I/Q (float -1..1) a formato RTL-SDR (uint8 0..255 intercalado I/Q)
-            let mut rtl_bytes = Vec::with_capacity(samples.len() * 2);
-            for &(i, q) in &samples {
-                let u8_i = ((i.clamp(-1.0, 1.0) * 127.5) + 127.5) as u8;
-                let u8_q = ((q.clamp(-1.0, 1.0) * 127.5) + 127.5) as u8;
-                rtl_bytes.push(u8_i);
-                rtl_bytes.push(u8_q);
-            }
 
             let chunk_samples = 8192; // 16384 bytes por paquete RTL
             let bytes_per_chunk = chunk_samples * 2;
@@ -383,7 +459,8 @@ impl NetworkTxController {
             let chunk_duration = std::time::Duration::from_secs_f64(chunk_duration_sec);
 
             let mut active_clients: Vec<std::net::TcpStream> = Vec::new();
-            let mut sample_byte_cursor = 0;
+            let mut sample_cursor: usize = 0;
+            let mut rng = FastRng::new(123456789);
 
             // Encabezado dongle RTL0 estándar:
             // "RTL0" (4 bytes) + Tuner Type R820T (5, uint32_be) + Tuner Gains Count (29, uint32_be)
@@ -432,29 +509,117 @@ impl NetworkTxController {
                                     *s = format!("Cliente configuró sample rate: {} Sps", param);
                                 }
                             }
+                            0x03 => {
+                                if param == 0 {
+                                    client_gain_tenths.store(297, Ordering::Relaxed);
+                                }
+                                if let Ok(mut s) = status.lock() {
+                                    *s = format!("Cliente modo ganancia: {}", if param == 0 { "AGC (Automático)" } else { "Manual" });
+                                }
+                            }
+                            0x04 => {
+                                client_gain_tenths.store(param, Ordering::Relaxed);
+                                if let Ok(mut s) = status.lock() {
+                                    *s = format!("Cliente configuró ganancia RF: {:.1} dB", param as f32 / 10.0);
+                                }
+                            }
+                            0x08 => {
+                                if param != 0 {
+                                    client_gain_tenths.store(297, Ordering::Relaxed);
+                                }
+                            }
                             _ => {}
                         }
                     }
                 }
 
-                // 3. Enviar muestras continuas con pacing
-                if !active_clients.is_empty() {
-                    let end_idx = (sample_byte_cursor + bytes_per_chunk).min(rtl_bytes.len());
-                    let slice = &rtl_bytes[sample_byte_cursor..end_idx];
-                    sample_byte_cursor = end_idx;
+                // 3. Chequeo de retrigger manual
+                if retrigger_requested.swap(false, Ordering::Relaxed) {
+                    sample_cursor = 0;
+                    is_playing_signal.store(true, Ordering::Relaxed);
+                    if let Ok(mut s) = status.lock() {
+                        *s = "Re-transmitiendo señal I/Q desde el inicio...".to_string();
+                    }
+                }
 
-                    if sample_byte_cursor >= rtl_bytes.len() {
-                        sample_byte_cursor = 0; // Bucle continuo
+                // 4. Enviar muestras continuas con pacing
+                if !active_clients.is_empty() {
+                    let is_sim = simulate_hardware_atom.load(Ordering::Relaxed);
+                    let loop_active = loop_signal.load(Ordering::Relaxed);
+                    let att_db = f32::from_bits(tx_attenuation_bits.load(Ordering::Relaxed));
+                    let tx_scale = 10.0_f32.powf(att_db / 20.0);
+
+                    let gain_tenths = client_gain_tenths.load(Ordering::Relaxed) as f32;
+                    let gain_db = (gain_tenths / 10.0).clamp(0.0, 49.6);
+
+                    let (rx_gain_factor, base_noise_std) = if is_sim {
+                        let gain_norm = (gain_db / 38.0).clamp(0.0, 1.0);
+                        let rx_factor = 0.01 + 0.99 * gain_norm;
+                        let noise_std = if gain_db > 38.0 {
+                            let excess = (gain_db - 38.0) / (49.6 - 38.0);
+                            0.015 + 0.22 * excess.powf(1.5)
+                        } else {
+                            0.015 * (gain_norm.max(0.08))
+                        };
+                        (rx_factor, noise_std)
+                    } else {
+                        (1.0, 0.0)
+                    };
+
+                    let mut chunk_buf = Vec::with_capacity(bytes_per_chunk);
+
+                    for _ in 0..chunk_samples {
+                        let (raw_i, raw_q) = if sample_cursor < samples.len() {
+                            let s = samples[sample_cursor];
+                            sample_cursor += 1;
+                            (s.0, s.1)
+                        } else if loop_active {
+                            sample_cursor = 0;
+                            let s = samples[sample_cursor];
+                            sample_cursor += 1;
+                            (s.0, s.1)
+                        } else {
+                            if is_playing_signal.swap(false, Ordering::Relaxed) {
+                                if let Ok(mut s) = status.lock() {
+                                    *s = "Señal I/Q finalizada. Transmitiendo piso de ruido base...".to_string();
+                                }
+                            }
+                            (0.0, 0.0)
+                        };
+
+                        let is_playing = is_playing_signal.load(Ordering::Relaxed);
+                        let (gauss_i, gauss_q) = if is_sim || !is_playing {
+                            rng.next_gaussian()
+                        } else {
+                            (0.0, 0.0)
+                        };
+
+                        let out_i = if is_playing {
+                            (raw_i * tx_scale * rx_gain_factor) + (gauss_i * base_noise_std)
+                        } else {
+                            gauss_i * (base_noise_std.max(0.025))
+                        };
+
+                        let out_q = if is_playing {
+                            (raw_q * tx_scale * rx_gain_factor) + (gauss_q * base_noise_std)
+                        } else {
+                            gauss_q * (base_noise_std.max(0.025))
+                        };
+
+                        let u8_i = ((out_i.clamp(-1.0, 1.0) * 127.5) + 127.5) as u8;
+                        let u8_q = ((out_q.clamp(-1.0, 1.0) * 127.5) + 127.5) as u8;
+                        chunk_buf.push(u8_i);
+                        chunk_buf.push(u8_q);
                     }
 
                     active_clients.retain_mut(|client| {
-                        client.write_all(slice).is_ok()
+                        client.write_all(&chunk_buf).is_ok()
                     });
 
                     if let Ok(mut c) = clients_connected.lock() {
                         *c = active_clients.len();
                     }
-                    bytes_sent.fetch_add(slice.len() as u64, Ordering::Relaxed);
+                    bytes_sent.fetch_add(chunk_buf.len() as u64, Ordering::Relaxed);
                 }
 
                 let elapsed = loop_start.elapsed();
@@ -494,6 +659,9 @@ impl NetworkTxController {
         _sample_rate: u32,
         _host: String,
         _port: u16,
+        _continuous_loop: bool,
+        _simulate_hardware: bool,
+        _tx_attenuation_db: f32,
     ) -> Result<(), String> {
         Err("El servidor RTL-TCP solo está disponible en la versión de escritorio.".to_string())
     }
@@ -550,9 +718,18 @@ mod tests {
             250_000,
             "127.0.0.1".to_string(),
             15998, // Puerto alto para test
+            true,
+            true,
+            0.0,
         );
         assert!(res.is_ok());
         assert!(controller.is_running());
+        controller.retrigger();
+        controller.set_loop(false);
+        controller.set_simulate_hardware(false);
+        controller.set_tx_attenuation(-20.0);
+        let stats = controller.get_stats();
+        assert!(stats.is_running);
         controller.stop();
         assert!(!controller.is_running());
     }
