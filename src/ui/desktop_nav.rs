@@ -41,11 +41,54 @@ impl PipelineFilterCategory {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    SoapySdr,
+    License,
+    About,
+}
+
+impl SettingsTab {
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::General => "Rutas y Salidas",
+            Self::SoapySdr => "Controlador SoapySDR",
+            Self::License => "Licencia GPLv3",
+            Self::About => "Acerca del Proyecto",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            Self::General => icons::ICON_FOLDER.codepoint,
+            Self::SoapySdr => icons::ICON_SETTINGS.codepoint,
+            Self::License => icons::ICON_DESCRIPTION.codepoint,
+            Self::About => icons::ICON_INFO.codepoint,
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::General => "Carpeta base y subdirectorios de exportación",
+            Self::SoapySdr => "Ruta de bibliotecas SoapySDR y Radioconda",
+            Self::License => "Términos de la GNU General Public License v3",
+            Self::About => "Versión, repositorio GitHub y documentación",
+        }
+    }
+}
+
 pub struct DesktopNavState {
     pub active_section: NavSection,
     pub search_query: String,
     pub filter_category: PipelineFilterCategory,
     pub catalog_width: f32,
+    pub side_panel_expanded: bool,
+    pub active_settings_tab: SettingsTab,
+    pub soapy_test_status: Option<(String, bool)>, // (Mensaje, es_exito)
+    pub soapy_path_input: String,
+    pub license_copied_feedback: bool,
 }
 
 impl Default for DesktopNavState {
@@ -55,6 +98,11 @@ impl Default for DesktopNavState {
             search_query: String::new(),
             filter_category: PipelineFilterCategory::All,
             catalog_width: 290.0,
+            side_panel_expanded: true,
+            active_settings_tab: SettingsTab::General,
+            soapy_test_status: None,
+            soapy_path_input: String::new(),
+            license_copied_feedback: false,
         }
     }
 }
@@ -86,8 +134,15 @@ pub fn render_desktop_rail(
             theme,
             icons::ICON_SATELLITE_ALT.codepoint,
             "Señales",
-            is_pipe,
-            || state.active_section = NavSection::Pipelines,
+            is_pipe && state.side_panel_expanded,
+            || {
+                if state.active_section == NavSection::Pipelines {
+                    state.side_panel_expanded = !state.side_panel_expanded;
+                } else {
+                    state.active_section = NavSection::Pipelines;
+                    state.side_panel_expanded = true;
+                }
+            },
         );
 
         ui.add_space(12.0);
@@ -99,8 +154,15 @@ pub fn render_desktop_rail(
             theme,
             icons::ICON_SETTINGS.codepoint,
             "Ajustes",
-            is_sett,
-            || state.active_section = NavSection::Settings,
+            is_sett && state.side_panel_expanded,
+            || {
+                if state.active_section == NavSection::Settings {
+                    state.side_panel_expanded = !state.side_panel_expanded;
+                } else {
+                    state.active_section = NavSection::Settings;
+                    state.side_panel_expanded = true;
+                }
+            },
         );
 
         // Espaciador flexible para empujar el interruptor de tema al pie del rail
@@ -512,5 +574,82 @@ pub fn render_desktop_pipeline_list(
                 });
             }
         });
+    });
+}
+
+/// Renderiza la lista de categorías de configuración en el panel flexible secundario estilo VS Code / WhatsApp
+pub fn render_desktop_settings_list(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    state: &mut DesktopNavState,
+) {
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Ajustes del Sistema").strong().size(14.5).color(theme.text_primary()));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new("4 secciones").size(10.5).color(theme.text_secondary()));
+            });
+        });
+        ui.add_space(8.0);
+
+        let tabs = [
+            SettingsTab::General,
+            SettingsTab::SoapySdr,
+            SettingsTab::License,
+            SettingsTab::About,
+        ];
+
+        for tab in tabs {
+            let is_active = state.active_settings_tab == tab;
+            let bg_color = if is_active {
+                theme.active_pill()
+            } else {
+                theme.card_bg()
+            };
+            let stroke = Stroke::new(
+                1.0_f32,
+                if is_active { theme.accent_blue() } else { theme.card_border() },
+            );
+
+            let card_frame = Frame::new()
+                .fill(bg_color)
+                .stroke(stroke)
+                .corner_radius(8.0)
+                .inner_margin(Margin::symmetric(10, 8));
+
+            let resp = card_frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(tab.icon())
+                            .size(16.0)
+                            .color(if is_active { theme.accent_blue() } else { theme.text_secondary() }),
+                    );
+                    ui.add_space(4.0);
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(tab.title())
+                                .strong()
+                                .size(12.5)
+                                .color(if is_active { theme.accent_blue() } else { theme.text_primary() }),
+                        );
+                        ui.label(
+                            RichText::new(tab.description())
+                                .size(10.5)
+                                .color(theme.text_secondary()),
+                        );
+                    });
+                });
+            });
+
+            let interact_resp = ui.interact(resp.response.rect, resp.response.id, Sense::click());
+            if interact_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if interact_resp.clicked() {
+                state.active_settings_tab = tab;
+            }
+
+            ui.add_space(6.0);
+        }
     });
 }

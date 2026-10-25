@@ -3,13 +3,14 @@ use crate::pipelines::{PipelineId, PipelinesState};
 use crate::sdr::SdrTransmissionController;
 use crate::theme::AppTheme;
 use crate::ui::desktop_nav::{
-    render_desktop_pipeline_list, render_desktop_rail, DesktopNavState, NavSection,
+    render_desktop_pipeline_list, render_desktop_rail, render_desktop_settings_list, DesktopNavState,
+    NavSection, SettingsTab,
 };
 use crate::ui::mobile_nav::{
     render_mobile_bottom_bar, render_mobile_header, render_mobile_pipeline_grid, MobileNavState,
 };
 use egui::{
-    CentralPanel, Frame, Panel, RichText, ScrollArea, Stroke, Ui,
+    CentralPanel, Color32, Frame, Panel, RichText, ScrollArea, Stroke, Ui, Vec2,
 };
 
 pub struct SignalsSdrApp {
@@ -27,12 +28,16 @@ impl Default for SignalsSdrApp {
     fn default() -> Self {
         let config = AppConfig::load();
         let dark_mode = config.is_dark_mode;
+        let mut desktop_nav = DesktopNavState::default();
+        if let Some(ref path) = config.soapy_search_path {
+            desktop_nav.soapy_path_input = path.clone();
+        }
         Self {
             config,
             dark_mode,
             selected_pipeline: PipelineId::NoaaApt,
             previous_pipeline: Some(PipelineId::NoaaApt),
-            desktop_nav: DesktopNavState::default(),
+            desktop_nav,
             mobile_nav: MobileNavState::default(),
             pipelines: PipelinesState::default(),
             sdr_controller: SdrTransmissionController::new(),
@@ -132,7 +137,7 @@ impl SignalsSdrApp {
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.set_max_width(ui.available_width());
                     match self.desktop_nav.active_section {
-                        NavSection::Settings => self.render_settings(ui, theme),
+                        NavSection::Settings => self.render_settings_detail(ui, theme),
                         NavSection::Pipelines => {
                             if self.mobile_nav.showing_detail {
                                 self.render_active_pipeline(ui, theme);
@@ -166,8 +171,8 @@ impl SignalsSdrApp {
                 render_desktop_rail(ui, theme, &mut self.desktop_nav, &mut self.dark_mode);
             });
 
-        // 2. Panel de catálogo de pipelines (redimensionable sin rebotes) solo si la sección activa es Pipelines
-        if self.desktop_nav.active_section == NavSection::Pipelines {
+        // 2. Panel flexible secundario (solo si side_panel_expanded es true)
+        if self.desktop_nav.side_panel_expanded {
             let catalog_response = Panel::left("desktop_catalog")
                 .resizable(true)
                 .default_size(self.desktop_nav.catalog_width)
@@ -180,12 +185,23 @@ impl SignalsSdrApp {
                         .inner_margin(10.0),
                 )
                 .show(ui, |ui| {
-                    render_desktop_pipeline_list(
-                        ui,
-                        theme,
-                        &mut self.desktop_nav,
-                        &mut self.selected_pipeline,
-                    );
+                    match self.desktop_nav.active_section {
+                        NavSection::Pipelines => {
+                            render_desktop_pipeline_list(
+                                ui,
+                                theme,
+                                &mut self.desktop_nav,
+                                &mut self.selected_pipeline,
+                            );
+                        }
+                        NavSection::Settings => {
+                            render_desktop_settings_list(
+                                ui,
+                                theme,
+                                &mut self.desktop_nav,
+                            );
+                        }
+                    }
                 });
 
             // Sincronizar el ancho SOLO si el usuario está arrastrando activamente el divisor de redimensionamiento
@@ -205,7 +221,7 @@ impl SignalsSdrApp {
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.set_max_width(ui.available_width());
                     match self.desktop_nav.active_section {
-                        NavSection::Settings => self.render_settings(ui, theme),
+                        NavSection::Settings => self.render_settings_detail(ui, theme),
                         NavSection::Pipelines => self.render_active_pipeline(ui, theme),
                     }
                 });
@@ -241,62 +257,49 @@ impl SignalsSdrApp {
         }
     }
 
-    fn render_settings(&mut self, ui: &mut Ui, theme: &AppTheme) {
+    fn render_settings_detail(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        // En vista móvil o cuando la barra lateral está oculta, selector horizontal rápido
+        if !self.desktop_nav.side_panel_expanded || ui.available_width() < 700.0 {
+            ui.horizontal_wrapped(|ui| {
+                let tabs = [
+                    SettingsTab::General,
+                    SettingsTab::SoapySdr,
+                    SettingsTab::License,
+                    SettingsTab::About,
+                ];
+                for tab in tabs {
+                    let is_sel = self.desktop_nav.active_settings_tab == tab;
+                    let label = format!("{} {}", tab.icon(), tab.title());
+                    if ui.selectable_label(is_sel, label).clicked() {
+                        self.desktop_nav.active_settings_tab = tab;
+                    }
+                }
+            });
+            ui.add_space(8.0);
+            let line_rect = ui.available_rect_before_wrap();
+            ui.painter().line_segment(
+                [line_rect.left_top(), egui::Pos2::new(line_rect.right(), line_rect.top())],
+                Stroke::new(1.0_f32, theme.card_border()),
+            );
+            ui.add_space(8.0);
+        }
+
+        match self.desktop_nav.active_settings_tab {
+            SettingsTab::General => self.render_settings_general(ui, theme),
+            SettingsTab::SoapySdr => self.render_settings_soapy(ui, theme),
+            SettingsTab::License => self.render_settings_license(ui, theme),
+            SettingsTab::About => self.render_settings_about(ui, theme),
+        }
+    }
+
+    fn render_settings_general(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            ui.label(RichText::new("Ajustes y Configuración Global").strong().size(18.0).color(theme.text_primary()));
+            ui.label(RichText::new("Rutas y Salidas").strong().size(18.0).color(theme.text_primary()));
             ui.label(
-                RichText::new("Configure el tema de la aplicación y las rutas predeterminadas para almacenamiento de archivos procesados y señales I/Q.")
+                RichText::new("Configure el almacenamiento de señales y la apariencia general.")
                     .size(13.0)
                     .color(theme.text_secondary()),
             );
-            ui.add_space(14.0);
-
-            // Tarjeta de identidad y presentación de Signals SDR
-            Frame::new()
-                .fill(theme.card_bg())
-                .stroke(Stroke::new(1.0_f32, theme.card_border()))
-                .corner_radius(8.0)
-                .inner_margin(16.0)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Image::new(egui::include_image!("../assets/icon_256.png"))
-                                .fit_to_exact_size(egui::vec2(64.0, 64.0))
-                                .corner_radius(10.0),
-                        );
-                        ui.add_space(14.0);
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new("Signals SDR").strong().size(19.0).color(theme.text_primary()));
-                                ui.label(
-                                    RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                                        .size(11.5)
-                                        .color(theme.accent_blue())
-                                        .monospace(),
-                                );
-                            });
-                            ui.add_space(3.0);
-                            ui.label(
-                                RichText::new("Plataforma integral de DSP, telemetría satelital y transmisión SDR para radioaficionados y docencia.")
-                                    .size(12.5)
-                                    .color(theme.text_secondary()),
-                            );
-                            ui.add_space(6.0);
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new("NOAA APT").monospace().size(11.0).color(theme.accent_blue()));
-                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
-                                ui.label(RichText::new("Meteor M2/M2-x LRPT").monospace().size(11.0).color(theme.accent_blue()));
-                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
-                                ui.label(RichText::new("ISS SSTV").monospace().size(11.0).color(theme.accent_blue()));
-                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
-                                ui.label(RichText::new("Generic SSTV").monospace().size(11.0).color(theme.accent_blue()));
-                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
-                                ui.label(RichText::new("FM / AM / I/Q TX").monospace().size(11.0).color(theme.accent_blue()));
-                            });
-                        });
-                    });
-                });
-
             ui.add_space(14.0);
 
             // Tarjeta de apariencia y tema visual
@@ -319,9 +322,13 @@ impl SignalsSdrApp {
                         ui.horizontal(|ui| {
                             if ui.selectable_label(self.dark_mode, "Modo Oscuro").clicked() {
                                 self.dark_mode = true;
+                                self.config.is_dark_mode = true;
+                                self.config.save();
                             }
                             if ui.selectable_label(!self.dark_mode, "Modo Claro").clicked() {
                                 self.dark_mode = false;
+                                self.config.is_dark_mode = false;
+                                self.config.save();
                             }
                         });
                     });
@@ -357,15 +364,24 @@ impl SignalsSdrApp {
                             )
                             .wrap(),
                         );
-                        ui.add_space(4.0);
+                        ui.add_space(6.0);
 
-                        if ui.button("Cambiar Carpeta...").clicked() {
-                            if let Some(new_dir) = crate::file_dialog::FileDialog::new().pick_folder() {
-                                self.config.default_output_dir = new_dir;
-                                self.config.ensure_directories_exist();
-                                self.config.save();
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button(format!("{} Cambiar Carpeta...", crate::icons::ICON_FOLDER_OPEN.codepoint)).clicked() {
+                                if let Some(new_dir) = crate::file_dialog::FileDialog::new().pick_folder() {
+                                    self.config.default_output_dir = new_dir;
+                                    self.config.ensure_directories_exist();
+                                    self.config.save();
+                                }
                             }
-                        }
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                if ui.button(format!("{} Abrir Carpeta Base", crate::icons::ICON_FOLDER.codepoint)).clicked() {
+                                    let _ = crate::utils::open_folder(&self.config.default_output_dir);
+                                }
+                            }
+                        });
 
                         ui.add_space(10.0);
                         ui.label(RichText::new("Estructura de subcarpetas creadas automáticamente:").strong().size(12.0));
@@ -419,5 +435,394 @@ impl SignalsSdrApp {
                     });
                 });
         });
+    }
+
+    fn render_settings_soapy(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("Controlador SoapySDR y Radioconda").strong().size(18.0).color(theme.text_primary()));
+            ui.label(
+                RichText::new("Configuración de rutas dinámicas de SoapySDR para la detección de dispositivos SDR en Windows.")
+                    .size(13.0)
+                    .color(theme.text_secondary()),
+            );
+            ui.add_space(14.0);
+
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Ruta de Bibliotecas SoapySDR (Windows)").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(6.0);
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(
+                                    "En Windows, los entornos como Radioconda (GNU Radio) instalan SoapySDR.dll y los controladores SDR en carpetas \
+                                     como 'C:\\Users\\<usuario>\\radioconda\\Library\\bin'. Esta ruta no siempre se agrega al PATH global del sistema. \
+                                     Puedes configurarla aquí para que Signals SDR la cargue dinámicamente en tiempo de ejecución."
+                                )
+                                .size(12.0)
+                                .color(theme.text_secondary())
+                            )
+                            .wrap()
+                        );
+                        ui.add_space(10.0);
+
+                        ui.label(RichText::new("Ruta actual de binarios / bibliotecas:").strong().size(12.5));
+                        ui.add_space(4.0);
+
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.desktop_nav.soapy_path_input)
+                                    .hint_text("Ej: C:\\Users\\USUARIO\\radioconda\\Library\\bin")
+                                    .desired_width((ui.available_width() - 100.0).max(180.0)),
+                            );
+
+                            let save_btn = egui::Button::new(
+                                RichText::new(format!("{} Guardar", crate::icons::ICON_SAVE.codepoint))
+                                    .strong()
+                                    .color(Color32::WHITE)
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0);
+
+                            if ui.add(save_btn).clicked() {
+                                let path_to_save = self.desktop_nav.soapy_path_input.trim().to_string();
+                                if path_to_save.is_empty() {
+                                    self.config.soapy_search_path = None;
+                                } else {
+                                    self.config.soapy_search_path = Some(path_to_save);
+                                }
+                                self.config.apply_environment();
+                                self.config.save();
+                                self.desktop_nav.soapy_test_status = Some(("Ruta guardada y aplicada al entorno de ejecución.".to_string(), true));
+                            }
+                        });
+
+                        ui.add_space(10.0);
+
+                        ui.horizontal_wrapped(|ui| {
+                            let detect_btn = egui::Button::new(
+                                RichText::new(format!("{} Auto-detectar Radioconda / Conda", crate::icons::ICON_SEARCH.codepoint)).size(12.0)
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0);
+
+                            if ui.add(detect_btn).clicked() {
+                                if let Some(cand) = auto_detect_radioconda() {
+                                    self.desktop_nav.soapy_path_input = cand.clone();
+                                    self.config.soapy_search_path = Some(cand.clone());
+                                    self.config.apply_environment();
+                                    self.config.save();
+                                    self.desktop_nav.soapy_test_status = Some((
+                                        format!("¡Instalación detectada automáticamente!: {}", cand),
+                                        true,
+                                    ));
+                                } else {
+                                    self.desktop_nav.soapy_test_status = Some((
+                                        "No se encontró automáticamente una instalación de Radioconda o Conda en las rutas estándar. Por favor ingresa la carpeta manualmente o usa 'Examinar Carpeta'.".to_string(),
+                                        false,
+                                    ));
+                                }
+                            }
+
+                            let browse_btn = egui::Button::new(
+                                RichText::new(format!("{} Examinar Carpeta...", crate::icons::ICON_FOLDER_OPEN.codepoint)).size(12.0)
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0);
+
+                            if ui.add(browse_btn).clicked() {
+                                if let Some(folder) = crate::file_dialog::FileDialog::new().pick_folder() {
+                                    self.desktop_nav.soapy_path_input = folder.display().to_string();
+                                }
+                            }
+
+                            let test_btn = egui::Button::new(
+                                RichText::new(format!("{} Probar Detección", crate::icons::ICON_TUNE.codepoint)).size(12.0)
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0);
+
+                            if ui.add(test_btn).clicked() {
+                                let (msg, is_ok) = test_soapy_detection(&self.desktop_nav.soapy_path_input);
+                                self.desktop_nav.soapy_test_status = Some((msg, is_ok));
+                            }
+                        });
+
+                        if let Some((ref msg, is_ok)) = self.desktop_nav.soapy_test_status {
+                            ui.add_space(10.0);
+                            let color = if is_ok {
+                                Color32::from_rgb(34, 197, 94)
+                            } else {
+                                Color32::from_rgb(239, 68, 68)
+                            };
+                            let box_bg = if is_ok {
+                                if *theme == AppTheme::Dark { Color32::from_rgb(10, 30, 20) } else { Color32::from_rgb(235, 250, 240) }
+                            } else {
+                                if *theme == AppTheme::Dark { Color32::from_rgb(35, 15, 15) } else { Color32::from_rgb(254, 242, 242) }
+                            };
+                            Frame::new()
+                                .fill(box_bg)
+                                .stroke(Stroke::new(1.0_f32, color))
+                                .corner_radius(6.0)
+                                .inner_margin(10.0)
+                                .show(ui, |ui| {
+                                    ui.add(egui::Label::new(RichText::new(msg).size(12.0).color(color)).wrap());
+                                });
+                        }
+                    });
+                });
+        });
+    }
+
+    fn render_settings_license(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        const LICENSE_TEXT: &str = include_str!("../LICENSE");
+
+        ui.vertical(|ui| {
+            ui.label(RichText::new("Licencia de Software").strong().size(18.0).color(theme.text_primary()));
+            ui.label(
+                RichText::new("Signals SDR es software libre distribuido bajo los términos de la GNU General Public License v3 (GPLv3).")
+                    .size(13.0)
+                    .color(theme.text_secondary()),
+            );
+            ui.add_space(14.0);
+
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("{} GNU General Public License v3", crate::icons::ICON_DESCRIPTION.codepoint))
+                                    .strong()
+                                    .size(15.0)
+                                    .color(theme.accent_blue()),
+                            );
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let copy_btn = egui::Button::new(
+                                    RichText::new(format!("{} Copiar Licencia Completa", crate::icons::ICON_CONTENT_COPY.codepoint)).size(12.0)
+                                )
+                                .fill(theme.surface_subtle())
+                                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                                .corner_radius(6.0);
+
+                                if ui.add(copy_btn).clicked() {
+                                    ui.ctx().copy_text(LICENSE_TEXT.to_string());
+                                    self.desktop_nav.license_copied_feedback = true;
+                                }
+                            });
+                        });
+
+                        if self.desktop_nav.license_copied_feedback {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new("¡Texto completo de la licencia GPLv3 copiado al portapapeles!").size(12.0).color(Color32::from_rgb(34, 197, 94)));
+                        }
+
+                        ui.add_space(10.0);
+
+                        let bg_box = if *theme == AppTheme::Dark { Color32::from_rgb(15, 18, 24) } else { Color32::from_rgb(243, 244, 246) };
+                        Frame::new()
+                            .fill(bg_box)
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .inner_margin(12.0)
+                            .show(ui, |ui| {
+                                ScrollArea::vertical()
+                                    .max_height(480.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(LICENSE_TEXT)
+                                                    .monospace()
+                                                    .size(11.5)
+                                                    .color(theme.text_primary())
+                                            )
+                                            .wrap()
+                                        );
+                                    });
+                            });
+                    });
+                });
+        });
+    }
+
+    fn render_settings_about(&mut self, ui: &mut Ui, theme: &AppTheme) {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("Acerca de Signals SDR").strong().size(18.0).color(theme.text_primary()));
+            ui.label(
+                RichText::new("Información del proyecto, repositorio de código abierto y contribuciones.")
+                    .size(13.0)
+                    .color(theme.text_secondary()),
+            );
+            ui.add_space(14.0);
+
+            // Tarjeta de identidad
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(16.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Image::new(egui::include_image!("../assets/icon_256.png"))
+                                .fit_to_exact_size(egui::vec2(64.0, 64.0))
+                                .corner_radius(10.0),
+                        );
+                        ui.add_space(14.0);
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Signals SDR").strong().size(19.0).color(theme.text_primary()));
+                                ui.label(
+                                    RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                                        .size(11.5)
+                                        .color(theme.accent_blue())
+                                        .monospace(),
+                                );
+                            });
+                            ui.add_space(3.0);
+                            ui.label(
+                                RichText::new("Suite integral de DSP, telemetría satelital y transmisión SDR para radioaficionados y docencia.")
+                                    .size(12.5)
+                                    .color(theme.text_secondary()),
+                            );
+                            ui.add_space(6.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new("Licencia: GPLv3").size(11.5).color(theme.text_secondary()));
+                                ui.label(RichText::new("•").size(10.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("Escrito en Rust").size(11.5).color(theme.text_secondary()));
+                            });
+                        });
+                    });
+                });
+
+            ui.add_space(14.0);
+
+            // Tarjeta de enlaces GitHub
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Repositorio y Código Fuente").strong().size(14.0).color(theme.accent_blue()));
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("El código fuente completo de Signals SDR está disponible públicamente en GitHub:")
+                                .size(12.0)
+                                .color(theme.text_secondary()),
+                        );
+                        ui.add_space(10.0);
+
+                        ui.horizontal_wrapped(|ui| {
+                            let repo_btn = egui::Button::new(
+                                RichText::new(format!("{} Abrir Repositorio en GitHub", crate::icons::ICON_OPEN_IN_NEW.codepoint))
+                                    .strong()
+                                    .size(12.5)
+                                    .color(Color32::WHITE),
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(220.0, 34.0));
+
+                            if ui.add(repo_btn).clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/tcasaniv/signals-sdr"));
+                            }
+
+                            let issues_btn = egui::Button::new(
+                                RichText::new(format!("{} Reportar Problema en GitHub Issues", crate::icons::ICON_FEEDBACK.codepoint))
+                                    .size(12.5),
+                            )
+                            .fill(theme.surface_subtle())
+                            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(220.0, 34.0));
+
+                            if ui.add(issues_btn).clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/tcasaniv/signals-sdr/issues"));
+                            }
+                        });
+
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("URL:").size(11.5).color(theme.text_secondary()));
+                            ui.hyperlink_to(
+                                "https://github.com/tcasaniv/signals-sdr",
+                                "https://github.com/tcasaniv/signals-sdr",
+                            );
+                        });
+                    });
+                });
+        });
+    }
+}
+
+fn auto_detect_radioconda() -> Option<String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut candidates = Vec::new();
+        if let Ok(userprofile) = std::env::var("USERPROFILE") {
+            candidates.push(format!("{}\\radioconda\\Library\\bin", userprofile));
+            candidates.push(format!("{}\\miniconda3\\Library\\bin", userprofile));
+            candidates.push(format!("{}\\anaconda3\\Library\\bin", userprofile));
+        }
+        candidates.push(r"C:\Users\USUARIO\radioconda\Library\bin".to_string());
+        candidates.push(r"C:\radioconda\Library\bin".to_string());
+        candidates.push(r"C:\miniconda3\Library\bin".to_string());
+        candidates.push(r"C:\anaconda3\Library\bin".to_string());
+
+        for cand in candidates {
+            let p = std::path::Path::new(&cand);
+            if p.exists() && (p.join("SoapySDR.dll").exists() || p.join("SoapySDRUtil.exe").exists()) {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+fn test_soapy_detection(path_input: &str) -> (String, bool) {
+    let trimmed = path_input.trim();
+    if trimmed.is_empty() {
+        return ("Ingresa una ruta primero.".to_string(), false);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let p = std::path::Path::new(trimmed);
+        if !p.exists() || !p.is_dir() {
+            return (format!("La ruta especificada no existe o no es una carpeta: {}", trimmed), false);
+        }
+
+        let has_dll = p.join("SoapySDR.dll").exists();
+        let has_util = p.join("SoapySDRUtil.exe").exists() || p.join("SoapySDRUtil").exists();
+        let has_so = p.join("libSoapySDR.so").exists();
+
+        if has_dll || has_util || has_so {
+            if let Ok(current_path) = std::env::var("PATH") {
+                if !current_path.split(';').any(|item| item.trim().eq_ignore_ascii_case(trimmed)) {
+                    let new_path = format!("{};{}", trimmed, current_path);
+                    std::env::set_var("PATH", new_path);
+                }
+            }
+            (format!("¡Éxito! SoapySDR detectado en: {}\\ (Binarios encontrados y vinculados correctamente al PATH)", trimmed), true)
+        } else {
+            (format!("Aviso: No se encontraron 'SoapySDR.dll' ni 'SoapySDRUtil.exe' en la carpeta indicada ({}). Verifica que sea la carpeta Library\\bin.", trimmed), false)
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        ("La detección de SoapySDR local no aplica en entorno WebAssembly.".to_string(), true)
     }
 }

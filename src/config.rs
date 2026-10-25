@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct AppConfig {
     pub is_dark_mode: bool,
     pub default_output_dir: PathBuf,
+    #[serde(default)]
+    pub soapy_search_path: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -21,6 +23,7 @@ impl Default for AppConfig {
         Self {
             is_dark_mode: true,
             default_output_dir: default_dir,
+            soapy_search_path: None,
         }
     }
 }
@@ -73,6 +76,7 @@ impl AppConfig {
                 if let Ok(data) = std::fs::read_to_string(&path) {
                     if let Ok(cfg) = serde_json::from_str::<AppConfig>(&data) {
                         cfg.ensure_directories_exist();
+                        cfg.apply_environment();
                         return cfg;
                     }
                 }
@@ -81,7 +85,32 @@ impl AppConfig {
 
         let default_cfg = Self::default();
         default_cfg.ensure_directories_exist();
+        default_cfg.apply_environment();
         default_cfg
+    }
+
+    /// Inyecta la ruta de búsqueda de SoapySDR a la variable de entorno PATH (útil en Windows)
+    pub fn apply_environment(&self) {
+        #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+        {
+            if let Some(ref path_str) = self.soapy_search_path {
+                let trimmed = path_str.trim();
+                if !trimmed.is_empty() {
+                    let path = std::path::Path::new(trimmed);
+                    if path.is_dir() {
+                        if let Ok(current_path) = std::env::var("PATH") {
+                            let contains = current_path
+                                .split(';')
+                                .any(|p| p.trim().eq_ignore_ascii_case(trimmed));
+                            if !contains {
+                                let new_path = format!("{};{}", trimmed, current_path);
+                                std::env::set_var("PATH", new_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Guarda la configuración actual en el disco
