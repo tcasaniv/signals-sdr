@@ -1,6 +1,6 @@
 [package]
 name = "signals-sdr"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["Signals SDR Contributors"]
 description = "Educational SDR signal generator and modulator suite for satellites (APT, LRPT, SSTV) and analog radio (FM, AM)"

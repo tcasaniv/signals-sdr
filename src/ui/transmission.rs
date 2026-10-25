@@ -4,7 +4,8 @@ use crate::export::formats::IqExportFormat;
 use crate::export::formats::export_iq_file;
 use crate::icons;
 use crate::sdr::{
-    detect_detailed_radios, DetectedDeviceInfo, SdrBackend, SdrDeviceOption, SdrHardwareType,
+    detect_detailed_radios, DetectedDeviceInfo, GnuRadioFormat, GnuRadioProtocol,
+    NetworkTxController, SdrBackend, SdrDeviceOption, SdrHardwareType,
     SdrTransmissionController, TransmissionStatus, TxConfig,
 };
 use crate::theme::AppTheme;
@@ -15,6 +16,8 @@ use std::path::PathBuf;
 pub enum TransmissionDestination {
     HardwareSdr,
     IqFile,
+    GnuRadioNetwork,
+    RtlTcpServer,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +35,19 @@ pub struct TransmissionTabState {
     pub custom_output_dir: Option<PathBuf>,
     pub export_status_message: Option<(String, bool)>, // (Mensaje, es_error)
     pub request_open_output_files: bool,
+    // Estado Red GNU Radio
+    pub gnuradio_protocol: GnuRadioProtocol,
+    pub gnuradio_format: GnuRadioFormat,
+    pub gnuradio_host: String,
+    pub gnuradio_port: u16,
+    pub gnuradio_continuous: bool,
+    pub gnuradio_error: Option<String>,
+    // Estado Servidor RTL-TCP
+    pub rtl_tcp_host: String,
+    pub rtl_tcp_port: u16,
+    pub rtl_tcp_error: Option<String>,
+    // Controlador de red
+    pub network_controller: NetworkTxController,
     // Estado de Remuestreo SDR / Archivo
     pub target_sample_rate: u32,
     pub resampled_samples: Option<Vec<(f32, f32)>>,
@@ -54,6 +70,16 @@ impl Default for TransmissionTabState {
             custom_output_dir: None,
             export_status_message: None,
             request_open_output_files: false,
+            gnuradio_protocol: GnuRadioProtocol::TcpServer,
+            gnuradio_format: GnuRadioFormat::Fc32,
+            gnuradio_host: "127.0.0.1".to_string(),
+            gnuradio_port: 5000,
+            gnuradio_continuous: true,
+            gnuradio_error: None,
+            rtl_tcp_host: "0.0.0.0".to_string(),
+            rtl_tcp_port: 1234,
+            rtl_tcp_error: None,
+            network_controller: NetworkTxController::new(),
             target_sample_rate: 2_000_000,
             resampled_samples: None,
             resampled_rate: 0,
@@ -108,28 +134,34 @@ pub fn render_transmission_tab(
     let needs_resample = is_rate_different && !has_valid_resample;
 
     ui.vertical(|ui| {
-        // 1. Selector de destino: Hardware SDR vs Archivo IQ con soporte de wrap
+        // 1. Selector de destino interactivo estilo pills (Hardware SDR, Archivo IQ, GNU Radio, RTL-TCP)
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Destino de la señal:").strong().size(14.0).color(theme.text_primary()));
             ui.add_space(8.0);
 
             let sdr_selected = state.destination == TransmissionDestination::HardwareSdr;
             let file_selected = state.destination == TransmissionDestination::IqFile;
+            let gnuradio_selected = state.destination == TransmissionDestination::GnuRadioNetwork;
+            let rtl_tcp_selected = state.destination == TransmissionDestination::RtlTcpServer;
 
-            let sdr_label = format!("{} Transmitir con Hardware SDR", icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
-            if ui
-                .selectable_label(sdr_selected, RichText::new(sdr_label).strong())
-                .clicked()
-            {
+            let sdr_label = format!("{} Hardware SDR", icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
+            if ui.selectable_label(sdr_selected, RichText::new(sdr_label).strong()).clicked() {
                 state.destination = TransmissionDestination::HardwareSdr;
             }
 
-            let file_label = format!("{} Guardar como Archivo I/Q", icons::ICON_SAVE.codepoint);
-            if ui
-                .selectable_label(file_selected, RichText::new(file_label).strong())
-                .clicked()
-            {
+            let file_label = format!("{} Archivo I/Q", icons::ICON_SAVE.codepoint);
+            if ui.selectable_label(file_selected, RichText::new(file_label).strong()).clicked() {
                 state.destination = TransmissionDestination::IqFile;
+            }
+
+            let gnuradio_label = format!("{} GNU Radio (TCP/UDP)", icons::ICON_LAN.codepoint);
+            if ui.selectable_label(gnuradio_selected, RichText::new(gnuradio_label).strong()).clicked() {
+                state.destination = TransmissionDestination::GnuRadioNetwork;
+            }
+
+            let rtl_tcp_label = format!("{} Servidor RTL-TCP", icons::ICON_ROUTER.codepoint);
+            if ui.selectable_label(rtl_tcp_selected, RichText::new(rtl_tcp_label).strong()).clicked() {
+                state.destination = TransmissionDestination::RtlTcpServer;
             }
         });
 
@@ -327,6 +359,26 @@ pub fn render_transmission_tab(
                     theme,
                     config,
                     pipeline_slug,
+                    state,
+                    samples,
+                    sample_rate,
+                    needs_resample,
+                );
+            }
+            TransmissionDestination::GnuRadioNetwork => {
+                render_gnuradio_panel(
+                    ui,
+                    theme,
+                    state,
+                    samples,
+                    sample_rate,
+                    needs_resample,
+                );
+            }
+            TransmissionDestination::RtlTcpServer => {
+                render_rtl_tcp_panel(
+                    ui,
+                    theme,
                     state,
                     samples,
                     sample_rate,
@@ -1277,6 +1329,378 @@ fn render_file_panel(
                         Color32::from_rgb(34, 197, 94)
                     };
                     ui.label(RichText::new(msg).size(12.0).color(color));
+                }
+            });
+        });
+}
+
+fn render_gnuradio_panel(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    state: &mut TransmissionTabState,
+    samples: &[(f32, f32)],
+    sample_rate: u32,
+    needs_resample: bool,
+) {
+    let stats = state.network_controller.get_stats();
+
+    Frame::new()
+        .fill(theme.card_bg())
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
+        .inner_margin(14.0)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Streaming en Red para GNU Radio")
+                            .strong()
+                            .size(15.0)
+                            .color(theme.accent_blue()),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (badge_txt, badge_col) = if stats.is_running {
+                            ("STREAMING ACTIVO", Color32::from_rgb(34, 197, 94))
+                        } else {
+                            ("DETENIDO", Color32::from_rgb(156, 163, 175))
+                        };
+                        let badge_frame = Frame::new()
+                            .fill(if *theme == AppTheme::Dark { Color32::from_rgb(20, 25, 34) } else { Color32::from_rgb(240, 245, 250) })
+                            .stroke(Stroke::new(1.0, badge_col))
+                            .corner_radius(4.0)
+                            .inner_margin(egui::Margin::symmetric(6, 2));
+                        badge_frame.show(ui, |ui| {
+                            ui.label(RichText::new(badge_txt).size(10.5).strong().color(badge_col));
+                        });
+                    });
+                });
+
+                ui.add_space(6.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Transmite las muestras I/Q moduladas en tiempo real hacia GNU Radio Companion sin necesidad de hardware SDR. \
+                             En GNU Radio, utiliza el bloque 'TCP Client' (conectando a este host:puerto) o 'UDP Source' escuchando el flujo."
+                        )
+                        .size(12.0)
+                        .color(theme.text_secondary())
+                    )
+                    .wrap()
+                );
+                ui.add_space(10.0);
+
+                // Configuración de red
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Protocolo:");
+                    egui::ComboBox::from_id_salt("gnuradio_proto_combo")
+                        .selected_text(state.gnuradio_protocol.name())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.gnuradio_protocol, GnuRadioProtocol::TcpServer, GnuRadioProtocol::TcpServer.name());
+                            ui.selectable_value(&mut state.gnuradio_protocol, GnuRadioProtocol::UdpSender, GnuRadioProtocol::UdpSender.name());
+                        });
+                });
+                ui.add_space(6.0);
+
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Formato de Muestras:");
+                    egui::ComboBox::from_id_salt("gnuradio_format_combo")
+                        .selected_text(state.gnuradio_format.name())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.gnuradio_format, GnuRadioFormat::Fc32, GnuRadioFormat::Fc32.name());
+                            ui.selectable_value(&mut state.gnuradio_format, GnuRadioFormat::Sc16, GnuRadioFormat::Sc16.name());
+                        });
+                });
+                ui.add_space(6.0);
+
+                ui.horizontal(|ui| {
+                    ui.label("Host / IP:");
+                    ui.add(egui::TextEdit::singleline(&mut state.gnuradio_host).desired_width(120.0));
+                    ui.add_space(8.0);
+                    ui.label("Puerto:");
+                    let mut port_str = state.gnuradio_port.to_string();
+                    if ui.add(egui::TextEdit::singleline(&mut port_str).desired_width(60.0)).changed() {
+                        if let Ok(p) = port_str.parse::<u16>() {
+                            state.gnuradio_port = p;
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+
+                ui.checkbox(&mut state.gnuradio_continuous, "Repetir señal en bucle continuo");
+                ui.add_space(10.0);
+
+                // Botones de acción
+                let active_samples = if let Some(ref r) = state.resampled_samples {
+                    if state.resampled_rate == state.target_sample_rate {
+                        r.clone()
+                    } else {
+                        samples.to_vec()
+                    }
+                } else {
+                    samples.to_vec()
+                };
+                let active_rate = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                    state.resampled_rate
+                } else {
+                    sample_rate
+                };
+
+                let can_transmit = !active_samples.is_empty() && !needs_resample;
+
+                if stats.is_running {
+                    let stop_btn = egui::Button::new(
+                        RichText::new(format!("{} Detener Streaming GNU Radio", icons::ICON_STOP.codepoint))
+                            .strong()
+                            .color(Color32::WHITE),
+                    )
+                    .fill(Color32::from_rgb(220, 38, 38))
+                    .corner_radius(6.0)
+                    .min_size(Vec2::new(240.0, 34.0));
+
+                    if ui.add(stop_btn).clicked() {
+                        state.network_controller.stop();
+                    }
+                } else {
+                    let start_btn = egui::Button::new(
+                        RichText::new(format!("{} Iniciar Streaming hacia GNU Radio", icons::ICON_PLAY_ARROW.codepoint))
+                            .strong()
+                            .color(Color32::WHITE),
+                    )
+                    .fill(theme.accent_blue())
+                    .corner_radius(6.0)
+                    .min_size(Vec2::new(240.0, 34.0));
+
+                    if ui.add_enabled(can_transmit, start_btn).clicked() {
+                        match state.network_controller.start_gnuradio_stream(
+                            active_samples,
+                            active_rate,
+                            state.gnuradio_protocol,
+                            state.gnuradio_format,
+                            state.gnuradio_host.clone(),
+                            state.gnuradio_port,
+                            state.gnuradio_continuous,
+                        ) {
+                            Ok(_) => {
+                                state.gnuradio_error = None;
+                            }
+                            Err(e) => {
+                                state.gnuradio_error = Some(e);
+                            }
+                        }
+                    }
+                }
+
+                if needs_resample {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("(Debes remuestrear la señal en el panel superior antes de transmitir)")
+                            .size(12.0)
+                            .color(Color32::from_rgb(234, 179, 8)),
+                    );
+                } else if samples.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("(Primero genera la señal en el paso 2)").size(12.0).color(theme.text_secondary()));
+                }
+
+                if let Some(ref err) = state.gnuradio_error {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(format!("Error: {}", err)).size(12.0).color(Color32::from_rgb(239, 68, 68)));
+                }
+
+                // Diagnóstico y métricas en vivo
+                if stats.is_running {
+                    ui.add_space(10.0);
+                    let metrics_bg = if *theme == AppTheme::Dark { Color32::from_rgb(16, 22, 32) } else { Color32::from_rgb(243, 247, 252) };
+                    Frame::new()
+                        .fill(metrics_bg)
+                        .stroke(Stroke::new(1.0, theme.card_border()))
+                        .corner_radius(6.0)
+                        .inner_margin(10.0)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new(&stats.status_message).size(12.0).color(theme.accent_blue()));
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(format!("Clientes conectados: {}", stats.clients_connected)).size(11.5));
+                                    ui.label("•");
+                                    let sent_mb = stats.bytes_sent as f32 / (1024.0 * 1024.0);
+                                    ui.label(RichText::new(format!("{:.2} MB enviados", sent_mb)).size(11.5));
+                                    ui.label("•");
+                                    ui.label(RichText::new(format!("Rendimiento: {:.1} kB/s", stats.throughput_kbps)).size(11.5).color(Color32::from_rgb(34, 197, 94)));
+                                });
+                            });
+                        });
+                }
+            });
+        });
+}
+
+fn render_rtl_tcp_panel(
+    ui: &mut Ui,
+    theme: &AppTheme,
+    state: &mut TransmissionTabState,
+    samples: &[(f32, f32)],
+    sample_rate: u32,
+    needs_resample: bool,
+) {
+    let stats = state.network_controller.get_stats();
+
+    Frame::new()
+        .fill(theme.card_bg())
+        .stroke(Stroke::new(1.0_f32, theme.card_border()))
+        .corner_radius(8.0)
+        .inner_margin(14.0)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Servidor Emulador RTL-TCP (Remoto SDR)")
+                            .strong()
+                            .size(15.0)
+                            .color(theme.accent_blue()),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (badge_txt, badge_col) = if stats.is_running {
+                            ("SERVIDOR ONLINE", Color32::from_rgb(34, 197, 94))
+                        } else {
+                            ("OFFLINE", Color32::from_rgb(156, 163, 175))
+                        };
+                        let badge_frame = Frame::new()
+                            .fill(if *theme == AppTheme::Dark { Color32::from_rgb(20, 25, 34) } else { Color32::from_rgb(240, 245, 250) })
+                            .stroke(Stroke::new(1.0, badge_col))
+                            .corner_radius(4.0)
+                            .inner_margin(egui::Margin::symmetric(6, 2));
+                        badge_frame.show(ui, |ui| {
+                            ui.label(RichText::new(badge_txt).size(10.5).strong().color(badge_col));
+                        });
+                    });
+                });
+
+                ui.add_space(6.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Emula un dongle RTL-SDR estándar transmitiendo a través del protocolo RTL-TCP (puerto 1234 por defecto). \
+                             Permite que programas como SDR#, GQRX, SDR++, WebSDR o GNU Radio (fuente RTL-TCP) se conecten y \
+                             demodulen la señal satelital o analógica en tiempo real."
+                        )
+                        .size(12.0)
+                        .color(theme.text_secondary())
+                    )
+                    .wrap()
+                );
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    ui.label("Dirección de Escucha:");
+                    ui.add(egui::TextEdit::singleline(&mut state.rtl_tcp_host).desired_width(120.0));
+                    ui.add_space(8.0);
+                    ui.label("Puerto:");
+                    let mut port_str = state.rtl_tcp_port.to_string();
+                    if ui.add(egui::TextEdit::singleline(&mut port_str).desired_width(60.0)).changed() {
+                        if let Ok(p) = port_str.parse::<u16>() {
+                            state.rtl_tcp_port = p;
+                        }
+                    }
+                });
+                ui.add_space(10.0);
+
+                let active_samples = if let Some(ref r) = state.resampled_samples {
+                    if state.resampled_rate == state.target_sample_rate {
+                        r.clone()
+                    } else {
+                        samples.to_vec()
+                    }
+                } else {
+                    samples.to_vec()
+                };
+                let active_rate = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                    state.resampled_rate
+                } else {
+                    sample_rate
+                };
+
+                let can_start = !active_samples.is_empty() && !needs_resample;
+
+                if stats.is_running {
+                    let stop_btn = egui::Button::new(
+                        RichText::new(format!("{} Detener Servidor RTL-TCP", icons::ICON_STOP.codepoint))
+                            .strong()
+                            .color(Color32::WHITE),
+                    )
+                    .fill(Color32::from_rgb(220, 38, 38))
+                    .corner_radius(6.0)
+                    .min_size(Vec2::new(240.0, 34.0));
+
+                    if ui.add(stop_btn).clicked() {
+                        state.network_controller.stop();
+                    }
+                } else {
+                    let start_btn = egui::Button::new(
+                        RichText::new(format!("{} Iniciar Servidor RTL-TCP", icons::ICON_ROUTER.codepoint))
+                            .strong()
+                            .color(Color32::WHITE),
+                    )
+                    .fill(theme.accent_blue())
+                    .corner_radius(6.0)
+                    .min_size(Vec2::new(240.0, 34.0));
+
+                    if ui.add_enabled(can_start, start_btn).clicked() {
+                        match state.network_controller.start_rtl_tcp_server(
+                            active_samples,
+                            active_rate,
+                            state.rtl_tcp_host.clone(),
+                            state.rtl_tcp_port,
+                        ) {
+                            Ok(_) => {
+                                state.rtl_tcp_error = None;
+                            }
+                            Err(e) => {
+                                state.rtl_tcp_error = Some(e);
+                            }
+                        }
+                    }
+                }
+
+                if needs_resample {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("(Debes remuestrear la señal en el panel superior antes de iniciar el servidor)")
+                            .size(12.0)
+                            .color(Color32::from_rgb(234, 179, 8)),
+                    );
+                } else if samples.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("(Primero genera la señal en el paso 2)").size(12.0).color(theme.text_secondary()));
+                }
+
+                if let Some(ref err) = state.rtl_tcp_error {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(format!("Error: {}", err)).size(12.0).color(Color32::from_rgb(239, 68, 68)));
+                }
+
+                if stats.is_running {
+                    ui.add_space(10.0);
+                    let metrics_bg = if *theme == AppTheme::Dark { Color32::from_rgb(16, 22, 32) } else { Color32::from_rgb(243, 247, 252) };
+                    Frame::new()
+                        .fill(metrics_bg)
+                        .stroke(Stroke::new(1.0, theme.card_border()))
+                        .corner_radius(6.0)
+                        .inner_margin(10.0)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new(&stats.status_message).size(12.0).color(theme.accent_blue()));
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(format!("Clientes SDR conectados: {}", stats.clients_connected)).size(11.5));
+                                    ui.label("•");
+                                    let sent_mb = stats.bytes_sent as f32 / (1024.0 * 1024.0);
+                                    ui.label(RichText::new(format!("{:.2} MB enviados", sent_mb)).size(11.5));
+                                    ui.label("•");
+                                    ui.label(RichText::new(format!("Throughput: {:.1} kB/s", stats.throughput_kbps)).size(11.5).color(Color32::from_rgb(34, 197, 94)));
+                                });
+                            });
+                        });
                 }
             });
         });
