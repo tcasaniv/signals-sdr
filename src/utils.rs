@@ -202,3 +202,44 @@ pub fn resample_iq(samples: &[(f32, f32)], in_rate: u32, out_rate: u32) -> Vec<(
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resample_iq_identity() {
+        let input = vec![(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)];
+        let output = resample_iq(&input, 48_000, 48_000);
+        assert_eq!(input, output);
+    }
+
+    #[test]
+    fn test_resample_iq_upsampling_duration_and_bounds() {
+        let in_rate = 48_000;
+        let out_rate = 2_000_000;
+        // 0.1 s of signal: 4800 samples
+        let input: Vec<(f32, f32)> = (0..4800)
+            .map(|i| {
+                let phase = 2.0 * std::f32::consts::PI * 1000.0 * (i as f32 / in_rate as f32);
+                (phase.cos(), phase.sin())
+            })
+            .collect();
+
+        let output = resample_iq(&input, in_rate, out_rate);
+        let expected_out_len = ((4800.0 / in_rate as f64) * out_rate as f64).round() as usize;
+        assert_eq!(output.len(), expected_out_len);
+        assert!((output[0].0 - input[0].0).abs() < 1e-4);
+        assert!((output[0].1 - input[0].1).abs() < 1e-4);
+        let last_out = output.last().unwrap();
+        let last_in = input.last().unwrap();
+        assert!((last_out.0 - last_in.0).abs() < 1e-4);
+        assert!((last_out.1 - last_in.1).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_resample_iq_empty() {
+        let output = resample_iq(&[], 48_000, 2_000_000);
+        assert!(output.is_empty());
+    }
+}

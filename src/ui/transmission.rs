@@ -36,6 +36,7 @@ pub struct TransmissionTabState {
     pub resampled_samples: Option<Vec<(f32, f32)>>,
     pub resampled_rate: u32,
     pub resampling_status: Option<String>,
+    pub last_input_len: usize,
 }
 
 impl Default for TransmissionTabState {
@@ -55,6 +56,7 @@ impl Default for TransmissionTabState {
             resampled_samples: None,
             resampled_rate: 0,
             resampling_status: None,
+            last_input_len: 0,
         }
     }
 }
@@ -72,10 +74,11 @@ impl TransmissionTabState {
         }
         self.resampled_rate = 0;
         self.resampling_status = None;
+        self.last_input_len = 0;
     }
 }
 
-/// Renderiza la subpestaña "3. Transmisión"
+/// Renderiza la subpestaña "3. Transmisión / Salida"
 pub fn render_transmission_tab(
     ui: &mut Ui,
     theme: &AppTheme,
@@ -89,8 +92,21 @@ pub fn render_transmission_tab(
 ) {
     state.ensure_devices_probed();
 
+    // Invalida el caché si cambió la cantidad de muestras de entrada
+    if state.last_input_len != samples.len() {
+        state.resampled_samples = None;
+        state.resampled_rate = 0;
+        state.last_input_len = samples.len();
+        state.resampling_status = None;
+    }
+
+    let target_rate = state.target_sample_rate;
+    let is_rate_different = target_rate != sample_rate && target_rate > 0;
+    let has_valid_resample = state.resampled_samples.is_some() && state.resampled_rate == target_rate;
+    let needs_resample = is_rate_different && !has_valid_resample;
+
     ui.vertical(|ui| {
-        // Selector de destino: Hardware SDR vs Archivo IQ con soporte de wrap
+        // 1. Selector de destino: Hardware SDR vs Archivo IQ con soporte de wrap
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Destino de la señal:").strong().size(14.0).color(theme.text_primary()));
             ui.add_space(8.0);
@@ -115,7 +131,180 @@ pub fn render_transmission_tab(
             }
         });
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
+
+        // 2. Tarjeta de Remuestreo y Selección de Tasa de Muestreo de Salida
+        Frame::new()
+            .fill(theme.card_bg())
+            .stroke(Stroke::new(1.0_f32, theme.card_border()))
+            .corner_radius(8.0)
+            .inner_margin(12.0)
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "{} Tasa de Muestreo de Transmisión / Remuestreo I/Q",
+                                icons::ICON_REFRESH.codepoint
+                            ))
+                            .strong()
+                            .size(13.5)
+                            .color(theme.accent_blue()),
+                        );
+                    });
+
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!(
+                            "Señal baseband actual: {} Sps ({} kHz) | Muestras: {}",
+                            sample_rate,
+                            sample_rate / 1000,
+                            samples.len()
+                        ))
+                        .size(11.5)
+                        .color(theme.text_secondary()),
+                    );
+
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Tasa objetivo de emisión/exportación:").strong());
+                        let current_rate_text = if state.target_sample_rate == sample_rate {
+                            format!("{} kHz (Nativa baseband)", sample_rate / 1000)
+                        } else if state.target_sample_rate >= 1_000_000 {
+                            format!("{:.2} MSps ({} kHz)", state.target_sample_rate as f32 / 1e6, state.target_sample_rate / 1000)
+                        } else {
+                            format!("{} kHz ({} Sps)", state.target_sample_rate / 1000, state.target_sample_rate)
+                        };
+
+                        egui::ComboBox::from_id_salt("transmission_target_sample_rate_combo")
+                            .selected_text(current_rate_text)
+                            .show_ui(ui, |ui| {
+                                let native_txt = format!("{} kHz (Mantener nativa baseband)", sample_rate / 1000);
+                                if ui.selectable_value(&mut state.target_sample_rate, sample_rate, native_txt).clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 250_000, "250 kHz (250 kSps)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 288_000, "288 kHz (RTL-SDR mínimo)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 500_000, "500 kHz (500 kSps)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 1_000_000, "1.0 MSps (Airspy / SoapySDR)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 2_000_000, "2.0 MSps (HackRF One estándar)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 2_400_000, "2.4 MSps (RTL-SDR / Soapy)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 4_000_000, "4.0 MSps (bladeRF / USRP)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                                if ui.selectable_value(&mut state.target_sample_rate, 8_000_000, "8.0 MSps (Alto ancho de banda)").clicked() {
+                                    state.resampled_samples = None;
+                                    state.resampled_rate = 0;
+                                }
+                            });
+                    });
+
+                    if is_rate_different {
+                        ui.add_space(6.0);
+                        if needs_resample {
+                            Frame::new()
+                                .fill(Color32::from_rgba_unmultiplied(234, 179, 8, 25))
+                                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(234, 179, 8)))
+                                .corner_radius(6.0)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal_wrapped(|ui| {
+                                        let (warn_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
+                                        icons::draw_warning_icon(ui, warn_rect, Color32::from_rgb(250, 204, 21));
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(format!(
+                                                    "La tasa elegida ({} kHz) difiere de la señal baseband ({} kHz). Debes pulsar el botón de abajo para remuestrear antes de Transmitir o Guardar.",
+                                                    target_rate / 1000,
+                                                    sample_rate / 1000
+                                                ))
+                                                .size(11.5)
+                                                .color(Color32::from_rgb(250, 204, 21)),
+                                            )
+                                            .wrap(),
+                                        );
+                                    });
+                                });
+
+                            ui.add_space(8.0);
+                            let resample_btn_text = format!(
+                                "{} Remuestrear Señal I/Q a {} kHz",
+                                icons::ICON_REFRESH.codepoint,
+                                target_rate / 1000
+                            );
+                            let resample_btn = egui::Button::new(
+                                RichText::new(resample_btn_text).strong().size(13.0).color(Color32::WHITE),
+                            )
+                            .fill(theme.accent_blue())
+                            .corner_radius(6.0);
+
+                            let can_resample = !samples.is_empty();
+                            if ui.add_enabled(can_resample, resample_btn).clicked() {
+                                let resampled = crate::utils::resample_iq(samples, sample_rate, target_rate);
+                                state.resampled_rate = target_rate;
+                                state.resampling_status = Some(format!(
+                                    "Señal remuestreada exitosamente a {} kHz ({} muestras I/Q).",
+                                    target_rate / 1000,
+                                    resampled.len()
+                                ));
+                                state.resampled_samples = Some(resampled);
+                            }
+                        } else if has_valid_resample {
+                            let resampled_len = state.resampled_samples.as_ref().map(|s| s.len()).unwrap_or(0);
+                            Frame::new()
+                                .fill(Color32::from_rgba_unmultiplied(34, 197, 94, 25))
+                                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(34, 197, 94)))
+                                .corner_radius(6.0)
+                                .inner_margin(8.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal_wrapped(|ui| {
+                                        let (check_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
+                                        icons::draw_check_icon(ui, check_rect, Color32::from_rgb(34, 197, 94));
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(format!(
+                                                    "Señal remuestreada y lista: {} kHz ({} muestras I/Q). Ya puedes transmitir o guardar.",
+                                                    state.resampled_rate / 1000,
+                                                    resampled_len
+                                                ))
+                                                .size(11.5)
+                                                .color(Color32::from_rgb(34, 197, 94)),
+                                            )
+                                            .wrap(),
+                                        );
+                                    });
+                                });
+                        }
+                    }
+                });
+            });
+
+        ui.add_space(8.0);
+
+        // Calcular muestras y tasas efectivas tras la posible interacción con el botón de remuestreo
+        let has_valid_resample = state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate;
+        let is_rate_different = state.target_sample_rate != sample_rate && state.target_sample_rate > 0;
+        let needs_resample = is_rate_different && !has_valid_resample;
 
         match state.destination {
             TransmissionDestination::HardwareSdr => {
@@ -127,6 +316,7 @@ pub fn render_transmission_tab(
                     sdr_controller,
                     samples,
                     sample_rate,
+                    needs_resample,
                 );
             }
             TransmissionDestination::IqFile => {
@@ -138,12 +328,18 @@ pub fn render_transmission_tab(
                     state,
                     samples,
                     sample_rate,
+                    needs_resample,
                 );
             }
         }
 
         ui.add_space(10.0);
-        crate::ui::spectrum::render_signal_visualizer(ui, theme, samples, sample_rate);
+        let (viz_samples, viz_rate) = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+            (state.resampled_samples.as_deref().unwrap(), state.resampled_rate)
+        } else {
+            (samples, sample_rate)
+        };
+        crate::ui::spectrum::render_signal_visualizer(ui, theme, viz_samples, viz_rate);
     });
 }
 
@@ -155,6 +351,7 @@ fn render_sdr_panel(
     sdr_controller: &mut SdrTransmissionController,
     samples: &[(f32, f32)],
     sample_rate: u32,
+    needs_resample: bool,
 ) {
     Frame::new()
         .fill(theme.card_bg())
@@ -561,14 +758,20 @@ fn render_sdr_panel(
                 ui.add_space(6.0);
 
                 // Tasa de muestreo
+                let active_sample_rate = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                    state.resampled_rate
+                } else {
+                    sample_rate
+                };
+
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Tasa de Muestreo SDR (Hz):");
-                    state.tx_config.sample_rate_hz = sample_rate;
-                    ui.label(RichText::new(format!("{} Hz ({:.2} MSps)", sample_rate, sample_rate as f32 / 1e6)).strong());
+                    state.tx_config.sample_rate_hz = active_sample_rate;
+                    ui.label(RichText::new(format!("{} Hz ({:.2} MSps)", active_sample_rate, active_sample_rate as f32 / 1e6)).strong());
                 });
 
                 // Advertencia de Tasa de Muestreo con icono vectorial (sin emojis)
-                if (state.tx_config.hw_type == SdrHardwareType::HackRfSoapy || state.tx_config.hw_type == SdrHardwareType::HackRfSeify) && sample_rate < 1_000_000 {
+                if (state.tx_config.hw_type == SdrHardwareType::HackRfSoapy || state.tx_config.hw_type == SdrHardwareType::HackRfSeify) && active_sample_rate < 1_000_000 {
                     ui.add_space(4.0);
                     Frame::new()
                         .fill(Color32::from_rgba_unmultiplied(234, 179, 8, 30))
@@ -582,8 +785,8 @@ fn render_sdr_panel(
                                 ui.add(
                                     egui::Label::new(
                                         RichText::new(format!(
-                                            "Tasa de muestreo actual ({} Hz) no admitida por HackRF. Requiere al menos 1,000,000 Hz (1 MSps) en Soapy o 2,000,000 Hz en Seify. Ve al paso 2 y ajusta la tasa de muestreo del pipeline.",
-                                            sample_rate
+                                            "Tasa de muestreo actual ({} Hz) no admitida por HackRF. Requiere al menos 1,000,000 Hz (1 MSps) en Soapy o 2,000,000 Hz en Seify. Selecciona 2.0 MSps en el panel superior y pulsa 'Remuestrear'.",
+                                            active_sample_rate
                                         ))
                                         .size(11.5)
                                         .color(Color32::from_rgb(250, 204, 21)),
@@ -773,12 +976,35 @@ fn render_sdr_panel(
                         .fill(theme.accent_blue())
                         .corner_radius(6.0);
 
-                        let enabled = !samples.is_empty();
+                        let tx_samples_count = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                            state.resampled_samples.as_ref().unwrap().len()
+                        } else {
+                            samples.len()
+                        };
+                        let enabled = tx_samples_count > 0 && !needs_resample;
                         if ui.add_enabled(enabled, tx_btn).clicked() {
-                            sdr_controller.start(state.tx_config.clone(), samples.to_vec());
+                            let to_transmit = if let Some(ref r) = state.resampled_samples {
+                                if state.resampled_rate == state.target_sample_rate {
+                                    r.clone()
+                                } else {
+                                    samples.to_vec()
+                                }
+                            } else {
+                                samples.to_vec()
+                            };
+                            sdr_controller.start(state.tx_config.clone(), to_transmit);
                         }
 
-                        if samples.is_empty() {
+                        if needs_resample {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new("(Debes remuestrear la señal en el panel superior antes de transmitir)")
+                                        .size(12.0)
+                                        .color(Color32::from_rgb(234, 179, 8)),
+                                )
+                                .wrap(),
+                            );
+                        } else if samples.is_empty() {
                             ui.add(
                                 egui::Label::new(
                                     RichText::new("(Primero genera la señal en el paso 2)")
@@ -868,6 +1094,7 @@ fn render_file_panel(
     state: &mut TransmissionTabState,
     samples: &[(f32, f32)],
     sample_rate: u32,
+    needs_resample: bool,
 ) {
     Frame::new()
         .fill(theme.card_bg())
@@ -946,8 +1173,27 @@ fn render_file_panel(
                 .fill(theme.accent_blue())
                 .corner_radius(6.0);
 
-                let can_save = !samples.is_empty();
+                let file_samples_count = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                    state.resampled_samples.as_ref().unwrap().len()
+                } else {
+                    samples.len()
+                };
+                let can_save = file_samples_count > 0 && !needs_resample;
                 if ui.add_enabled(can_save, save_btn).clicked() {
+                    let active_rate = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                        state.resampled_rate
+                    } else {
+                        sample_rate
+                    };
+                    let active_samples = if let Some(ref r) = state.resampled_samples {
+                        if state.resampled_rate == state.target_sample_rate {
+                            r.as_slice()
+                        } else {
+                            samples
+                        }
+                    } else {
+                        samples
+                    };
                     #[cfg(target_arch = "wasm32")]
                     {
                         let filename = format!("{}.{}", state.output_filename, state.export_format.default_extension());
@@ -955,7 +1201,7 @@ fn render_file_panel(
                             crate::export::IqExportFormat::WavIq16 | crate::export::IqExportFormat::WavAudioMono => "audio/wav",
                             _ => "application/octet-stream",
                         };
-                        match crate::export::export_iq_to_memory(samples, sample_rate, state.export_format) {
+                        match crate::export::export_iq_to_memory(active_samples, active_rate, state.export_format) {
                             Ok(bytes) => {
                                 match crate::web_utils::trigger_browser_download(&filename, &bytes, mime_type) {
                                     Ok(_) => {
@@ -983,7 +1229,7 @@ fn render_file_panel(
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         let file_path = target_dir.join(format!("{}.{}", state.output_filename, state.export_format.default_extension()));
-                        match export_iq_file(&file_path, samples, sample_rate, state.export_format) {
+                        match export_iq_file(&file_path, active_samples, active_rate, state.export_format) {
                             Ok(_) => {
                                 state.export_status_message = Some((
                                     format!("Archivo guardado exitosamente en: {}", file_path.display()),
@@ -1000,7 +1246,13 @@ fn render_file_panel(
                     }
                 }
 
-                if samples.is_empty() {
+                if needs_resample {
+                    ui.label(
+                        RichText::new("(Debes remuestrear la señal en el panel superior antes de guardar)")
+                            .size(12.0)
+                            .color(Color32::from_rgb(234, 179, 8)),
+                    );
+                } else if samples.is_empty() {
                     ui.label(RichText::new("(Primero genera la señal en el paso 2)").size(12.0).color(theme.text_secondary()));
                 }
 
