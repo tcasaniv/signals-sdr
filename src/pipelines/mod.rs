@@ -1,3 +1,40 @@
+//! # Módulos Didácticos de Satélites y Moduladores de Radio
+//!
+//! Este módulo contiene la implementación de cada uno de los 8 transmisores y moduladores
+//! didácticos de Signals SDR. Cada pipeline es un módulo autónomo que gestiona las 4 fases
+//! pedagógicas de la señal (1. Fuente, 2. Codificación/Modulación, 3. Efectos de canal y 4. Transmisión).
+//!
+//! ## Catálogo de Pipelines Disponibles
+//!
+//! - [`apt::AptPipeline`]: Transmisor satelital meteorológico NOAA APT en 137.100 / 137.9125 MHz.
+//!   Convierte imágenes en tramas analógicas de 2080 píxeles por línea con marcas de sincronismo,
+//!   minutero y telemetría, modulándolas sobre una subportadora AM de 2400 Hz y modulador FM de 17 kHz de desviación.
+//!
+//! - [`lrpt::LrptPipeline`]: Transmisor satelital meteorológico digital ruso Meteor-M LRPT en 137.100 / 137.900 MHz.
+//!   Implementa compresión JPEG DCT $8\times 8$, empaquetado CCSDS (Space Packet y VCDU), codificación
+//!   Reed-Solomon (255, 223), Scrambler pseudoaleatorio CCSDS, código convolucional FEC ($k=7, r=1/2$)
+//!   y modulación por desplazamiento de fase en cuadratura compensada (OQPSK) a 72 ksps.
+//!
+//! - [`iss_sstv::IssSstvPipeline`]: Transmisor de televisión de barrido lento (SSTV) oficial de la Estación
+//!   Espacial Internacional (ISS) en 145.800 MHz FM estrecha (modos conmemorativos Robot 36, PD 120 y Martin 1).
+//!
+//! - [`generic_sstv::GenericSstvPipeline`]: Modulador SSTV multiprotocolo para radioaficionados en bandas HF y VHF
+//!   con soporte completo de 11 modos (Martin 1/2, Scottie 1/2/DX, Robot 36/72, PD 120/180/290 y BW 8/12).
+//!
+//! - [`generic_fm::GenericFmPipeline`]: Modulador de Frecuencia Modulada (FM) analógica de propósito general,
+//!   con presets para Broadcast comercial WFM (75 kHz de desviación), comunicaciones VHF/UHF NFM (5 kHz),
+//!   filtro de pre-énfasis analógico configurable (50 µs, 75 µs o plano) y reproductor de audio integrado.
+//!
+//! - [`generic_am::GenericAmPipeline`]: Modulador de Amplitud Modulada (AM) analógica con soporte para
+//!   DSB-FC (Portadora Completa con índice $m$), DSB-SC (Portadora Suprimida) y Banda Lateral Única (SSB USB / LSB)
+//!   sintetizada digitalmente mediante transformada analítica de Hilbert.
+//!
+//! - [`generic_iq::GenericIqPipeline`]: Procesador y retransmisor de archivos I/Q pregrabados (`.wav`, `.raw`, `.iq`, `.sc16`),
+//!   con análisis espectral FFT, eliminación de offset de continua (DC spike) y rotación Doppler de portadora.
+//!
+//! - [`hrpt::HrptPipeline`]: Módulo didáctico de alta resolución para satélites en banda L (1.7 GHz)
+//!   con modulación digital BPSK y codificación de línea Manchester Split-Phase-L a 665.4 kbps.
+
 pub mod apt;
 pub mod generic_am;
 pub mod generic_fm;

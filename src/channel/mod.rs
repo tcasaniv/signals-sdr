@@ -1,3 +1,43 @@
+//! # Simulación de Canal Físico y Degradaciones de RF
+//!
+//! Este módulo implementa la cadena pedagógica completa de simulación de canal físico
+//! de propagación en el espacio libre y medio terrestre, modelando las imperfecciones
+//! y perturbaciones que experimentan las señales de radiofrecuencia entre el transmisor y el receptor.
+//!
+//! ## Modelos Físicos Implementados
+//!
+//! 1. **Ruido Blanco Gaussiano Aditivo (AWGN):**
+//!    Inyección de ruido térmico con control estricto de relación señal a ruido ($\text{SNR}_{\text{dB}}$)
+//!    desde $-10\text{ dB}$ hasta $+40\text{ dB}$, empleando la transformada de Box-Muller sobre un generador
+//!    pseudoaleatorio determinista ultrarrápido [`effects::FastRng`].
+//!
+//! 2. **Desplazamiento Doppler Dinámico:**
+//!    - **Paso Orbital LEO ([`DopplerMode::LeoPass`]):** Curva tangencial hiperbólica $f_{\text{doppler}}(t) = -f_{\text{max}} \tanh((t - t_0)/\tau)$
+//!      que modela el acercamiento, punto de máxima elevación (CPA) y alejamiento de un satélite en órbita baja.
+//!    - **Deriva Lineal ([`DopplerMode::LinearDrift`]):** Variación lineal de frecuencia para modelar derivas térmicas de oscilador.
+//!    - **Offset Estático ([`DopplerMode::StaticOffset`]):** Error constante de sintonización de portadora.
+//!
+//! 3. **Desvanecimiento por Multitrayecto (Fading):**
+//!    - **Rician:** Componente directa con línea de vista (LOS) más componentes difusas, regulable mediante el factor $K_{\text{dB}}$.
+//!    - **Rayleigh:** Caso límite sin visión directa ($K = -\infty\text{ dB}$) para simular entornos urbanos con reflexiones múltiples.
+//!    - Filtrado pasobajo de componentes difusas para controlar la tasa de desvanecimiento (*Doppler spread*).
+//!
+//! 4. **Pérdida por Trayectoria y Atenuación Atmosférica:**
+//!    Atenuación basada en la fórmula de propagación en espacio libre (FSPL) y absorción de gases en la troposfera.
+//!
+//! 5. **Imperfecciones de Frontend RF:**
+//!    Desbalance de amplitud I/Q, error de cuadratura de fase y desplazamiento de corriente continua (DC offset)
+//!    para entrenar al estudiante en técnicas de corrección I/Q.
+//!
+//! 6. **Márgenes de Ruido (Noise Padding):**
+//!    Inserción de ráfagas de ruido previo y posterior a la señal para permitir la estabilización del AGC
+//!    y los bucles de enganche de fase (PLL) en el software receptor.
+//!
+//! ## Computación Asíncrona sin Truncamiento
+//! El estado [`ChannelEffectsState`] gestiona el cómputo en segundo plano sobre un hilo del SO (`std::thread::spawn`),
+//! garantizando que la señal resultante conserve exactamente el 100% de las muestras generadas
+//! para su posterior emisión íntegra en el Paso 4 de Transmisión.
+
 pub mod effects;
 
 pub use effects::*;
