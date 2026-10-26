@@ -670,6 +670,8 @@ pub struct ChannelEffectsState {
     pub is_computing: bool,
     /// Canal de retorno del cómputo asíncrono
     pub compute_result: std::sync::Arc<std::sync::Mutex<Option<(Vec<(f32, f32)>, f32)>>>,
+    /// Bandera que indica si debe avanzarse automáticamente al Paso 4 de Transmisión al finalizar el cómputo
+    pub pending_continue_to_tx: bool,
 }
 
 impl ChannelEffectsState {
@@ -684,6 +686,7 @@ impl ChannelEffectsState {
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             is_computing: false,
             compute_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            pending_continue_to_tx: false,
         }
     }
 
@@ -693,6 +696,7 @@ impl ChannelEffectsState {
         self.processed_iq.shrink_to_fit();
         self.is_dirty = true;
         self.is_computing = false;
+        self.pending_continue_to_tx = false;
         self.spectrogram_state.release_memory();
     }
 

@@ -371,4 +371,22 @@ mod tests {
             assert!(!p.description().is_empty());
         }
     }
+
+    #[test]
+    fn test_large_signal_preserves_length_without_truncation() {
+        let sample_rate = 1_000_000;
+        let n_samples = 1_000_000; // 1 millón de muestras (supera límites antiguos de 300k y 600k)
+        let large_signal = vec![(0.3f32, -0.4f32); n_samples];
+
+        let mut params = ChannelSimulationParams::from_preset(ChannelPreset::LeoVhfStandard, 137.5);
+        params.enable_noise_padding = false; // Sin padding para comprobar 1:1
+
+        let output = apply_channel_effects(&large_signal, sample_rate, &params);
+        assert_eq!(
+            output.len(),
+            n_samples,
+            "La señal resultante debe preservar exactamente el número total de muestras ({}) sin truncamientos",
+            n_samples
+        );
+    }
 }

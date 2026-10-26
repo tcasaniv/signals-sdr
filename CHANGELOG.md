@@ -7,6 +7,19 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [0.4.3] - 2026-10-26
+
+### Corregido (Fixes)
+- **Procesamiento Íntegro de Muestras I/Q en Efectos de Canal (Paso 3)**: Eliminado el límite artificial `limit` (300,000 / 600,000 muestras) en `dispatch_compute_channel_iq` que recortaba silenciosamente las señales moduladas a solo una fracción de su duración. En Desktop nativo, la totalidad de las muestras de la señal (ej. 17,596,560 muestras en señales largas de satélites o audio) se procesa íntegramente en un hilo de fondo del sistema operativo (`std::thread::spawn`), manteniendo una interfaz fluida a 60 FPS sin bloqueos.
+- **Preservación Total de Señal en Transmisión (Paso 4)**: Al pasar al Paso 4 de Transmisión, la señal con efectos de canal (`processed_iq`) conserva exactamente el 100% de las muestras generadas, garantizando transmisiones y exportaciones completas sin cortes tempranos.
+- **Navegación Reactiva Paso 3 -> Paso 4**: Incorporado el estado `pending_continue_to_tx` en `ChannelEffectsState`. Si el usuario pulsa *"Continuar a Transmisión"* mientras se están calculando los efectos en segundo plano, la interfaz muestra el estado en progreso y avanza automáticamente a Transmisión de manera fluida tan pronto el hilo finaliza.
+
+### Añadido (Features)
+- **Tasas de Muestreo Completas SDR# y SDR++ en RTL-TCP**: Ampliada la lista `RTL_SDR_SAMPLE_RATES` de 10 a 15 tasas estándar con cobertura total de los selectores de SDR# y SDR++: `0.25 MSps`, `0.90 MSps`, `1.024 MSps`, `1.4 MSps`, `1.536 MSps` (SDR++), `1.792 MSps` (SDR++), `1.8 MSps`, `1.92 MSps`, `2.048 MSps`, `2.16 MSps` (SDR++), `2.4 MSps`, `2.56 MSps` (SDR++), `2.8 MSps` (SDR#), `2.88 MSps` (SDR++) y `3.2 MSps`.
+- **Test Unitario de Integridad para Señales de Gran Volumen**: Test `test_large_signal_preserves_length_without_truncation` en `src/channel/effects.rs` que valida que señales de más de un millón de muestras conservan su longitud exacta (1:1) al aplicar la cadena de canal.
+
+---
+
 ## [0.4.2] - 2026-10-25
 
 ### Corregido (Fixes)

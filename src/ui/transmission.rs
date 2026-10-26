@@ -12,16 +12,21 @@ use crate::theme::AppTheme;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use std::path::PathBuf;
 
-pub const RTL_SDR_SAMPLE_RATES: [(u32, &str); 10] = [
-    (250_000, "0.25 MSps (250 kHz - Recomendado red)"),
-    (900_001, "0.90 MSps (900 kHz)"),
-    (1_024_000, "1.024 MSps (1.024 MHz)"),
-    (1_400_000, "1.4 MSps (1.4 MHz)"),
-    (1_800_000, "1.8 MSps (1.8 MHz)"),
-    (1_920_000, "1.92 MSps (1.92 MHz)"),
+pub const RTL_SDR_SAMPLE_RATES: [(u32, &str); 15] = [
+    (250_000, "0.25 MSps (250 kHz - Recomendado red / SDR# / SDR++)"),
+    (900_001, "0.90 MSps (900 kHz - SDR#)"),
+    (1_024_000, "1.024 MSps (1.024 MHz - Estándar RTL-SDR)"),
+    (1_400_000, "1.4 MSps (1.4 MHz - SDR#)"),
+    (1_536_000, "1.536 MSps (1.536 MHz - SDR++)"),
+    (1_792_000, "1.792 MSps (1.792 MHz - SDR++)"),
+    (1_800_000, "1.8 MSps (1.8 MHz - SDR#)"),
+    (1_920_000, "1.92 MSps (1.92 MHz - SDR# / SDR++)"),
     (2_048_000, "2.048 MSps (2.048 MHz - Estándar RTL-SDR)"),
-    (2_400_000, "2.4 MSps (2.4 MHz)"),
-    (2_560_000, "2.56 MSps (2.56 MHz)"),
+    (2_160_000, "2.16 MSps (2.16 MHz - SDR++)"),
+    (2_400_000, "2.4 MSps (2.4 MHz - SDR# / SDR++)"),
+    (2_560_000, "2.56 MSps (2.56 MHz - SDR++)"),
+    (2_800_000, "2.8 MSps (2.8 MHz - SDR#)"),
+    (2_880_000, "2.88 MSps (2.88 MHz - SDR++)"),
     (3_200_000, "3.2 MSps (3.2 MHz - Máximo RTL2832U)"),
 ];
 

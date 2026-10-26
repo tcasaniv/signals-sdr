@@ -9,27 +9,26 @@ use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-/// Calcula efectos de canal síncronamente (Desktop) o de forma asíncrona (WASM).
-/// En WASM escribe el resultado en `result_arc` y devuelve un Vec vacío inmediatamente.
-/// En Desktop, calcula y devuelve el resultado directamente.
+/// Calcula efectos de canal en background sin bloquear la interfaz.
+/// En Desktop corre sobre un hilo secundario del SO; en WASM mediante tarea asíncrona spawn_local.
+/// No trunca ni reduce la cantidad de muestras de la señal original.
 fn dispatch_compute_channel_iq(
     original: &[(f32, f32)],
     sample_rate: u32,
     params: &ChannelSimulationParams,
-    for_tx: bool,
     result_arc: Arc<Mutex<Option<(Vec<(f32, f32)>, f32)>>>,
     ctx: egui::Context,
 ) {
-    // Límite de muestras para evitar congelamientos en WASM
-    let limit = if for_tx { 600_000usize } else { 300_000usize };
+    if original.is_empty() {
+        if let Ok(mut g) = result_arc.lock() {
+            *g = Some((Vec::new(), 0.0));
+        }
+        return;
+    }
 
     #[cfg(target_arch = "wasm32")]
     {
-        let slice: Vec<(f32, f32)> = if original.len() > limit {
-            original[..limit].to_vec()
-        } else {
-            original.to_vec()
-        };
+        let slice: Vec<(f32, f32)> = original.to_vec();
         let params_owned = params.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let t0 = js_sys::Date::now();
@@ -44,11 +43,7 @@ fn dispatch_compute_channel_iq(
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let slice: Vec<(f32, f32)> = if !for_tx && original.len() > limit {
-            original[..limit].to_vec()
-        } else {
-            original.to_vec()
-        };
+        let slice: Vec<(f32, f32)> = original.to_vec();
         let params_owned = params.clone();
         std::thread::spawn(move || {
             let t0 = Instant::now();
@@ -76,7 +71,12 @@ pub fn render_channel_effects_tab(
 ) {
     // Recoger resultado del cómputo asíncrono si ya terminó
     if state.is_computing {
-        state.poll_compute_result();
+        if state.poll_compute_result() {
+            if state.pending_continue_to_tx {
+                state.pending_continue_to_tx = false;
+                on_continue_to_tx();
+            }
+        }
         ui.ctx().request_repaint();
     }
 
@@ -156,7 +156,6 @@ pub fn render_channel_effects_tab(
                         original_iq,
                         sample_rate,
                         &state.params,
-                        false,
                         Arc::clone(&state.compute_result),
                         ui.ctx().clone(),
                     );
@@ -838,7 +837,6 @@ fn render_with_effects_view(
                         original_iq,
                         sample_rate,
                         &state.params,
-                        false,
                         Arc::clone(&state.compute_result),
                         ui.ctx().clone(),
                     );
@@ -881,28 +879,35 @@ fn render_with_effects_view(
                         "Continuar a Transmisión {}",
                         crate::icons::ICON_ARROW_FORWARD.codepoint
                     );
+                    let btn_text = if state.is_computing {
+                        format!("{} Calculando...", crate::icons::ICON_REFRESH.codepoint)
+                    } else {
+                        next_label
+                    };
                     if ui
-                        .button(
-                            RichText::new(next_label)
-                                .strong()
-                                .size(13.0),
+                        .add_enabled(
+                            !state.is_computing,
+                            egui::Button::new(
+                                RichText::new(btn_text)
+                                    .strong()
+                                    .size(13.0),
+                            ),
                         )
                         .clicked()
                     {
-                        // Si está sucio o vacío, disparar cómputo (para Tx se usa todo el buffer)
+                        // Si está sucio o vacío, disparar cómputo íntegro en segundo plano
                         if (state.processed_iq.is_empty() || state.is_dirty) && !state.is_computing {
                             state.is_computing = true;
                             state.is_dirty = false;
+                            state.pending_continue_to_tx = true;
                             dispatch_compute_channel_iq(
                                 original_iq,
                                 sample_rate,
                                 &state.params,
-                                true,
                                 Arc::clone(&state.compute_result),
                                 ui.ctx().clone(),
                             );
-                        }
-                        if !state.is_computing {
+                        } else if !state.is_computing {
                             on_continue_to_tx();
                         }
                     }
