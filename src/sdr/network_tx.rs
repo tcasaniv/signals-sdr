@@ -100,6 +100,7 @@ pub struct NetworkStreamStats {
     pub status_message: String,
     pub is_playing_signal: bool,
     pub client_gain_db: f32,
+    pub client_sample_rate: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +115,7 @@ pub struct NetworkStreamHandle {
     pub simulate_hardware: Arc<AtomicBool>,
     pub tx_attenuation_bits: Arc<AtomicU32>,
     pub client_gain_tenths: Arc<AtomicU32>,
+    pub client_sample_rate: Arc<AtomicU32>,
     pub is_playing_signal: Arc<AtomicBool>,
 }
 
@@ -178,6 +180,8 @@ impl NetworkTxController {
             let is_playing_signal = h.is_playing_signal.load(Ordering::Relaxed);
             let client_gain_db = (h.client_gain_tenths.load(Ordering::Relaxed) as f32) / 10.0;
 
+            let client_sample_rate = h.client_sample_rate.load(Ordering::Relaxed);
+
             NetworkStreamStats {
                 is_running,
                 bytes_sent: bytes,
@@ -187,6 +191,7 @@ impl NetworkTxController {
                 status_message: status,
                 is_playing_signal,
                 client_gain_db,
+                client_sample_rate,
             }
         } else {
             NetworkStreamStats::default()
@@ -230,6 +235,7 @@ impl NetworkTxController {
             simulate_hardware: Arc::new(AtomicBool::new(false)),
             tx_attenuation_bits: Arc::new(AtomicU32::new(0.0_f32.to_bits())),
             client_gain_tenths: Arc::new(AtomicU32::new(300)),
+            client_sample_rate: Arc::new(AtomicU32::new(sample_rate)),
             is_playing_signal: Arc::new(AtomicBool::new(true)),
         };
 
@@ -449,6 +455,7 @@ impl NetworkTxController {
         let simulate_hardware_atom = Arc::new(AtomicBool::new(simulate_hardware));
         let tx_attenuation_bits = Arc::new(AtomicU32::new(tx_attenuation_db.to_bits()));
         let client_gain_tenths = Arc::new(AtomicU32::new(297)); // 29.7 dB por defecto
+        let client_sample_rate = Arc::new(AtomicU32::new(sample_rate));
         let is_playing_signal = Arc::new(AtomicBool::new(true));
 
         let handle = NetworkStreamHandle {
@@ -462,6 +469,7 @@ impl NetworkTxController {
             simulate_hardware: simulate_hardware_atom.clone(),
             tx_attenuation_bits: tx_attenuation_bits.clone(),
             client_gain_tenths: client_gain_tenths.clone(),
+            client_sample_rate: client_sample_rate.clone(),
             is_playing_signal: is_playing_signal.clone(),
         };
 
@@ -470,8 +478,6 @@ impl NetworkTxController {
 
             let chunk_samples = 8192; // 16384 bytes por paquete RTL
             let bytes_per_chunk = chunk_samples * 2;
-            let chunk_duration_sec = chunk_samples as f64 / sample_rate as f64;
-            let chunk_duration = std::time::Duration::from_secs_f64(chunk_duration_sec);
 
             let mut active_clients: Vec<ActiveRtlClient> = Vec::new();
             let mut sample_cursor: usize = 0;
@@ -541,6 +547,7 @@ impl NetworkTxController {
                                 }
                             }
                             0x02 => {
+                                client_sample_rate.store(param, Ordering::Relaxed);
                                 if let Ok(mut s) = status.lock() {
                                     *s = format!("Cliente configuró sample rate: {} Sps", param);
                                 }
@@ -625,16 +632,23 @@ impl NetworkTxController {
                             1.0_f32
                         };
 
-                        // A ganancia óptima (<= 38 dB), el piso de ruido permanece bajo y controlado.
-                        // Al exceder 38 dB y subir hacia 49.6 dB (máximo), el ruido térmico se eleva
-                        // exponencialmente degradando el SNR, educando sobre la saturación del RTL-SDR.
-                        let noise_std = if gain_db > 38.0 {
+                        // 1. Piso de ruido intrínseco del ADC RTL2832U de 8 bits:
+                        // Garantiza dither continuo de ±1.5 a 2 LSBs, asegurando que el espectro
+                        // NUNCA quede plano a -200 dBFS o -135 dBFS en SDR# y SDR++.
+                        // Mantiene un piso de ruido natural constante ("grass noise") de ~ -75 a -70 dBFS.
+                        let adc_noise_floor = 0.014_f32;
+
+                        // 2. Ruido térmico y de intermodulación RF adicional al acercarse o superar ganancia óptima:
+                        let rf_noise_extra = if gain_db > 38.0 {
                             let excess_db = gain_db - 38.0;
-                            0.008 + 0.22 * (excess_db / 11.6).powf(1.6)
+                            0.20_f32 * (excess_db / 11.6).powf(1.5)
+                        } else if gain_db > 28.0 {
+                            0.006_f32 * ((gain_db - 28.0) / 10.0)
                         } else {
-                            let atten = 10.0_f32.powf((gain_db - 38.0) / 20.0);
-                            0.008 * atten.max(0.05)
+                            0.0_f32
                         };
+
+                        let noise_std = adc_noise_floor + rf_noise_extra;
                         (rx_factor, noise_std)
                     } else {
                         (1.0, 0.0)
@@ -671,13 +685,13 @@ impl NetworkTxController {
                         let out_i = if is_playing {
                             (raw_i * tx_scale * rx_gain_factor) + (gauss_i * base_noise_std)
                         } else {
-                            gauss_i * (base_noise_std.max(0.025))
+                            gauss_i * (base_noise_std.max(0.014))
                         };
 
                         let out_q = if is_playing {
                             (raw_q * tx_scale * rx_gain_factor) + (gauss_q * base_noise_std)
                         } else {
-                            gauss_q * (base_noise_std.max(0.025))
+                            gauss_q * (base_noise_std.max(0.014))
                         };
 
                         let u8_i = ((out_i.clamp(-1.0, 1.0) * 127.5) + 127.5) as u8;
@@ -696,9 +710,14 @@ impl NetworkTxController {
                     bytes_sent.fetch_add(chunk_buf.len() as u64, Ordering::Relaxed);
                 }
 
+                // Pacing de reloj dinámico según la tasa de muestreo activa o solicitada por el cliente
+                let active_rate = client_sample_rate.load(Ordering::Relaxed).max(10_000);
+                let dynamic_chunk_duration_sec = chunk_samples as f64 / active_rate as f64;
+                let dynamic_chunk_duration = std::time::Duration::from_secs_f64(dynamic_chunk_duration_sec);
+
                 let elapsed = loop_start.elapsed();
-                if elapsed < chunk_duration {
-                    std::thread::sleep(chunk_duration - elapsed);
+                if elapsed < dynamic_chunk_duration {
+                    std::thread::sleep(dynamic_chunk_duration - elapsed);
                 }
             }
 

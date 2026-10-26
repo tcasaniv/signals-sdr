@@ -12,6 +12,19 @@ use crate::theme::AppTheme;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use std::path::PathBuf;
 
+pub const RTL_SDR_SAMPLE_RATES: [(u32, &str); 10] = [
+    (250_000, "0.25 MSps (250 kHz - Recomendado red)"),
+    (900_001, "0.90 MSps (900 kHz)"),
+    (1_024_000, "1.024 MSps (1.024 MHz)"),
+    (1_400_000, "1.4 MSps (1.4 MHz)"),
+    (1_800_000, "1.8 MSps (1.8 MHz)"),
+    (1_920_000, "1.92 MSps (1.92 MHz)"),
+    (2_048_000, "2.048 MSps (2.048 MHz - Estándar RTL-SDR)"),
+    (2_400_000, "2.4 MSps (2.4 MHz)"),
+    (2_560_000, "2.56 MSps (2.56 MHz)"),
+    (3_200_000, "3.2 MSps (3.2 MHz - Máximo RTL2832U)"),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransmissionDestination {
     HardwareSdr,
@@ -1635,6 +1648,45 @@ fn render_rtl_tcp_panel(
                 });
                 ui.add_space(8.0);
 
+                // Selector de tasa de muestreo RTL-SDR (SDR# / SDR++)
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Tasa RTL-SDR:");
+                    let current_target = state.target_sample_rate;
+                    let current_label = RTL_SDR_SAMPLE_RATES
+                        .iter()
+                        .find(|(r, _)| *r == current_target)
+                        .map(|(_, l)| *l)
+                        .unwrap_or("Personalizada");
+
+                    egui::ComboBox::from_id_salt("rtl_tcp_sample_rate_combo")
+                        .selected_text(current_label)
+                        .show_ui(ui, |ui| {
+                            for (rate, label) in RTL_SDR_SAMPLE_RATES {
+                                if ui.selectable_value(&mut state.target_sample_rate, rate, label).clicked() {
+                                    state.resampled_samples = None;
+                                }
+                            }
+                        });
+
+                    if state.target_sample_rate != sample_rate && state.resampled_samples.is_none() {
+                        let resample_btn = egui::Button::new(
+                            RichText::new(format!("{} Remuestrear a {:.3} MSps", icons::ICON_SYNC.codepoint, state.target_sample_rate as f32 / 1_000_000.0))
+                                .size(11.5)
+                                .color(Color32::WHITE),
+                        )
+                        .fill(theme.accent_blue())
+                        .corner_radius(4.0);
+                        if ui.add(resample_btn).clicked() {
+                            let resampled = crate::utils::resample_iq(samples, sample_rate, state.target_sample_rate);
+                            let count = resampled.len();
+                            state.resampled_samples = Some(resampled);
+                            state.resampled_rate = state.target_sample_rate;
+                            state.resampling_status = Some(format!("Remuestreado a {} Sps ({} muestras)", state.target_sample_rate, count));
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+
                 // Opciones de transmisión y simulación didáctica
                 ui.horizontal_wrapped(|ui| {
                     let loop_resp = ui.checkbox(&mut state.rtl_tcp_loop, "Repetir señal en bucle continuo");
@@ -1812,6 +1864,17 @@ fn render_rtl_tcp_panel(
                                     ui.label(RichText::new(format!("{:.2} MB enviados", sent_mb)).size(11.5));
                                     ui.label("•");
                                     ui.label(RichText::new(format!("Throughput: {:.1} kB/s", stats.throughput_kbps)).size(11.5).color(Color32::from_rgb(34, 197, 94)));
+                                    let srv_rate_khz = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+                                        state.resampled_rate
+                                    } else {
+                                        sample_rate
+                                    };
+                                    ui.label("•");
+                                    ui.label(RichText::new(format!("Rate Señal: {} kSps", srv_rate_khz / 1000)).size(11.5));
+                                    if stats.client_sample_rate > 0 && stats.client_sample_rate != srv_rate_khz {
+                                        ui.label("•");
+                                        ui.label(RichText::new(format!("SDR# solicitó: {} kSps (Reloj sincronizado)", stats.client_sample_rate / 1000)).size(11.5).color(Color32::from_rgb(234, 179, 8)));
+                                    }
                                 });
                             });
                         });
