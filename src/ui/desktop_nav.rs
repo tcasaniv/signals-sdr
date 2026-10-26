@@ -607,6 +607,7 @@ pub fn render_desktop_settings_list(
         ui.add_space(8.0);
 
         let tabs = SettingsTab::all();
+        let avail_w = ui.available_width();
 
         for &tab in tabs {
             let is_active = state.active_settings_tab == tab;
@@ -623,28 +624,36 @@ pub fn render_desktop_settings_list(
             let card_frame = Frame::new()
                 .fill(bg_color)
                 .stroke(stroke)
-                .corner_radius(8.0)
-                .inner_margin(Margin::symmetric(10, 8));
+                .corner_radius(10.0)
+                .inner_margin(Margin::symmetric(14, 10));
 
             let resp = card_frame.show(ui, |ui| {
+                ui.set_width(avail_w - 2.0);
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(tab.icon())
-                            .size(16.0)
+                            .size(18.0)
                             .color(if is_active { theme.accent_blue() } else { theme.text_secondary() }),
                     );
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new(tab.title())
                                 .strong()
-                                .size(12.5)
+                                .size(13.0)
                                 .color(if is_active { theme.accent_blue() } else { theme.text_primary() }),
                         );
                         ui.label(
                             RichText::new(tab.description())
                                 .size(10.5)
                                 .color(theme.text_secondary()),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(icons::ICON_CHEVRON_RIGHT.codepoint)
+                                .size(18.0)
+                                .color(if is_active { theme.accent_blue() } else { theme.text_secondary() }),
                         );
                     });
                 });
