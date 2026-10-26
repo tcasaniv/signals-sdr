@@ -1655,6 +1655,9 @@ fn render_rtl_tcp_panel(
                     if sim_resp.changed() && stats.is_running {
                         state.network_controller.set_simulate_hardware(state.rtl_tcp_simulate_hardware);
                     }
+                    if !state.rtl_tcp_simulate_hardware {
+                        ui.label(RichText::new("(I/Q directo: el control de ganancia de SDR#/SDR++ no alterará el nivel)").size(11.0).color(theme.text_secondary()));
+                    }
                 });
                 ui.add_space(6.0);
 
@@ -1792,6 +1795,13 @@ fn render_rtl_tcp_panel(
                                     ui.label(RichText::new(format!("Ganancia Cliente SDR: {:.1} dB", stats.client_gain_db)).size(11.5).strong().color(theme.text_primary()));
                                     ui.label("•");
                                     ui.label(RichText::new(format!("Atenuación TX: {:.1} dB", state.rtl_tcp_attenuation_db)).size(11.5));
+                                    ui.label("•");
+                                    let sim_badge = if state.rtl_tcp_simulate_hardware {
+                                        RichText::new("Simulación HW: Activa").size(11.5).color(Color32::from_rgb(34, 197, 94))
+                                    } else {
+                                        RichText::new("Simulación HW: Inactiva").size(11.5).color(Color32::from_rgb(234, 179, 8))
+                                    };
+                                    ui.label(sim_badge);
                                 });
                                 ui.add_space(2.0);
 

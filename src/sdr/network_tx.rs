@@ -35,6 +35,21 @@ impl FastRng {
     }
 }
 
+/// Valores de ganancia discreta soportados por el sintonizador R820T/R820T2 en décimas de dB.
+/// Coincide con la lista exacta de librtlsdr, SDR# y SDR++:
+/// 0.0, 0.9, 1.4, 2.7, 3.7, 7.7, 8.7, 12.5, 14.4, 15.7, 16.6, 19.7, 20.7, 22.9, 25.4, 28.0, 29.7, 32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5, 48.0, 49.6 dB.
+pub const R820T_GAINS_TENTHS_DB: [u32; 29] = [
+    0, 9, 14, 27, 37, 77, 87, 125, 144, 157, 166, 197, 207, 229, 254, 280, 297, 328, 338, 364,
+    372, 386, 402, 421, 434, 439, 445, 480, 496,
+];
+
+/// Estructura interna para gestionar clientes RTL-TCP con buffer de recepción acumulativo
+#[derive(Debug)]
+struct ActiveRtlClient {
+    stream: std::net::TcpStream,
+    rx_buf: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GnuRadioProtocol {
     #[default]
@@ -458,7 +473,7 @@ impl NetworkTxController {
             let chunk_duration_sec = chunk_samples as f64 / sample_rate as f64;
             let chunk_duration = std::time::Duration::from_secs_f64(chunk_duration_sec);
 
-            let mut active_clients: Vec<std::net::TcpStream> = Vec::new();
+            let mut active_clients: Vec<ActiveRtlClient> = Vec::new();
             let mut sample_cursor: usize = 0;
             let mut rng = FastRng::new(123456789);
 
@@ -479,7 +494,10 @@ impl NetworkTxController {
                         // Enviar encabezado dongle RTL0 requerido por los clientes SDR
                         if stream.write_all(&rtl0_header).is_ok() {
                             let _ = stream.set_nonblocking(true);
-                            active_clients.push(stream);
+                            active_clients.push(ActiveRtlClient {
+                                stream,
+                                rx_buf: Vec::with_capacity(64),
+                            });
                             if let Ok(mut c) = clients_connected.lock() {
                                 *c = active_clients.len();
                             }
@@ -492,12 +510,30 @@ impl NetworkTxController {
                     Err(_) => {}
                 }
 
-                // 2. Procesar comandos entrantes de los clientes (5 bytes: 1 byte cmd + 4 bytes param BE)
-                let mut cmd_buf = [0u8; 5];
+                // 2. Procesar comandos entrantes con buffer acumulativo (5 bytes: 1 byte cmd + 4 bytes param BE)
                 for client in &mut active_clients {
-                    while let Ok(5) = client.read(&mut cmd_buf) {
-                        let cmd_id = cmd_buf[0];
-                        let param = u32::from_be_bytes([cmd_buf[1], cmd_buf[2], cmd_buf[3], cmd_buf[4]]);
+                    let mut temp = [0u8; 128];
+                    loop {
+                        match client.stream.read(&mut temp) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                client.rx_buf.extend_from_slice(&temp[..n]);
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(_) => break,
+                        }
+                    }
+
+                    while client.rx_buf.len() >= 5 {
+                        let cmd_id = client.rx_buf[0];
+                        let param = u32::from_be_bytes([
+                            client.rx_buf[1],
+                            client.rx_buf[2],
+                            client.rx_buf[3],
+                            client.rx_buf[4],
+                        ]);
+                        client.rx_buf.drain(..5);
+
                         match cmd_id {
                             0x01 => {
                                 if let Ok(mut s) = status.lock() {
@@ -510,22 +546,49 @@ impl NetworkTxController {
                                 }
                             }
                             0x03 => {
+                                // SET_GAIN_MODE: 0 = Auto / Tuner AGC, 1 = Manual
                                 if param == 0 {
                                     client_gain_tenths.store(297, Ordering::Relaxed);
                                 }
                                 if let Ok(mut s) = status.lock() {
-                                    *s = format!("Cliente modo ganancia: {}", if param == 0 { "AGC (Automático)" } else { "Manual" });
+                                    *s = format!("Cliente modo ganancia: {}", if param == 0 { "AGC (Automático, 29.7 dB)" } else { "Manual" });
                                 }
                             }
                             0x04 => {
-                                client_gain_tenths.store(param, Ordering::Relaxed);
+                                // SET_GAIN: ganancia en décimas de dB directa (ej. 297 = 29.7 dB)
+                                let tenths = param.min(496);
+                                client_gain_tenths.store(tenths, Ordering::Relaxed);
                                 if let Ok(mut s) = status.lock() {
-                                    *s = format!("Cliente configuró ganancia RF: {:.1} dB", param as f32 / 10.0);
+                                    *s = format!("Cliente configuró ganancia RF: {:.1} dB", tenths as f32 / 10.0);
+                                }
+                            }
+                            0x05 => {
+                                if let Ok(mut s) = status.lock() {
+                                    *s = format!("Cliente corrección PPM: {}", param as i32);
                                 }
                             }
                             0x08 => {
+                                // SET_AGC_MODE: 1 = RTL AGC activado
                                 if param != 0 {
                                     client_gain_tenths.store(297, Ordering::Relaxed);
+                                }
+                                if let Ok(mut s) = status.lock() {
+                                    *s = format!("Cliente RTL AGC: {}", if param != 0 { "Activado" } else { "Desactivado" });
+                                }
+                            }
+                            0x0D => {
+                                // SET_TUNER_GAIN_BY_INDEX: índice 0..28 en tabla de ganancias del R820T
+                                // Enviado comúnmente por SDR# y SDR++
+                                let idx = (param as usize).min(R820T_GAINS_TENTHS_DB.len() - 1);
+                                let tenths = R820T_GAINS_TENTHS_DB[idx];
+                                client_gain_tenths.store(tenths, Ordering::Relaxed);
+                                if let Ok(mut s) = status.lock() {
+                                    *s = format!(
+                                        "Cliente configuró ganancia RF (paso {}/{}): {:.1} dB",
+                                        idx + 1,
+                                        R820T_GAINS_TENTHS_DB.len(),
+                                        tenths as f32 / 10.0
+                                    );
                                 }
                             }
                             _ => {}
@@ -553,13 +616,24 @@ impl NetworkTxController {
                     let gain_db = (gain_tenths / 10.0).clamp(0.0, 49.6);
 
                     let (rx_gain_factor, base_noise_std) = if is_sim {
-                        let gain_norm = (gain_db / 38.0).clamp(0.0, 1.0);
-                        let rx_factor = 0.01 + 0.99 * gain_norm;
-                        let noise_std = if gain_db > 38.0 {
-                            let excess = (gain_db - 38.0) / (49.6 - 38.0);
-                            0.015 + 0.22 * excess.powf(1.5)
+                        // Escala realista en decibelios (dB):
+                        // 38.0 dB es el punto dulce de recepción óptima (0 dBFS nominal, rx_factor = 1.0).
+                        // Por debajo de 38 dB, la señal se atenúa logarítmicamente (1 dB por cada 1 dB en el slider).
+                        let rx_factor = if gain_db < 38.0 {
+                            10.0_f32.powf((gain_db - 38.0) / 20.0)
                         } else {
-                            0.015 * (gain_norm.max(0.08))
+                            1.0_f32
+                        };
+
+                        // A ganancia óptima (<= 38 dB), el piso de ruido permanece bajo y controlado.
+                        // Al exceder 38 dB y subir hacia 49.6 dB (máximo), el ruido térmico se eleva
+                        // exponencialmente degradando el SNR, educando sobre la saturación del RTL-SDR.
+                        let noise_std = if gain_db > 38.0 {
+                            let excess_db = gain_db - 38.0;
+                            0.008 + 0.22 * (excess_db / 11.6).powf(1.6)
+                        } else {
+                            let atten = 10.0_f32.powf((gain_db - 38.0) / 20.0);
+                            0.008 * atten.max(0.05)
                         };
                         (rx_factor, noise_std)
                     } else {
@@ -613,7 +687,7 @@ impl NetworkTxController {
                     }
 
                     active_clients.retain_mut(|client| {
-                        client.write_all(&chunk_buf).is_ok()
+                        client.stream.write_all(&chunk_buf).is_ok()
                     });
 
                     if let Ok(mut c) = clients_connected.lock() {
@@ -730,6 +804,95 @@ mod tests {
         controller.set_tx_attenuation(-20.0);
         let stats = controller.get_stats();
         assert!(stats.is_running);
+        controller.stop();
+        assert!(!controller.is_running());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_rtl_tcp_gain_commands_by_index_and_direct() {
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        let mut controller = NetworkTxController::new();
+        let samples = vec![(0.1f32, 0.2f32); 1024];
+        let test_port = 15997;
+
+        let res = controller.start_rtl_tcp_server(
+            samples,
+            250_000,
+            "127.0.0.1".to_string(),
+            test_port,
+            true,
+            true,
+            0.0,
+        );
+        assert!(res.is_ok());
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Conectar como cliente SDR# / SDR++
+        let mut client = TcpStream::connect(format!("127.0.0.1:{}", test_port)).expect("Fallo conectando al servidor RTL-TCP");
+        client.set_read_timeout(Some(Duration::from_millis(500))).unwrap();
+
+        // 1. Validar encabezado RTL0
+        let mut header = [0u8; 12];
+        client.read_exact(&mut header).expect("Fallo leyendo encabezado RTL0");
+        assert_eq!(&header[0..4], b"RTL0");
+        let tuner_type = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
+        let gains_count = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
+        assert_eq!(tuner_type, 5, "Tuner debe ser R820T (5)");
+        assert_eq!(gains_count, 29, "Debe reportar 29 ganancias de tuner");
+
+        // 2. Enviar comando 0x0D (SET_TUNER_GAIN_BY_INDEX) con índice 0 (0.0 dB)
+        let mut cmd_idx0 = [0u8; 5];
+        cmd_idx0[0] = 0x0D;
+        cmd_idx0[1..5].copy_from_slice(&0u32.to_be_bytes());
+        client.write_all(&cmd_idx0).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let stats = controller.get_stats();
+        assert!((stats.client_gain_db - 0.0).abs() < 0.05, "Ganancia debería ser 0.0 dB, fue {}", stats.client_gain_db);
+
+        // 3. Enviar comando 0x0D con índice 16 (29.7 dB)
+        let mut cmd_idx16 = [0u8; 5];
+        cmd_idx16[0] = 0x0D;
+        cmd_idx16[1..5].copy_from_slice(&16u32.to_be_bytes());
+        client.write_all(&cmd_idx16).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let stats = controller.get_stats();
+        assert!((stats.client_gain_db - 29.7).abs() < 0.05, "Ganancia debería ser 29.7 dB, fue {}", stats.client_gain_db);
+
+        // 4. Enviar comando 0x0D con índice 28 (49.6 dB - máximo)
+        let mut cmd_idx28 = [0u8; 5];
+        cmd_idx28[0] = 0x0D;
+        cmd_idx28[1..5].copy_from_slice(&28u32.to_be_bytes());
+        client.write_all(&cmd_idx28).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let stats = controller.get_stats();
+        assert!((stats.client_gain_db - 49.6).abs() < 0.05, "Ganancia debería ser 49.6 dB, fue {}", stats.client_gain_db);
+
+        // 5. Enviar comando 0x04 (SET_GAIN directo en décimas de dB) con 386 (38.6 dB)
+        let mut cmd_direct = [0u8; 5];
+        cmd_direct[0] = 0x04;
+        cmd_direct[1..5].copy_from_slice(&386u32.to_be_bytes());
+        client.write_all(&cmd_direct).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let stats = controller.get_stats();
+        assert!((stats.client_gain_db - 38.6).abs() < 0.05, "Ganancia debería ser 38.6 dB, fue {}", stats.client_gain_db);
+
+        // 6. Enviar múltiples comandos juntos (pipelined) en un solo paquete TCP
+        let mut batched = Vec::new();
+        // Cmd 0x01: Set Freq 144.5 MHz
+        batched.push(0x01);
+        batched.extend_from_slice(&144_500_000u32.to_be_bytes());
+        // Cmd 0x0D: Set gain index 21 (38.6 dB)
+        batched.push(0x0D);
+        batched.extend_from_slice(&21u32.to_be_bytes());
+        client.write_all(&batched).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let stats = controller.get_stats();
+        assert!((stats.client_gain_db - 38.6).abs() < 0.05, "Ganancia de comando por lote debería ser 38.6 dB, fue {}", stats.client_gain_db);
+
         controller.stop();
         assert!(!controller.is_running());
     }
