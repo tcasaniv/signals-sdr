@@ -147,10 +147,10 @@ impl VirtualSinkModal {
         self.last_tick = Some(now);
     }
 
-    /// Renderiza la ventana modal a pantalla completa
-    pub fn show(
+    /// Renderiza el Instrumento Virtual directamente en el panel flexible derecho (sin modal flotante que tape la app)
+    pub fn render_inline_panel(
         &mut self,
-        ctx: &egui::Context,
+        ui: &mut Ui,
         theme: &AppTheme,
         samples: &[(f32, f32)],
         sample_rate: u32,
@@ -162,29 +162,63 @@ impl VirtualSinkModal {
 
         self.update_playback(samples.len(), sample_rate);
 
-        // Repintar activamente mientras se reproduce
         if self.is_playing {
-            ctx.request_repaint();
+            ui.ctx().request_repaint();
         }
 
-        let mut is_open = self.open;
-        egui::Window::new(RichText::new(format!("{} Instrumento Virtual de Laboratorio", icons::ICON_QUERY_STATS.codepoint)).strong().size(16.0))
-            .open(&mut is_open)
-            .default_size(Vec2::new(960.0, 680.0))
-            .min_size(Vec2::new(600.0, 480.0))
-            .resizable(true)
-            .collapsible(false)
-            .frame(
-                Frame::new()
-                    .fill(if *theme == AppTheme::Dark { Color32::from_rgb(14, 18, 25) } else { Color32::from_rgb(248, 250, 252) })
-                    .stroke(Stroke::new(1.0, theme.card_border()))
-                    .corner_radius(12.0)
-                    .inner_margin(12.0),
-            )
-            .show(ctx, |ui| {
-                self.render_content(ui, theme, samples, sample_rate, center_freq_hz);
-            });
-        self.open = is_open;
+        ui.vertical(|ui| {
+            // Encabezado integrado del instrumento con botón [X] de cierre en la esquina derecha
+            Frame::new()
+                .fill(theme.card_bg())
+                .stroke(Stroke::new(1.0, theme.card_border()))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::symmetric(14, 10))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} Instrumento Virtual de Laboratorio", icons::ICON_QUERY_STATS.codepoint))
+                                .strong()
+                                .size(15.5)
+                                .color(theme.accent_blue()),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let close_btn = egui::Button::new(
+                                RichText::new(icons::ICON_CLOSE.codepoint)
+                                    .size(16.0)
+                                    .color(theme.text_secondary()),
+                            )
+                            .frame(false);
+                            if ui.add(close_btn).on_hover_text("Cerrar Instrumento Virtual y volver al transmisor").clicked() {
+                                self.open = false;
+                            }
+                        });
+                    });
+                });
+
+            ui.add_space(8.0);
+
+            // Marco del contenido ocupando el ancho completo del panel flexible derecho
+            Frame::new()
+                .fill(if *theme == AppTheme::Dark { Color32::from_rgb(14, 18, 25) } else { Color32::from_rgb(248, 250, 252) })
+                .stroke(Stroke::new(1.0, theme.card_border()))
+                .corner_radius(10.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    self.render_content(ui, theme, samples, sample_rate, center_freq_hz);
+                });
+        });
+    }
+
+    /// Método compatible para llamada desde contextos genéricos
+    pub fn show(
+        &mut self,
+        _ctx: &egui::Context,
+        _theme: &AppTheme,
+        _samples: &[(f32, f32)],
+        _sample_rate: u32,
+        _center_freq_hz: f64,
+    ) {
+        // En v0.4.2 se utiliza render_inline_panel directamente dentro de CentralPanel
     }
 
     fn render_content(
@@ -306,7 +340,8 @@ impl VirtualSinkModal {
             ui.add_space(4.0);
 
             // 2. Área principal de graficación
-            let avail_size = Vec2::new(ui.available_width(), (ui.available_height() - 72.0).max(300.0));
+            let plot_h = (ui.available_height() - 100.0).clamp(420.0, 720.0);
+            let avail_size = Vec2::new(ui.available_width(), plot_h);
             Frame::new()
                 .fill(if *theme == AppTheme::Dark { Color32::from_rgb(8, 12, 18) } else { Color32::from_rgb(255, 255, 255) })
                 .stroke(Stroke::new(1.0, theme.card_border()))

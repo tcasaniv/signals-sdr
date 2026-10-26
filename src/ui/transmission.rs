@@ -156,6 +156,18 @@ pub fn render_transmission_tab(
     let has_valid_resample = state.resampled_samples.is_some() && state.resampled_rate == target_rate;
     let needs_resample = is_rate_different && !has_valid_resample;
 
+    // Si el Instrumento Virtual está activo, se renderiza a ancho completo dentro del panel derecho
+    // reemplazando la vista del pipeline, con botón [X] para retornar de inmediato sin tapar la app.
+    if state.virtual_sink.open {
+        let (viz_samples, viz_rate) = if state.resampled_samples.is_some() && state.resampled_rate == state.target_sample_rate {
+            (state.resampled_samples.as_deref().unwrap(), state.resampled_rate)
+        } else {
+            (samples, sample_rate)
+        };
+        state.virtual_sink.render_inline_panel(ui, theme, viz_samples, viz_rate, default_rf_freq_hz);
+        return;
+    }
+
     ui.vertical(|ui| {
         // 1. Selector de destino interactivo estilo pills (Hardware SDR, Archivo IQ, GNU Radio, RTL-TCP, Instrumento Virtual)
         ui.horizontal_wrapped(|ui| {
@@ -434,9 +446,6 @@ pub fn render_transmission_tab(
             (samples, sample_rate)
         };
         crate::ui::spectrum::render_signal_visualizer(ui, theme, viz_samples, viz_rate);
-
-        // Modal a pantalla completa del Instrumento Virtual de Laboratorio
-        state.virtual_sink.show(ui.ctx(), theme, viz_samples, viz_rate, default_rf_freq_hz);
     });
 }
 
@@ -1909,7 +1918,7 @@ fn render_virtual_sink_panel(
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let (badge_txt, badge_col) = if state.virtual_sink.open {
-                            ("VENTANA ABIERTA", Color32::from_rgb(34, 197, 94))
+                            ("INSTRUMENTO ACTIVO", Color32::from_rgb(34, 197, 94))
                         } else {
                             ("LISTO", Color32::from_rgb(56, 189, 248))
                         };
@@ -1928,8 +1937,8 @@ fn render_virtual_sink_panel(
                 ui.add(
                     egui::Label::new(
                         RichText::new(
-                            "Simula la recepción de la señal emitida en un instrumento de análisis por software en tiempo real \
-                             : espectro FFT con retención de picos (Peak Hold), cascada 2D temporal (Waterfall), \
+                            "Simula la recepción de la señal emitida en un instrumento de análisis por software en tiempo real: \
+                             espectro FFT con retención de picos (Peak Hold), cascada 2D temporal (Waterfall), \
                              osciloscopio digital en dominio del tiempo (canales I, Q y envolvente) y diagrama de constelación en el plano complejo."
                         )
                         .size(12.0)
@@ -1939,11 +1948,11 @@ fn render_virtual_sink_panel(
                 );
                 ui.add_space(12.0);
 
-                // Botón principal destacado para abrir el instrumento modal a pantalla completa
+                // Botón principal destacado para abrir el instrumento en el panel flexible derecho
                 let open_btn = egui::Button::new(
                     RichText::new(format!(
-                        "{} Abrir Instrumento de Laboratorio (Pantalla Completa)",
-                        icons::ICON_FULLSCREEN.codepoint
+                        "{} Abrir Instrumento Virtual de Laboratorio",
+                        icons::ICON_QUERY_STATS.codepoint
                     ))
                     .strong()
                     .size(13.5)
