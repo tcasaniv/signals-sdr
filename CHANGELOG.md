@@ -9,9 +9,19 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [0.4.4] - 2026-10-31
 
+### Añadido (Features)
+- **Flujo Automatizado de Releases Multiplataforma**: Incorporado el workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) para compilar, empaquetar y publicar automáticamente ejecutables nativos unificados para **Windows 10/11 x64** (`.zip`), **Linux x64** (`.tar.gz`) y **macOS Apple Silicon arm64** (`.tar.gz`) en cada nueva release de GitHub.
+- **Aprovisionamiento Completo en Matriz de CI**: Soporte y validación continua en runners limpios de GitHub Actions para los 3 sistemas operativos (`ubuntu-latest`, `windows-latest`, `macos-latest`), aprovisionando bibliotecas del sistema de audio (ALSA `libasound2-dev`), transceptores SDR (`soapysdr-tools`, `libsoapysdr-dev` y `PothosSDR`) y subsistemas gráficos (X11, Wayland y OpenGL).
+
+### Corregido (Fixes)
+- **Congelamiento de WebAssembly en el Instrumento Virtual**: Migración del cálculo temporal de `std::time::Instant` a `web-time` en `VirtualSinkModal`, `TransmissionTabState` y `channel_effects`. Elimina el pánico de Rust (`time not implemented on this platform`) en navegadores web, permitiendo la renderización fluida del osciloscopio en cuadratura, espectrograma FFT con Peak Hold, cascada 2D y diagrama de constelación I/Q en WebAssembly.
+- **Enrutamiento de Assets en GitHub Pages (Error 404)**: Configurado `public_url = "/signals-sdr/"` en `Trunk.toml` e inyectada la etiqueta canónica `<base data-trunk-public-url/>` en `web/index.html`. Los módulos `.js` y binarios `.wasm` ahora se resuelven correctamente bajo la subruta del repositorio sin buscar en la raíz del dominio.
+- **Compilación Limpia de Trunk en CI**: Eliminada la directiva redundante de canonización `[watch].ignore = ["target"]` en `Trunk.toml` que causaba detenciones tempranas en runners donde la carpeta `target/` no existía al iniciar el build.
+- **Estabilidad de Pruebas de Red RTL-TCP**: Añadida la opción `set_nodelay(true)` y sondeo reactivo con reintentos (`wait_gain`) en `test_rtl_tcp_gain_commands_by_index_and_direct`, previniendo fallos espurios causados por la latencia del programador de hilos del sistema operativo en runners bajo alta carga.
+
 ### Cambiado (Changed)
 - **Migración Integral a Crates.io**: Todas las dependencias de codificadores y moduladores (`apt-encoder`, `lrpt-encoder`, `sstv-encoder`, `fm-modulator`, `am-modulator`) y abstracción de hardware SDR (`seify`) ahora apuntan al registro oficial de [crates.io](https://crates.io) en lugar de rutas de disco relativas locales (`path = "../..."`).
-- **Autonomía y Compatibilidad con GitHub Workflows**: Los flujos de trabajo de CI/CD (`CI` multiplataforma en Linux/Windows/macOS y `deploy-pages` WebAssembly) y cualquier entorno externo de compilación ahora resuelven todas las dependencias sin requerir repositorios clonados en carpetas hermanas.
+- **Autonomía y Compatibilidad con GitHub Workflows**: Los flujos de trabajo de CI/CD (`CI` multiplataforma en Linux/Windows/macOS, `deploy-pages` WebAssembly y `release`) y cualquier entorno externo de compilación ahora resuelven todas las dependencias sin requerir repositorios clonados en carpetas hermanas.
 - **Soporte Nativo de Wayland y X11**: Activadas explícitamente las características `wayland` y `x11` en `eframe` para máxima compatibilidad gráfica en distribuciones Linux modernas y servidores gráficos tradicionales.
 
 ---

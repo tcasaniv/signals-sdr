@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: signals-sdr
+            asset_name: signals-sdr-linux-amd64
+            archive_format: tar.gz
+          - os: windows-latest
+            artifact_name: signals-sdr.exe
+            asset_name: signals-sdr-windows-amd64
+            archive_format: zip
+          - os: macos-latest
+            artifact_name: signals-sdr
+            asset_name: signals-sdr-macos-arm64
+            archive_format: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Dependencies (ALSA, udev, X11/Wayland, SoapySDR)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config libx11-dev libxcursor-dev libxcb1-dev libxkbcommon-dev libwayland-dev soapysdr-tools libsoapysdr-dev
+
+      - name: Install macOS Dependencies (SoapySDR)
+        if: runner.os == 'macOS'
+        run: |
+          brew install soapysdr pkg-config
+
+      - name: Install PothosSDR (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl.exe -L -o PothosSDR.exe https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2021.07.25-vc16-x64.exe
+          Start-Process -FilePath .\PothosSDR.exe -ArgumentList "/S" -Wait
+          $pothosBin = "C:\Program Files\PothosSDR\bin"
+          $pothosRoot = "C:\Program Files\PothosSDR"
+          if (Test-Path $pothosBin) {
+            "$pothosBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            "SOAPY_SDR_ROOT=$pothosRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            if (-not (Test-Path "$pothosRoot\lib\SoapySDR.dll") -and (Test-Path "$pothosBin\SoapySDR.dll")) {
+              Copy-Item "$pothosBin\SoapySDR.dll" "$pothosRoot\lib\SoapySDR.dll"
+            }
+          }
+
+      - name: Build Release Binary
+        run: cargo build --release --verbose
+
+      - name: Package Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_REF -like "refs/tags/*") { $env:GITHUB_REF.Substring(10) } else { "v0.4.4" }
+          $zipName = "signals-sdr-$tag-windows-amd64.zip"
+          Compress-Archive -Path "target\release\signals-sdr.exe", "README.md", "LICENSE" -DestinationPath $zipName
+          echo "ASSET_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package Binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.4"
+          TAR_NAME="signals-sdr-${TAG}-linux-amd64.tar.gz"
+          cp target/release/signals-sdr ./signals-sdr
+          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE
+          rm ./signals-sdr
+          echo "ASSET_PATH=$TAR_NAME" >> $GITHUB_ENV
+
+      - name: Package Binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.4"
+          TAR_NAME="signals-sdr-${TAG}-macos-arm64.tar.gz"
+          cp target/release/signals-sdr ./signals-sdr
+          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE
+          rm ./signals-sdr
+          echo "ASSET_PATH=$TAR_NAME" >> $GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ env.ASSET_PATH }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: false
