@@ -35,6 +35,7 @@ jobs:
 
       - name: Build Web Application
         run: |
+          mkdir -p target
           trunk build --release --public-url /signals-sdr/
 
       - name: Setup GitHub Pages Artifact
