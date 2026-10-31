@@ -7,6 +7,15 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [0.4.4] - 2026-10-31
+
+### Cambiado (Changed)
+- **Migración Integral a Crates.io**: Todas las dependencias de codificadores y moduladores (`apt-encoder`, `lrpt-encoder`, `sstv-encoder`, `fm-modulator`, `am-modulator`) y abstracción de hardware SDR (`seify`) ahora apuntan al registro oficial de [crates.io](https://crates.io) en lugar de rutas de disco relativas locales (`path = "../..."`).
+- **Autonomía y Compatibilidad con GitHub Workflows**: Los flujos de trabajo de CI/CD (`CI` multiplataforma en Linux/Windows/macOS y `deploy-pages` WebAssembly) y cualquier entorno externo de compilación ahora resuelven todas las dependencias sin requerir repositorios clonados en carpetas hermanas.
+- **Soporte Nativo de Wayland y X11**: Activadas explícitamente las características `wayland` y `x11` en `eframe` para máxima compatibilidad gráfica en distribuciones Linux modernas y servidores gráficos tradicionales.
+
+---
+
 ## [0.4.3] - 2026-10-26
 
 ### Corregido (Fixes)

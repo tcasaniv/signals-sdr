@@ -1,7 +1,7 @@
 # Signals SDR
 
 [![Licencia: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Versión](https://img.shields.io/badge/version-0.4.3-green.svg)](Cargo.toml)
+[![Versión](https://img.shields.io/badge/version-0.4.4-green.svg)](Cargo.toml)
 [![Rust: 2021](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![UI: Material 3 / HIG](https://img.shields.io/badge/UI-Material_3_%2F_Apple_HIG-purple.svg)](docs/ARCHITECTURE.md)
 [![Tests: 32 passed](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)](tests/)
@@ -131,7 +131,7 @@ Signals SDR permite emitir directamente hacia programas receptores SDR mediante 
 
 ```
 signals-sdr/
-├── Cargo.toml               # Configuración del paquete y dependencias (v0.4.3)
+├── Cargo.toml               # Configuración del paquete y dependencias (v0.4.4)
 ├── CHANGELOG.md             # Registro de versiones según Keep a Changelog
 ├── CONTRIBUTING.md          # Guía de contribución y política de responsabilidad humana en IA
 ├── CODE_OF_CONDUCT.md       # Código de conducta Contributor Covenant v2.1

@@ -1,7 +1,7 @@
 # Signals SDR: Roadmap y Plan de Desarrollo
 
 > **Documento de referencia para desarrolladores, colaboradores y agentes de Inteligencia Artificial.**
-> Define la arquitectura, el estado de implementación actual (**v0.4.3**) y las próximas fases de desarrollo hacia nuevos protocolos satelitales e integraciones.
+> Define la arquitectura, el estado de implementación actual (**v0.4.4**) y las próximas fases de desarrollo hacia nuevos protocolos satelitales e integraciones.
 
 ---
 
@@ -23,7 +23,7 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
 
 ---
 
-## 2. Estado de Implementación (Versión v0.4.3 - Actual)
+## 2. Estado de Implementación (Versión v0.4.4 - Actual)
 
 ### 2.1. Arquitectura de UI/UX Unificada (Material 3 + Apple HIG)
 - **Framework:** `egui / eframe` en Rust puro a 60 FPS estables.

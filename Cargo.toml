@@ -1,6 +1,6 @@
 [package]
 name = "signals-sdr"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 authors = ["Signals SDR Contributors"]
 description = "Educational SDR signal generator and modulator suite for satellites (APT, LRPT, SSTV) and analog radio (FM, AM)"
@@ -12,20 +12,20 @@ categories = ["science", "multimedia"]
 
 [dependencies]
 # GUI Framework
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
 egui = { version = "0.36", features = ["serde"] }
 egui_extras = { version = "0.36", features = ["image", "file"] }
 egui_icons = "0.0.1"
 
-# Codificadores y moduladores locales
-apt-encoder = { path = "../apt-encoder-rs" }
-lrpt-encoder = { path = "../lrpt-encoder-rs" }
-sstv-encoder = { path = "../sstv-encoder-rs" }
-fm-modulator = { path = "../fm-modulator-rs" }
-am-modulator = { path = "../am-modulator-rs" }
+# Codificadores y moduladores (publicados en crates.io)
+apt-encoder = "0.1.0"
+lrpt-encoder = "0.1.0"
+sstv-encoder = "0.1.0"
+fm-modulator = "0.1.0"
+am-modulator = "0.1.0"
 
 # SDR Hardware Abstraction
-seify = { path = "../seify", default-features = false, features = ["dummy"] }
+seify = { version = "0.26", default-features = false, features = ["dummy"] }
 
 # Procesamiento de audio, imagen y datos comunes
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
@@ -39,7 +39,7 @@ log = "0.4"
 rfd = "0.15"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-seify = { path = "../seify", default-features = false, features = ["hackrf", "soapy"] }
+seify = { version = "0.26", default-features = false, features = ["hackrf", "soapy"] }
 dirs = "6.0"
 env_logger = "0.11"
 rodio = "0.23.0"
