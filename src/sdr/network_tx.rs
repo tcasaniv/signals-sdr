@@ -853,6 +853,18 @@ mod tests {
         // Conectar como cliente SDR# / SDR++
         let mut client = TcpStream::connect(format!("127.0.0.1:{}", test_port)).expect("Fallo conectando al servidor RTL-TCP");
         client.set_read_timeout(Some(Duration::from_millis(500))).unwrap();
+        client.set_nodelay(true).unwrap();
+
+        let wait_gain = |target: f32| -> f32 {
+            for _ in 0..50 {
+                let stats = controller.get_stats();
+                if (stats.client_gain_db - target).abs() < 0.05 {
+                    return stats.client_gain_db;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            controller.get_stats().client_gain_db
+        };
 
         // 1. Validar encabezado RTL0
         let mut header = [0u8; 12];
@@ -868,36 +880,32 @@ mod tests {
         cmd_idx0[0] = 0x0D;
         cmd_idx0[1..5].copy_from_slice(&0u32.to_be_bytes());
         client.write_all(&cmd_idx0).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let stats = controller.get_stats();
-        assert!((stats.client_gain_db - 0.0).abs() < 0.05, "Ganancia debería ser 0.0 dB, fue {}", stats.client_gain_db);
+        let gain0 = wait_gain(0.0);
+        assert!((gain0 - 0.0).abs() < 0.05, "Ganancia debería ser 0.0 dB, fue {}", gain0);
 
         // 3. Enviar comando 0x0D con índice 16 (29.7 dB)
         let mut cmd_idx16 = [0u8; 5];
         cmd_idx16[0] = 0x0D;
         cmd_idx16[1..5].copy_from_slice(&16u32.to_be_bytes());
         client.write_all(&cmd_idx16).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let stats = controller.get_stats();
-        assert!((stats.client_gain_db - 29.7).abs() < 0.05, "Ganancia debería ser 29.7 dB, fue {}", stats.client_gain_db);
+        let gain16 = wait_gain(29.7);
+        assert!((gain16 - 29.7).abs() < 0.05, "Ganancia debería ser 29.7 dB, fue {}", gain16);
 
         // 4. Enviar comando 0x0D con índice 28 (49.6 dB - máximo)
         let mut cmd_idx28 = [0u8; 5];
         cmd_idx28[0] = 0x0D;
         cmd_idx28[1..5].copy_from_slice(&28u32.to_be_bytes());
         client.write_all(&cmd_idx28).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let stats = controller.get_stats();
-        assert!((stats.client_gain_db - 49.6).abs() < 0.05, "Ganancia debería ser 49.6 dB, fue {}", stats.client_gain_db);
+        let gain28 = wait_gain(49.6);
+        assert!((gain28 - 49.6).abs() < 0.05, "Ganancia debería ser 49.6 dB, fue {}", gain28);
 
         // 5. Enviar comando 0x04 (SET_GAIN directo en décimas de dB) con 386 (38.6 dB)
         let mut cmd_direct = [0u8; 5];
         cmd_direct[0] = 0x04;
         cmd_direct[1..5].copy_from_slice(&386u32.to_be_bytes());
         client.write_all(&cmd_direct).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let stats = controller.get_stats();
-        assert!((stats.client_gain_db - 38.6).abs() < 0.05, "Ganancia debería ser 38.6 dB, fue {}", stats.client_gain_db);
+        let gain_direct = wait_gain(38.6);
+        assert!((gain_direct - 38.6).abs() < 0.05, "Ganancia debería ser 38.6 dB, fue {}", gain_direct);
 
         // 6. Enviar múltiples comandos juntos (pipelined) en un solo paquete TCP
         let mut batched = Vec::new();
@@ -908,9 +916,8 @@ mod tests {
         batched.push(0x0D);
         batched.extend_from_slice(&21u32.to_be_bytes());
         client.write_all(&batched).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let stats = controller.get_stats();
-        assert!((stats.client_gain_db - 38.6).abs() < 0.05, "Ganancia de comando por lote debería ser 38.6 dB, fue {}", stats.client_gain_db);
+        let gain_batched = wait_gain(38.6);
+        assert!((gain_batched - 38.6).abs() < 0.05, "Ganancia de comando por lote debería ser 38.6 dB, fue {}", gain_batched);
 
         controller.stop();
         assert!(!controller.is_running());

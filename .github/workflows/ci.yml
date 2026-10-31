@@ -30,13 +30,21 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install soapysdr pkg-config
-      - name: Setup Micromamba (SoapySDR on Windows)
+      - name: Install PothosSDR (Windows)
         if: runner.os == 'Windows'
-        uses: mamba-org/setup-micromamba@v2
-        with:
-          environment-name: sdr-env
-          conda-channels: conda-forge
-          packages: soapysdr
+        shell: pwsh
+        run: |
+          curl.exe -L -o PothosSDR.exe https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2021.07.25-vc16-x64.exe
+          Start-Process -FilePath .\PothosSDR.exe -ArgumentList "/S" -Wait
+          $pothosBin = "C:\Program Files\PothosSDR\bin"
+          $pothosRoot = "C:\Program Files\PothosSDR"
+          if (Test-Path $pothosBin) {
+            "$pothosBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            "SOAPY_SDR_ROOT=$pothosRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            if (-not (Test-Path "$pothosRoot\lib\SoapySDR.dll") -and (Test-Path "$pothosBin\SoapySDR.dll")) {
+              Copy-Item "$pothosBin\SoapySDR.dll" "$pothosRoot\lib\SoapySDR.dll"
+            }
+          }
       - name: Run Tests
         run: cargo test --verbose
       - name: Check Desktop Build
