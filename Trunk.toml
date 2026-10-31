@@ -1,6 +1,7 @@
 [build]
 target = "web/index.html"
 dist = "dist"
+public_url = "/signals-sdr/"
 
 [watch]
 ignore = [

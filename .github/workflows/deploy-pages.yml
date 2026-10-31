@@ -35,7 +35,7 @@ jobs:
 
       - name: Build Web Application
         run: |
-          trunk build --release
+          trunk build --release --public-url /signals-sdr/
 
       - name: Setup GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
