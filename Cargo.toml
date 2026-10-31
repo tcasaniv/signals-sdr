@@ -37,6 +37,7 @@ serde_json = "1.0"
 chrono = "0.4"
 log = "0.4"
 rfd = "0.15"
+web-time = "1.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 seify = { version = "0.26", default-features = false, features = ["hackrf", "soapy"] }

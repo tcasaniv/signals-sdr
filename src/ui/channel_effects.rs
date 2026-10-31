@@ -7,7 +7,7 @@ use crate::ui::spectrum::render_signal_visualizer;
 use egui::{Color32, Frame, RichText, Stroke, Ui, Vec2};
 use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
+use web_time::Instant;
 
 /// Calcula efectos de canal en background sin bloquear la interfaz.
 /// En Desktop corre sobre un hilo secundario del SO; en WASM mediante tarea asíncrona spawn_local.

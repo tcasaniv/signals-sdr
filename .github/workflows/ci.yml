@@ -21,12 +21,26 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: Install Linux Dependencies (ALSA, udev, X11/Wayland)
+      - name: Install Linux Dependencies (ALSA, udev, X11/Wayland, SoapySDR)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev pkg-config libx11-dev libxcursor-dev libxcb1-dev libxkbcommon-dev libwayland-dev
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config libx11-dev libxcursor-dev libxcb1-dev libxkbcommon-dev libwayland-dev soapysdr-tools libsoapysdr-dev
+      - name: Install macOS Dependencies (SoapySDR)
+        if: runner.os == 'macOS'
+        run: |
+          brew install soapysdr pkg-config
+      - name: Setup Micromamba (SoapySDR on Windows)
+        if: runner.os == 'Windows'
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: sdr-env
+          conda-channels: conda-forge
+          packages: soapysdr
       - name: Run Tests
         run: cargo test --verbose
       - name: Check Desktop Build
         run: cargo check --verbose
+      - name: Check WebAssembly Build
+        if: runner.os == 'Linux'
+        run: cargo check --target wasm32-unknown-unknown --no-default-features --verbose

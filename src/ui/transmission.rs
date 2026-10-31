@@ -47,7 +47,7 @@ pub struct TransmissionTabState {
     pub selected_backend: SdrBackend,
     pub selected_device_idx: usize,
     pub detected_devices: Vec<DetectedDeviceInfo>,
-    pub copied_feedback: Option<(String, std::time::Instant)>,
+    pub copied_feedback: Option<(String, web_time::Instant)>,
     // Estado Archivo I/Q
     pub export_format: IqExportFormat,
     pub output_filename: String,
@@ -580,7 +580,7 @@ fn render_sdr_panel(
                                                 }
                                                 state.copied_feedback = Some((
                                                     format!("Dispositivo '{}' seleccionado para transmisión", dev.label),
-                                                    std::time::Instant::now(),
+                                                    web_time::Instant::now(),
                                                 ));
                                             }
 
@@ -589,7 +589,7 @@ fn render_sdr_panel(
                                                 ui.ctx().copy_text(dev.full_args.clone());
                                                 state.copied_feedback = Some((
                                                     "Argumentos copiados al portapapeles".to_string(),
-                                                    std::time::Instant::now(),
+                                                    web_time::Instant::now(),
                                                 ));
                                             }
 
@@ -600,7 +600,7 @@ fn render_sdr_panel(
                                                     ui.ctx().copy_text(s_clone);
                                                     state.copied_feedback = Some((
                                                         "Número de serie copiado al portapapeles".to_string(),
-                                                        std::time::Instant::now(),
+                                                        web_time::Instant::now(),
                                                     ));
                                                 }
                                             }
@@ -631,7 +631,7 @@ fn render_sdr_panel(
                                                 }
                                                 state.copied_feedback = Some((
                                                     format!("Dispositivo '{}' seleccionado para transmisión", dev.label),
-                                                    std::time::Instant::now(),
+                                                    web_time::Instant::now(),
                                                 ));
                                             }
 
@@ -641,7 +641,7 @@ fn render_sdr_panel(
                                                 ui.ctx().copy_text(dev.full_args.clone());
                                                 state.copied_feedback = Some((
                                                     "Argumentos copiados al portapapeles".to_string(),
-                                                    std::time::Instant::now(),
+                                                    web_time::Instant::now(),
                                                 ));
                                             }
 
@@ -653,7 +653,7 @@ fn render_sdr_panel(
                                                     ui.ctx().copy_text(s_clone);
                                                     state.copied_feedback = Some((
                                                         "Número de serie copiado al portapapeles".to_string(),
-                                                        std::time::Instant::now(),
+                                                        web_time::Instant::now(),
                                                     ));
                                                 }
                                             }

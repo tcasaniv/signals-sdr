@@ -14,7 +14,7 @@ use egui::{Color32, Frame, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 use num_complex::Complex32;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
-use std::time::Instant;
+use web_time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VirtualSinkTab {
