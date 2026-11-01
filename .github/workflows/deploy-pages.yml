@@ -2,8 +2,7 @@ name: Deploy Static Web to GitHub Pages
 
 on:
   push:
-    branches: ["main", "master"]
-    tags: ["v*"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
