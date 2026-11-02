@@ -18,10 +18,18 @@ pub struct GenericIqPipeline {
     pub raw_iq_samples: Vec<(f32, f32)>,
     pub processed_iq_samples: Vec<(f32, f32)>,
     pub async_file_receiver: Option<Arc<Mutex<Option<(String, Vec<u8>)>>>>,
-    // Ajustes de procesamiento
+    // Ajustes de procesamiento y limpieza I/Q
     pub gain_factor: f32,
     pub freq_shift_hz: f32,
     pub remove_dc: bool,
+    pub invert_iq: bool,
+    pub iq_balance_correction: bool,
+    pub lpf_enabled: bool,
+    pub lpf_cutoff_hz: f32,
+    pub agc_enabled: bool,
+    pub agc_target_level: f32,
+    pub squelch_enabled: bool,
+    pub squelch_threshold_db: f32,
     pub status_message: String,
     pub spectrogram_state: crate::ui::spectrogram::SpectrogramState,
     pub channel_effects_state: ChannelEffectsState,
@@ -41,6 +49,14 @@ impl Default for GenericIqPipeline {
             gain_factor: 1.0,
             freq_shift_hz: 0.0,
             remove_dc: true,
+            invert_iq: false,
+            iq_balance_correction: false,
+            lpf_enabled: false,
+            lpf_cutoff_hz: 75_000.0,
+            agc_enabled: false,
+            agc_target_level: 0.8,
+            squelch_enabled: false,
+            squelch_threshold_db: -55.0,
             status_message: "Listo para cargar archivo de muestras I/Q pregrabadas.".to_string(),
             spectrogram_state: crate::ui::spectrogram::SpectrogramState::default(),
             channel_effects_state: ChannelEffectsState::new_for_pipeline("generic_iq", 144.8),
@@ -286,8 +302,8 @@ impl GenericIqPipeline {
             accordion_section(
                 ui,
                 theme,
-                "generic_iq_params_phase",
-                AccordionOptions::new("Ajustes de Acondicionamiento I/Q").default_open(false),
+                "generic_iq_params_basic",
+                AccordionOptions::new("1. Acondicionamiento Básico y Frecuencia").default_open(true),
                 |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Factor de Escala / Ganancia:");
@@ -296,7 +312,7 @@ impl GenericIqPipeline {
                         }
                     });
 
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label("Desplazamiento de Frecuencia (Shift Hz):");
                         if ui.add(egui::Slider::new(&mut self.freq_shift_hz, -100_000.0..=100_000.0).suffix(" Hz")).changed() {
@@ -304,12 +320,7 @@ impl GenericIqPipeline {
                         }
                     });
 
-                    ui.add_space(6.0);
-                    if ui.checkbox(&mut self.remove_dc, "Eliminar componente continua (Cancelación DC Offset)").changed() {
-                        self.process_samples();
-                    }
-
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label("Tasa de Muestreo SDR I/Q:");
                         egui::ComboBox::from_id_salt("generic_iq_sdr_rate_combo")
@@ -317,7 +328,7 @@ impl GenericIqPipeline {
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.sample_rate, 100_000, "100 kHz");
                                 ui.selectable_value(&mut self.sample_rate, 250_000, "250 kHz");
-                                ui.selectable_value(&mut self.sample_rate, 288_000, "288 kHz");
+                                ui.selectable_value(&mut self.sample_rate, 288_000, "288 kHz (Meteor LRPT)");
                                 ui.selectable_value(&mut self.sample_rate, 500_000, "500 kHz");
                                 ui.selectable_value(&mut self.sample_rate, 1_000_000, "1.0 MHz");
                                 ui.selectable_value(&mut self.sample_rate, 2_000_000, "2.0 MHz");
@@ -327,29 +338,100 @@ impl GenericIqPipeline {
                         ui.add(egui::DragValue::new(&mut self.sample_rate).speed(1000).range(8_000..=20_000_000).suffix(" Hz"));
                     });
 
-                    ui.add_space(10.0);
+                    ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
-                        let apply_btn = egui::Button::new(
-                            RichText::new("Aplicar Procesamiento").strong().color(Color32::WHITE),
-                        )
-                        .fill(theme.accent_blue())
-                        .corner_radius(6.0);
-
-                        if ui.add(apply_btn).clicked() {
+                        if ui.checkbox(&mut self.remove_dc, "Eliminar componente continua (DC Offset)").changed() {
                             self.process_samples();
                         }
+                        if ui.checkbox(&mut self.invert_iq, "Invertir Espectro (Invert I/Q / Conjugate)").changed() {
+                            self.process_samples();
+                        }
+                    });
+                },
+            );
 
-                        if !self.processed_iq_samples.is_empty() {
-                            if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
-                                self.current_step = 2;
+            ui.add_space(6.0);
+            accordion_section(
+                ui,
+                theme,
+                "generic_iq_params_filtering",
+                AccordionOptions::new("2. Filtros y Supresión de Ruido (Denoising)").default_open(true),
+                |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut self.lpf_enabled, "Activar Filtro Pasa-Bajos FIR").changed() {
+                            self.process_samples();
+                        }
+                        if self.lpf_enabled {
+                            ui.label("Frecuencia de Corte:");
+                            let max_cutoff = (self.sample_rate / 2).saturating_sub(1000) as f32;
+                            if ui.add(egui::Slider::new(&mut self.lpf_cutoff_hz, 1_000.0..=max_cutoff).suffix(" Hz")).changed() {
+                                self.process_samples();
                             }
                         }
                     });
 
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut self.squelch_enabled, "Activar Squelch / Supresor de Ruido").changed() {
+                            self.process_samples();
+                        }
+                        if self.squelch_enabled {
+                            ui.label("Umbral de Silencio:");
+                            if ui.add(egui::Slider::new(&mut self.squelch_threshold_db, -80.0..=-20.0).suffix(" dBFS")).changed() {
+                                self.process_samples();
+                            }
+                        }
+                    });
                 },
             );
+
+            ui.add_space(6.0);
+            accordion_section(
+                ui,
+                theme,
+                "generic_iq_params_balance",
+                AccordionOptions::new("3. Corrección de Hardware y Balance I/Q").default_open(false),
+                |ui| {
+                    if ui.checkbox(&mut self.iq_balance_correction, "Corrección Automática de Desbalance de Ganancia y Ortogonalidad I/Q").changed() {
+                        self.process_samples();
+                    }
+
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut self.agc_enabled, "Control Automático de Ganancia (AGC)").changed() {
+                            self.process_samples();
+                        }
+                        if self.agc_enabled {
+                            ui.label("Nivel Objetivo:");
+                            if ui.add(egui::Slider::new(&mut self.agc_target_level, 0.2..=1.0)).changed() {
+                                self.process_samples();
+                            }
+                        }
+                    });
+                },
+            );
+
+            ui.add_space(10.0);
+            ui.horizontal_wrapped(|ui| {
+                let apply_btn = egui::Button::new(
+                    RichText::new("Aplicar Procesamiento").strong().color(Color32::WHITE),
+                )
+                .fill(theme.accent_blue())
+                .corner_radius(6.0);
+
+                if ui.add(apply_btn).clicked() {
+                    self.process_samples();
+                }
+
+                if !self.processed_iq_samples.is_empty() {
+                    if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
+                        self.current_step = 2;
+                    }
+                }
+            });
+
+            ui.add_space(6.0);
+            ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
 
             let active_samples = if !self.processed_iq_samples.is_empty() {
                 &self.processed_iq_samples
@@ -445,47 +527,199 @@ impl GenericIqPipeline {
             return;
         }
 
+        let total = self.raw_iq_samples.len();
+
+        // 1. Cancelación de DC Offset
         let mut dc_i = 0.0f32;
         let mut dc_q = 0.0f32;
-
         if self.remove_dc {
-            let count = self.raw_iq_samples.len() as f32;
+            let count = total as f32;
             let sum_i: f32 = self.raw_iq_samples.iter().map(|s| s.0).sum();
             let sum_q: f32 = self.raw_iq_samples.iter().map(|s| s.1).sum();
             dc_i = sum_i / count;
             dc_q = sum_q / count;
         }
 
-        let shift_angular = 2.0 * std::f32::consts::PI * self.freq_shift_hz / (self.sample_rate as f32);
-        let mut processed = Vec::with_capacity(self.raw_iq_samples.len());
+        // 2. Extracción base con DC offset removido
+        let mut samples: Vec<(f32, f32)> = self.raw_iq_samples
+            .iter()
+            .map(|&(r_i, r_q)| (r_i - dc_i, r_q - dc_q))
+            .collect();
 
-        for (idx, &(raw_i, raw_q)) in self.raw_iq_samples.iter().enumerate() {
-            let mut i = (raw_i - dc_i) * self.gain_factor;
-            let mut q = (raw_q - dc_q) * self.gain_factor;
-
-            if self.freq_shift_hz.abs() > 0.01 {
-                let angle = shift_angular * (idx as f32);
-                let cos_val = angle.cos();
-                let sin_val = angle.sin();
-                let rot_i = i * cos_val - q * sin_val;
-                let rot_q = i * sin_val + q * cos_val;
-                i = rot_i;
-                q = rot_q;
+        // 3. Inversión Espectral (Invert I/Q / Conjugate)
+        if self.invert_iq {
+            for s in &mut samples {
+                s.1 = -s.1;
             }
-
-            // Normalización suave para evitar saturación del DAC
-            processed.push((i.clamp(-1.0, 1.0), q.clamp(-1.0, 1.0)));
         }
 
-        self.processed_iq_samples = processed;
+        // 4. Corrección de Desbalance de Ganancia y Ortogonalidad I/Q
+        if self.iq_balance_correction && total > 64 {
+            let p_i: f32 = samples.iter().map(|s| s.0 * s.0).sum::<f32>() / (total as f32);
+            let p_q: f32 = samples.iter().map(|s| s.1 * s.1).sum::<f32>() / (total as f32);
+            let p_iq: f32 = samples.iter().map(|s| s.0 * s.1).sum::<f32>() / (total as f32);
+
+            if p_i > 1e-9 && p_q > 1e-9 {
+                let gain_ratio = (p_i / p_q).sqrt();
+                let sin_phi = (p_iq / (p_i * p_q).sqrt()).clamp(-0.95, 0.95);
+                let cos_phi = (1.0 - sin_phi * sin_phi).sqrt().max(0.01);
+
+                for s in &mut samples {
+                    let i = s.0;
+                    let q = s.1;
+                    // Corrección ortogonal Gram-Schmidt con compensación de ganancia
+                    let q_ortho = (q - i * sin_phi) / cos_phi * gain_ratio;
+                    s.1 = q_ortho;
+                }
+            }
+        }
+
+        // 5. Filtro FIR Pasa-Bajos (Denoising fuera de banda)
+        if self.lpf_enabled {
+            let taps = design_fir_lpf(self.lpf_cutoff_hz, self.sample_rate as f32, 31);
+            apply_fir_filter(&mut samples, &taps);
+        }
+
+        // 6. Desplazamiento de Frecuencia (Frequency Shift)
+        if self.freq_shift_hz.abs() > 0.01 {
+            let shift_angular = 2.0 * std::f32::consts::PI * self.freq_shift_hz / (self.sample_rate as f32);
+            for (idx, s) in samples.iter_mut().enumerate() {
+                let angle = shift_angular * (idx as f32);
+                let (sin_val, cos_val) = angle.sin_cos();
+                let rot_i = s.0 * cos_val - s.1 * sin_val;
+                let rot_q = s.0 * sin_val + s.1 * cos_val;
+                s.0 = rot_i;
+                s.1 = rot_q;
+            }
+        }
+
+        // 7. Supresor de Ruido / Squelch
+        if self.squelch_enabled {
+            let thresh = 10.0f32.powf(self.squelch_threshold_db / 20.0);
+            let thresh_sq = thresh * thresh;
+            for s in &mut samples {
+                let mag_sq = s.0 * s.0 + s.1 * s.1;
+                if mag_sq < thresh_sq {
+                    s.0 = 0.0;
+                    s.1 = 0.0;
+                }
+            }
+        }
+
+        // 8. Control Automático de Ganancia (AGC) o Factor de Escala Manual
+        if self.agc_enabled {
+            let max_mag = samples.iter().map(|s| (s.0 * s.0 + s.1 * s.1).sqrt()).fold(0.0f32, f32::max);
+            if max_mag > 1e-6 {
+                let scale = (self.agc_target_level / max_mag).clamp(0.01, 100.0);
+                for s in &mut samples {
+                    s.0 = (s.0 * scale).clamp(-1.0, 1.0);
+                    s.1 = (s.1 * scale).clamp(-1.0, 1.0);
+                }
+            }
+        } else {
+            for s in &mut samples {
+                s.0 = (s.0 * self.gain_factor).clamp(-1.0, 1.0);
+                s.1 = (s.1 * self.gain_factor).clamp(-1.0, 1.0);
+            }
+        }
+
+        self.processed_iq_samples = samples;
         self.channel_effects_state.is_dirty = true;
         self.channel_effects_state.processed_iq.clear();
+
+        let mut flags = Vec::new();
+        if self.remove_dc { flags.push("DC"); }
+        if self.invert_iq { flags.push("Invert-Q"); }
+        if self.iq_balance_correction { flags.push("I/Q-Balance"); }
+        if self.lpf_enabled { flags.push("FIR-LPF"); }
+        if self.freq_shift_hz.abs() > 0.01 { flags.push("Shift"); }
+        if self.squelch_enabled { flags.push("Squelch"); }
+        if self.agc_enabled { flags.push("AGC"); } else { flags.push("Gain"); }
+
         self.status_message = format!(
-            "Procesamiento aplicado: Ganancia {:.2}x, Shift {:.1} Hz, DC Offset {}. Muestras listas: {}",
-            self.gain_factor,
-            self.freq_shift_hz,
-            if self.remove_dc { "eliminado" } else { "mantenido" },
-            self.processed_iq_samples.len()
+            "Procesamiento aplicado [{}]: {} muestras listas a {} Hz.",
+            flags.join(", "),
+            self.processed_iq_samples.len(),
+            self.sample_rate
         );
+    }
+}
+
+/// Diseña coeficientes de un filtro FIR Pasa-Bajos simétrico con ventana de Hann
+fn design_fir_lpf(cutoff_hz: f32, sample_rate: f32, num_taps: usize) -> Vec<f32> {
+    let mut taps = vec![0.0f32; num_taps];
+    let fc = (cutoff_hz / sample_rate).clamp(0.001, 0.499);
+    let m = (num_taps - 1) as f32 / 2.0;
+
+    for k in 0..num_taps {
+        let n = k as f32 - m;
+        let sinc = if n.abs() < 1e-6 {
+            2.0 * fc
+        } else {
+            (2.0 * std::f32::consts::PI * fc * n).sin() / (std::f32::consts::PI * n)
+        };
+        // Ventana de Hann
+        let window = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * k as f32 / (num_taps - 1) as f32).cos());
+        taps[k] = sinc * window;
+    }
+
+    let sum: f32 = taps.iter().sum();
+    if sum.abs() > 1e-6 {
+        for t in &mut taps {
+            *t /= sum;
+        }
+    }
+    taps
+}
+
+/// Aplica convolución FIR a las muestras I y Q
+fn apply_fir_filter(samples: &mut [(f32, f32)], taps: &[f32]) {
+    if taps.is_empty() || samples.is_empty() {
+        return;
+    }
+    let n_taps = taps.len();
+    let half_taps = n_taps / 2;
+    let n = samples.len();
+    let mut filtered = Vec::with_capacity(n);
+
+    for i in 0..n {
+        let mut acc_i = 0.0f32;
+        let mut acc_q = 0.0f32;
+        for (k, &tap) in taps.iter().enumerate() {
+            let sample_idx = (i + n + k).saturating_sub(half_taps) % n;
+            acc_i += samples[sample_idx].0 * tap;
+            acc_q += samples[sample_idx].1 * tap;
+        }
+        filtered.push((acc_i, acc_q));
+    }
+    samples.copy_from_slice(&filtered);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generic_iq_processing_pipeline() {
+        let mut pipeline = GenericIqPipeline::default();
+        pipeline.generate_synthetic_iq();
+        assert_eq!(pipeline.raw_iq_samples.len(), 576_000);
+        assert!(!pipeline.processed_iq_samples.is_empty());
+
+        // Probar inversión de I/Q
+        pipeline.invert_iq = true;
+        pipeline.process_samples();
+        assert!(pipeline.status_message.contains("Invert-Q"));
+
+        // Probar filtro FIR pasa-bajos
+        pipeline.lpf_enabled = true;
+        pipeline.lpf_cutoff_hz = 50_000.0;
+        pipeline.process_samples();
+        assert!(pipeline.status_message.contains("FIR-LPF"));
+
+        // Probar AGC
+        pipeline.agc_enabled = true;
+        pipeline.process_samples();
+        assert!(pipeline.status_message.contains("AGC"));
     }
 }
