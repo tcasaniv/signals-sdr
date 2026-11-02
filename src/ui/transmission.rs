@@ -779,6 +779,15 @@ fn render_sdr_panel(
                 };
                 ui.label(RichText::new(backend_help).size(11.0).color(theme.text_secondary()));
 
+                if state.selected_backend == SdrBackend::SoapySdr && !crate::sdr::is_soapy_available() {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new("Aviso: SoapySDR.dll no se encuentra actualmente. Si deseas transmitir con Pluto, Lime o USRP, configúralo en Ajustes > Controlador SoapySDR. Para HackRF One, selecciona el backend Seify Nativo.")
+                            .size(11.0)
+                            .color(Color32::from_rgb(234, 179, 8))
+                    );
+                }
+
                 ui.add_space(8.0);
 
                 // --- ETAPA 2: SELECTOR DE DISPOSITIVO SDR (Filtrado por Backend) ---

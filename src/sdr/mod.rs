@@ -47,6 +47,6 @@ pub use network_tx::{
     GnuRadioFormat, GnuRadioProtocol, NetworkStreamStats, NetworkTxController,
 };
 pub use worker::{
-    detect_connected_radios, detect_detailed_radios, DetectedDeviceInfo, SdrBackend,
+    detect_connected_radios, detect_detailed_radios, DetectedDeviceInfo, is_soapy_available, SdrBackend,
     SdrDeviceOption, SdrHardwareType, SdrTransmissionController, TransmissionStatus, TxConfig,
 };

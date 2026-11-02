@@ -89,24 +89,65 @@ impl AppConfig {
         default_cfg
     }
 
-    /// Inyecta la ruta de búsqueda de SoapySDR a la variable de entorno PATH (útil en Windows)
+    /// Auto-detecta la ruta de instalación de SoapySDR en ubicaciones conocidas de Windows
+    pub fn find_system_soapy_path() -> Option<PathBuf> {
+        #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+        {
+            let mut candidates = Vec::new();
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                candidates.push(PathBuf::from(&userprofile).join("radioconda").join("Library").join("bin"));
+                candidates.push(PathBuf::from(&userprofile).join("miniconda3").join("Library").join("bin"));
+                candidates.push(PathBuf::from(&userprofile).join("anaconda3").join("Library").join("bin"));
+            }
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(parent) = exe_path.parent() {
+                    candidates.push(parent.to_path_buf());
+                }
+            }
+            candidates.push(PathBuf::from(r"C:\radioconda\Library\bin"));
+            candidates.push(PathBuf::from(r"C:\Program Files\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"C:\Program Files (x86)\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"C:\miniconda3\Library\bin"));
+            candidates.push(PathBuf::from(r"C:\anaconda3\Library\bin"));
+
+            for cand in candidates {
+                if cand.exists() && (cand.join("SoapySDR.dll").exists() || cand.join("SoapySDRUtil.exe").exists()) {
+                    return Some(cand);
+                }
+            }
+        }
+        None
+    }
+
+    /// Inyecta la ruta de búsqueda de SoapySDR a la variable de entorno PATH y al cargador de Windows
     pub fn apply_environment(&self) {
         #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
         {
-            if let Some(ref path_str) = self.soapy_search_path {
-                let trimmed = path_str.trim();
-                if !trimmed.is_empty() {
-                    let path = std::path::Path::new(trimmed);
-                    if path.is_dir() {
-                        if let Ok(current_path) = std::env::var("PATH") {
-                            let contains = current_path
-                                .split(';')
-                                .any(|p| p.trim().eq_ignore_ascii_case(trimmed));
-                            if !contains {
-                                let new_path = format!("{};{}", trimmed, current_path);
-                                std::env::set_var("PATH", new_path);
-                            }
+            let resolved_path = self.soapy_search_path.as_ref()
+                .map(PathBuf::from)
+                .or_else(Self::find_system_soapy_path);
+
+            if let Some(path) = resolved_path {
+                if path.is_dir() {
+                    let path_str = path.display().to_string();
+                    if let Ok(current_path) = std::env::var("PATH") {
+                        let contains = current_path
+                            .split(';')
+                            .any(|p| p.trim().eq_ignore_ascii_case(&path_str));
+                        if !contains {
+                            let new_path = format!("{};{}", path_str, current_path);
+                            std::env::set_var("PATH", new_path);
                         }
+                    }
+
+                    // Registrar directorio en el cargador dinámico de Windows (kernel32!SetDllDirectoryW)
+                    use std::os::windows::ffi::OsStrExt;
+                    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+                    extern "system" {
+                        fn SetDllDirectoryW(lpPathName: *const u16) -> i32;
+                    }
+                    unsafe {
+                        SetDllDirectoryW(wide.as_ptr());
                     }
                 }
             }

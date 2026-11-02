@@ -446,6 +446,41 @@ impl SignalsSdrApp {
             );
             ui.add_space(14.0);
 
+            let is_available = crate::sdr::is_soapy_available();
+            let status_bg = if is_available {
+                if *theme == AppTheme::Dark { Color32::from_rgb(10, 32, 18) } else { Color32::from_rgb(235, 250, 240) }
+            } else {
+                if *theme == AppTheme::Dark { Color32::from_rgb(32, 24, 10) } else { Color32::from_rgb(254, 249, 235) }
+            };
+            let status_stroke = if is_available {
+                Color32::from_rgb(34, 197, 94)
+            } else {
+                Color32::from_rgb(234, 179, 8)
+            };
+
+            Frame::new()
+                .fill(status_bg)
+                .stroke(Stroke::new(1.0, status_stroke))
+                .corner_radius(8.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let icon = if is_available { crate::icons::ICON_CHECK_CIRCLE.codepoint } else { crate::icons::ICON_INFO.codepoint };
+                        ui.label(RichText::new(icon).size(18.0).color(status_stroke));
+                        ui.vertical(|ui| {
+                            if is_available {
+                                ui.label(RichText::new("SoapySDR activo y vinculado correctamente").strong().color(status_stroke));
+                                ui.label(RichText::new("Las librerías dinámicas están disponibles en memoria. Seify puede detectar y transmitir con PlutoSDR, LimeSDR, bladeRF y USRP.").size(12.0).color(theme.text_secondary()));
+                            } else {
+                                ui.label(RichText::new("SoapySDR no detectado en el sistema actualmente").strong().color(status_stroke));
+                                ui.label(RichText::new("No se encontró SoapySDR.dll en el PATH ni en la carpeta configurada. Si vas a usar transceptores SoapySDR, instala Radioconda o indica la ruta abajo. Para HackRF One, Dummy y RTL-TCP virtual, ¡no necesitas instalar nada!").size(12.0).color(theme.text_secondary()));
+                            }
+                        });
+                    });
+                });
+
+            ui.add_space(12.0);
+
             Frame::new()
                 .fill(theme.card_bg())
                 .stroke(Stroke::new(1.0_f32, theme.card_border()))
@@ -770,6 +805,10 @@ impl SignalsSdrApp {
 fn auto_detect_radioconda() -> Option<String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        if let Some(path) = crate::config::AppConfig::find_system_soapy_path() {
+            return Some(path.display().to_string());
+        }
+
         let mut candidates = Vec::new();
         if let Ok(userprofile) = std::env::var("USERPROFILE") {
             candidates.push(format!("{}\\radioconda\\Library\\bin", userprofile));
@@ -778,6 +817,8 @@ fn auto_detect_radioconda() -> Option<String> {
         }
         candidates.push(r"C:\Users\USUARIO\radioconda\Library\bin".to_string());
         candidates.push(r"C:\radioconda\Library\bin".to_string());
+        candidates.push(r"C:\Program Files\PothosSDR\bin".to_string());
+        candidates.push(r"C:\Program Files (x86)\PothosSDR\bin".to_string());
         candidates.push(r"C:\miniconda3\Library\bin".to_string());
         candidates.push(r"C:\anaconda3\Library\bin".to_string());
 

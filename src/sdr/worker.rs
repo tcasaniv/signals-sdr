@@ -143,10 +143,42 @@ pub struct DetectedDeviceInfo {
     pub full_args: String,
 }
 
+/// Verifica si SoapySDR.dll está disponible en el sistema sin disparar excepciones de delay-load
+pub fn is_soapy_available() -> bool {
+    #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+    {
+        extern "system" {
+            fn LoadLibraryExA(lpLibFileName: *const u8, hFile: *mut std::ffi::c_void, dwFlags: u32) -> *mut std::ffi::c_void;
+            fn FreeLibrary(hLibModule: *mut std::ffi::c_void) -> i32;
+        }
+        unsafe {
+            let handle = LoadLibraryExA(b"SoapySDR.dll\0".as_ptr(), std::ptr::null_mut(), 0);
+            if !handle.is_null() {
+                FreeLibrary(handle);
+                return true;
+            }
+        }
+        false
+    }
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
+    {
+        true
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+}
+
 /// Detecta los transceptores de radio reales conectados por USB o red excluyendo tarjetas de audio
 pub fn detect_detailed_radios() -> Vec<DetectedDeviceInfo> {
     let mut radios = Vec::new();
-    if let Ok(devs) = seify::enumerate() {
+    let devs_res = if is_soapy_available() {
+        seify::enumerate()
+    } else {
+        seify::enumerate_with_args("driver=hackrf")
+    };
+    if let Ok(devs) = devs_res {
         for d in devs {
             let driver_str = d.get::<String>("driver").unwrap_or_default();
             let soapy_driver = d.get::<String>("soapy_driver").ok();
@@ -462,7 +494,14 @@ impl SdrTransmissionController {
                 return;
             }
 
-            // 2. Hardware Real: Resolver argumentos
+            // 2. Hardware Real: Validar disponibilidad de backend y resolver argumentos
+            if config.backend == SdrBackend::SoapySdr && !is_soapy_available() {
+                let err_msg = "SoapySDR.dll no está disponible en el sistema. Puedes configurarlo en Ajustes > Controlador SoapySDR o transmitir con HackRF One usando el backend Seify Nativo.".to_string();
+                log::error!("{}", err_msg);
+                *status.lock().unwrap() = TransmissionStatus::Error(err_msg);
+                return;
+            }
+
             let device_args = match config.resolve_device_args() {
                 Ok(args) => args,
                 Err(err_msg) => {
