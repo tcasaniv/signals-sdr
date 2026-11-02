@@ -75,9 +75,14 @@ pub struct VirtualSinkModal {
     pub show_q: bool,
     pub show_envelope: bool,
     pub time_window_samples: usize,
-    // Constelación
+    // Constelación VSA
     pub constellation_points: usize,
     pub constellation_zoom: f32,
+    pub constellation_vsa_mode: bool,
+    pub constellation_sps: usize,
+    pub constellation_timing_phase: usize,
+    pub constellation_oqpsk_deoffset: bool,
+    pub constellation_carrier_phase_deg: f32,
 }
 
 impl Default for VirtualSinkModal {
@@ -105,6 +110,11 @@ impl Default for VirtualSinkModal {
             time_window_samples: 512,
             constellation_points: 1024,
             constellation_zoom: 1.0,
+            constellation_vsa_mode: true,
+            constellation_sps: 4,
+            constellation_timing_phase: 0,
+            constellation_oqpsk_deoffset: true,
+            constellation_carrier_phase_deg: 0.0,
         }
     }
 }
@@ -317,17 +327,62 @@ impl VirtualSinkModal {
                         ui.add(egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
                     }
                     VirtualSinkTab::Constellation => {
-                        ui.label(RichText::new("Zoom Constelación:").size(11.5).color(theme.text_secondary()));
+                        ui.checkbox(
+                            &mut self.constellation_vsa_mode,
+                            RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
+                        );
+
+                        if self.constellation_vsa_mode {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
+                            egui::ComboBox::from_id_salt("sink_const_sps")
+                                .selected_text(format!("{} SPS", self.constellation_sps))
+                                .width(90.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
+                                    ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
+                                });
+
+                            ui.checkbox(
+                                &mut self.constellation_oqpsk_deoffset,
+                                RichText::new("OQPSK De-offset (Q = Ts/2)").size(11.0),
+                            );
+
+                            let sps = self.constellation_sps.max(1);
+                            if self.constellation_timing_phase >= sps {
+                                self.constellation_timing_phase = 0;
+                            }
+
+                            ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
+                            ui.add(egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)));
+
+                            if ui.button(RichText::new("Auto Ojo").size(11.0)).clicked() {
+                                let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
+                                self.constellation_timing_phase = find_best_eye_phase(samples, self.sample_cursor, sps, delay);
+                            }
+
+                            ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
+                            ui.add(egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"));
+                        }
+
+                        ui.add_space(6.0);
+                        ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
                         egui::ComboBox::from_id_salt("sink_const_zoom")
                             .selected_text(format!("{:.1}x", self.constellation_zoom))
+                            .width(65.0)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
-                                ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x (Normal)");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
                                 ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
                                 ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
                                 ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
                             });
-                        ui.add_space(8.0);
+
+                        ui.add_space(4.0);
                         ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
                         ui.add(egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"));
                     }
@@ -884,21 +939,62 @@ impl VirtualSinkModal {
             return;
         }
 
-        let n = self.constellation_points.min(samples.len());
+        let total_samples = samples.len();
+        let sps = self.constellation_sps.max(1);
+        let timing_phase = self.constellation_timing_phase % sps;
+        let oqpsk_delay = if self.constellation_oqpsk_deoffset && sps >= 2 {
+            sps / 2
+        } else {
+            0
+        };
+
+        let rot_rad = self.constellation_carrier_phase_deg.to_radians();
+        let (cos_rot, sin_rot) = (rot_rad.cos(), rot_rad.sin());
+
         let start = self.sample_cursor;
 
-        // Dibujar puntos de constelación con persistencia tipo fósforo
-        for i in 0..n {
-            let idx = (start + i) % samples.len();
-            let (re, im) = samples[idx];
+        if self.constellation_vsa_mode {
+            // Modo Símbolos VSA: 1 muestra por símbolo decimado en la fase óptima del ojo
+            let n_symbols = self.constellation_points.min(total_samples / sps);
+            for i in 0..n_symbols {
+                let sample_idx = (start + i * sps + timing_phase) % total_samples;
+                let raw_i = samples[sample_idx].0;
 
-            let pt = Pos2::new(center.x + re * scale, center.y - im * scale);
+                // Si OQPSK está activo, alinear el canal Q retardado Ts/2
+                let q_idx = (sample_idx + oqpsk_delay) % total_samples;
+                let raw_q = samples[q_idx].1;
 
-            let age_factor = i as f32 / n as f32; // Muestras más recientes más brillantes
-            let alpha = (60.0 + age_factor * 195.0) as u8;
-            let dot_col = Color32::from_rgba_premultiplied(56, 189, 248, alpha);
+                // Rotación de portadora (desrotación de fase)
+                let i_rot = raw_i * cos_rot - raw_q * sin_rot;
+                let q_rot = raw_i * sin_rot + raw_q * cos_rot;
 
-            painter.circle_filled(pt, 1.8, dot_col);
+                let pt = Pos2::new(center.x + i_rot * scale, center.y - q_rot * scale);
+
+                let age_factor = i as f32 / n_symbols.max(1) as f32;
+                let alpha = (90.0 + age_factor * 165.0) as u8;
+                let dot_col = Color32::from_rgba_premultiplied(56, 189, 248, alpha);
+
+                // Dibujar símbolo de decisión nítido
+                painter.circle_filled(pt, 2.5, dot_col);
+            }
+        } else {
+            // Modo Trayectoria Cruda: Muestra continua con persistencia fósforo
+            let n = self.constellation_points.min(total_samples);
+            for i in 0..n {
+                let idx = (start + i) % total_samples;
+                let (raw_i, raw_q) = samples[idx];
+
+                let i_rot = raw_i * cos_rot - raw_q * sin_rot;
+                let q_rot = raw_i * sin_rot + raw_q * cos_rot;
+
+                let pt = Pos2::new(center.x + i_rot * scale, center.y - q_rot * scale);
+
+                let age_factor = i as f32 / n as f32;
+                let alpha = (50.0 + age_factor * 180.0) as u8;
+                let dot_col = Color32::from_rgba_premultiplied(56, 189, 248, alpha);
+
+                painter.circle_filled(pt, 1.8, dot_col);
+            }
         }
     }
 
@@ -984,6 +1080,34 @@ impl VirtualSinkModal {
     }
 }
 
+/// Encuentra la fase de muestreo óptima del ojo para maximizar la apertura de constelación
+fn find_best_eye_phase(samples: &[(f32, f32)], start: usize, sps: usize, oqpsk_delay: usize) -> usize {
+    if sps <= 1 || samples.is_empty() {
+        return 0;
+    }
+    let total = samples.len();
+    let n_check = 512.min(total / sps);
+    let mut best_phase = 0;
+    let mut max_metric = -1.0f32;
+
+    for phase in 0..sps {
+        let mut sum_sq = 0.0f32;
+        for i in 0..n_check {
+            let sample_idx = (start + i * sps + phase) % total;
+            let raw_i = samples[sample_idx].0;
+            let q_idx = (sample_idx + oqpsk_delay) % total;
+            let raw_q = samples[q_idx].1;
+            // En símbolos de decisión, la suma de cuadrados de amplitudes alcanza su pico
+            sum_sq += raw_i * raw_i + raw_q * raw_q;
+        }
+        if sum_sq > max_metric {
+            max_metric = sum_sq;
+            best_phase = phase;
+        }
+    }
+    best_phase
+}
+
 /// Mapa de color para cascada espectral tipo SDR (Azul -> Cian -> Verde -> Amarillo -> Rojo -> Blanco)
 fn waterfall_colormap(t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);
@@ -1047,5 +1171,24 @@ mod tests {
         sink.reset_peaks();
         assert!(sink.max_peak_buffer.is_empty());
         assert!(sink.min_peak_buffer.is_empty());
+    }
+
+    #[test]
+    fn test_vsa_constellation_and_eye_phase() {
+        // Generar señal OQPSK sintética con 4 SPS (ej: Meteor LRPT)
+        let sps = 4;
+        let n_symbols = 64;
+        let mut samples = vec![(0.0f32, 0.0f32); n_symbols * sps];
+
+        // Símbolos en fase 1 con retardo Q en fase 3 (sps/2 = 2)
+        for s in 0..n_symbols {
+            let i_idx = s * sps + 1;
+            let q_idx = s * sps + 1 + (sps / 2);
+            samples[i_idx].0 = if s % 2 == 0 { 0.7 } else { -0.7 };
+            samples[q_idx].1 = if (s / 2) % 2 == 0 { 0.7 } else { -0.7 };
+        }
+
+        let best = find_best_eye_phase(&samples, 0, sps, sps / 2);
+        assert_eq!(best, 1, "find_best_eye_phase debe identificar la fase 1 como centro del ojo");
     }
 }
