@@ -86,7 +86,7 @@ impl SettingsTab {
         match self {
             Self::General => "Carpeta base y subdirectorios de exportación",
             Self::Appearance => "Modo claro, oscuro y personalización visual",
-            Self::SoapySdr => "Ruta de bibliotecas SoapySDR y Radioconda",
+            Self::SoapySdr => "Ruta de bibliotecas SoapySDR (Radioconda / PothosSDR)",
             Self::License => "Términos de la GNU General Public License v3",
             Self::About => "Versión, repositorio GitHub y documentación",
         }

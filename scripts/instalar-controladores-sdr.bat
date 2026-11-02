@@ -54,7 +54,7 @@ goto fin
 :check
 echo.
 echo Buscando SoapySDR en rutas conocidas...
-powershell -NoProfile -Command "& { $paths = @($env:USERPROFILE + '\radioconda\Library\bin', 'C:\Program Files\PothosSDR\bin', 'C:\radioconda\Library\bin'); $found = $false; foreach ($p in $paths) { if (Test-Path ($p + '\SoapySDR.dll')) { Write-Host 'Encontrado SoapySDR.dll en:' $p -ForegroundColor Green; $found = $true } }; if (-not $found) { Write-Host 'No se encontró SoapySDR en las rutas estándar.' -ForegroundColor Yellow } }"
+powershell -NoProfile -Command "& { $paths = @($env:USERPROFILE + '\radioconda\Library\bin', 'C:\Program Files\PothosSDR\bin', 'C:\Program Files (x86)\PothosSDR\bin', 'C:\PothosSDR\bin', 'C:\radioconda\Library\bin'); $found = $false; foreach ($p in $paths) { if (Test-Path ($p + '\SoapySDR.dll')) { Write-Host 'Encontrado SoapySDR.dll en:' $p -ForegroundColor Green; $found = $true } }; if (-not $found) { Write-Host 'No se encontró SoapySDR en las rutas estándar.' -ForegroundColor Yellow } }"
 echo.
 pause
 goto menu

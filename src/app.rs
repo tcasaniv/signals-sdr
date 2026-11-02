@@ -438,7 +438,7 @@ impl SignalsSdrApp {
 
     fn render_settings_soapy(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
-            ui.label(RichText::new("Controlador SoapySDR y Radioconda").strong().size(18.0).color(theme.text_primary()));
+            ui.label(RichText::new("Controlador SoapySDR (Radioconda / PothosSDR)").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Configuración de rutas dinámicas de SoapySDR para la detección de dispositivos SDR en Windows.")
                     .size(13.0)
@@ -473,7 +473,7 @@ impl SignalsSdrApp {
                                 ui.label(RichText::new("Las librerías dinámicas están disponibles en memoria. Seify puede detectar y transmitir con PlutoSDR, LimeSDR, bladeRF y USRP.").size(12.0).color(theme.text_secondary()));
                             } else {
                                 ui.label(RichText::new("SoapySDR no detectado en el sistema actualmente").strong().color(status_stroke));
-                                ui.label(RichText::new("No se encontró SoapySDR.dll en el PATH ni en la carpeta configurada. Si vas a usar transceptores SoapySDR, instala Radioconda o indica la ruta abajo. Para HackRF One, Dummy y RTL-TCP virtual, ¡no necesitas instalar nada!").size(12.0).color(theme.text_secondary()));
+                                ui.label(RichText::new("No se encontró SoapySDR.dll en el PATH ni en las carpetas estándar. Si vas a usar transceptores SoapySDR (PlutoSDR, LimeSDR, bladeRF), instala PothosSDR o Radioconda con 'scripts/instalar-controladores-sdr.bat' o indica la ruta abajo. Para HackRF One nativo por USB, simulador Dummy y RTL-TCP por red, ¡no necesitas instalar nada!").size(12.0).color(theme.text_secondary()));
                             }
                         });
                     });
@@ -493,9 +493,10 @@ impl SignalsSdrApp {
                         ui.add(
                             egui::Label::new(
                                 RichText::new(
-                                    "En Windows, los entornos como Radioconda (GNU Radio) instalan SoapySDR.dll y los controladores SDR en carpetas \
-                                     como 'C:\\Users\\<usuario>\\radioconda\\Library\\bin'. Esta ruta no siempre se agrega al PATH global del sistema. \
-                                     Puedes configurarla aquí para que Signals SDR la cargue dinámicamente en tiempo de ejecución."
+                                    "En Windows, los controladores SDR de SoapySDR se instalan habitualmente a través de PothosSDR \
+                                     (ej. 'C:\\Program Files\\PothosSDR\\bin') o Radioconda (ej. 'C:\\Users\\<usuario>\\radioconda\\Library\\bin'). \
+                                     Estas carpetas contienen SoapySDR.dll y los módulos para PlutoSDR, LimeSDR, HackRF, Airspy, RTL-SDR y bladeRF. \
+                                     Si no están en el PATH global, Signals SDR puede detectarlas y cargarlas automáticamente en tiempo de ejecución."
                                 )
                                 .size(12.0)
                                 .color(theme.text_secondary())
@@ -510,7 +511,7 @@ impl SignalsSdrApp {
                         ui.horizontal(|ui| {
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.desktop_nav.soapy_path_input)
-                                    .hint_text("Ej: C:\\Users\\USUARIO\\radioconda\\Library\\bin")
+                                    .hint_text("Ej: C:\\Program Files\\PothosSDR\\bin o C:\\Users\\USUARIO\\radioconda\\Library\\bin")
                                     .desired_width((ui.available_width() - 100.0).max(180.0)),
                             );
 
@@ -539,25 +540,25 @@ impl SignalsSdrApp {
 
                         ui.horizontal_wrapped(|ui| {
                             let detect_btn = egui::Button::new(
-                                RichText::new(format!("{} Auto-detectar Radioconda / Conda", crate::icons::ICON_SEARCH.codepoint)).size(12.0)
+                                RichText::new(format!("{} Auto-detectar Radioconda / PothosSDR / Conda", crate::icons::ICON_SEARCH.codepoint)).size(12.0)
                             )
                             .fill(theme.surface_subtle())
                             .stroke(Stroke::new(1.0_f32, theme.card_border()))
                             .corner_radius(6.0);
 
                             if ui.add(detect_btn).clicked() {
-                                if let Some(cand) = auto_detect_radioconda() {
+                                if let Some((cand, flavor)) = auto_detect_soapy_env() {
                                     self.desktop_nav.soapy_path_input = cand.clone();
                                     self.config.soapy_search_path = Some(cand.clone());
                                     self.config.apply_environment();
                                     self.config.save();
                                     self.desktop_nav.soapy_test_status = Some((
-                                        format!("¡Instalación detectada automáticamente!: {}", cand),
+                                        format!("¡Instalación de {} detectada y vinculada con éxito!: {}", flavor, cand),
                                         true,
                                     ));
                                 } else {
                                     self.desktop_nav.soapy_test_status = Some((
-                                        "No se encontró automáticamente una instalación de Radioconda o Conda en las rutas estándar. Por favor ingresa la carpeta manualmente o usa 'Examinar Carpeta'.".to_string(),
+                                        "No se encontró automáticamente una instalación de PothosSDR ni Radioconda en las rutas estándar. Puedes instalar PothosSDR o Radioconda o ingresar la carpeta manualmente.".to_string(),
                                         false,
                                     ));
                                 }
@@ -802,30 +803,54 @@ impl SignalsSdrApp {
     }
 }
 
-fn auto_detect_radioconda() -> Option<String> {
+fn auto_detect_soapy_env() -> Option<(String, &'static str)> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Some(path) = crate::config::AppConfig::find_system_soapy_path() {
-            return Some(path.display().to_string());
+            let path_str = path.display().to_string();
+            let flavor = if path_str.to_lowercase().contains("pothos") {
+                "PothosSDR"
+            } else if path_str.to_lowercase().contains("radioconda") {
+                "Radioconda"
+            } else {
+                "SoapySDR / Conda"
+            };
+            return Some((path_str, flavor));
         }
 
-        let mut candidates = Vec::new();
+        let mut candidates: Vec<(String, &'static str)> = Vec::new();
+
+        if let Ok(pothos_root) = std::env::var("POTHOS_ROOT") {
+            candidates.push((format!("{}\\bin", pothos_root), "PothosSDR"));
+        }
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            candidates.push((format!("{}\\PothosSDR\\bin", pf), "PothosSDR"));
+        }
+        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+            candidates.push((format!("{}\\PothosSDR\\bin", pf86), "PothosSDR"));
+        }
+
         if let Ok(userprofile) = std::env::var("USERPROFILE") {
-            candidates.push(format!("{}\\radioconda\\Library\\bin", userprofile));
-            candidates.push(format!("{}\\miniconda3\\Library\\bin", userprofile));
-            candidates.push(format!("{}\\anaconda3\\Library\\bin", userprofile));
+            candidates.push((format!("{}\\radioconda\\Library\\bin", userprofile), "Radioconda"));
+            candidates.push((format!("{}\\miniconda3\\Library\\bin", userprofile), "Conda"));
+            candidates.push((format!("{}\\anaconda3\\Library\\bin", userprofile), "Anaconda"));
+            candidates.push((format!("{}\\PothosSDR\\bin", userprofile), "PothosSDR"));
         }
-        candidates.push(r"C:\Users\USUARIO\radioconda\Library\bin".to_string());
-        candidates.push(r"C:\radioconda\Library\bin".to_string());
-        candidates.push(r"C:\Program Files\PothosSDR\bin".to_string());
-        candidates.push(r"C:\Program Files (x86)\PothosSDR\bin".to_string());
-        candidates.push(r"C:\miniconda3\Library\bin".to_string());
-        candidates.push(r"C:\anaconda3\Library\bin".to_string());
 
-        for cand in candidates {
+        candidates.push((r"C:\Program Files\PothosSDR\bin".to_string(), "PothosSDR"));
+        candidates.push((r"C:\Program Files (x86)\PothosSDR\bin".to_string(), "PothosSDR"));
+        candidates.push((r"C:\PothosSDR\bin".to_string(), "PothosSDR"));
+        candidates.push((r"D:\Program Files\PothosSDR\bin".to_string(), "PothosSDR"));
+        candidates.push((r"D:\PothosSDR\bin".to_string(), "PothosSDR"));
+        candidates.push((r"C:\Users\USUARIO\radioconda\Library\bin".to_string(), "Radioconda"));
+        candidates.push((r"C:\radioconda\Library\bin".to_string(), "Radioconda"));
+        candidates.push((r"C:\miniconda3\Library\bin".to_string(), "Conda"));
+        candidates.push((r"C:\anaconda3\Library\bin".to_string(), "Anaconda"));
+
+        for (cand, flavor) in candidates {
             let p = std::path::Path::new(&cand);
             if p.exists() && (p.join("SoapySDR.dll").exists() || p.join("SoapySDRUtil.exe").exists()) {
-                return Some(cand);
+                return Some((cand, flavor));
             }
         }
     }
@@ -857,7 +882,7 @@ fn test_soapy_detection(path_input: &str) -> (String, bool) {
             }
             (format!("¡Éxito! SoapySDR detectado en: {}\\ (Binarios encontrados y vinculados correctamente al PATH)", trimmed), true)
         } else {
-            (format!("Aviso: No se encontraron 'SoapySDR.dll' ni 'SoapySDRUtil.exe' en la carpeta indicada ({}). Verifica que sea la carpeta Library\\bin.", trimmed), false)
+            (format!("Aviso: No se encontraron 'SoapySDR.dll' ni 'SoapySDRUtil.exe' en la carpeta indicada ({}). Verifica que sea la carpeta bin (ej. 'PothosSDR\\bin' o 'radioconda\\Library\\bin').", trimmed), false)
         }
     }
     #[cfg(target_arch = "wasm32")]

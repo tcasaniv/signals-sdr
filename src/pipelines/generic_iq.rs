@@ -299,30 +299,70 @@ impl GenericIqPipeline {
 
     fn render_step_processing(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
+            // Cabecera didáctica informativa del procesamiento DSP en banda base
+            info_card(
+                ui,
+                theme,
+                "Acondicionamiento y Procesamiento DSP de Señales I/Q",
+                "Permite limpiar el ruido de canal, compensar imperfecciones analógicas del receptor SDR \
+                 (como la fuga del oscilador local / pico DC y desbalance en cuadratura) y ajustar la frecuencia \
+                 para analizar la constelación digital (BPSK, QPSK, OQPSK, QAM) y mediciones RF en el instrumento virtual.",
+            );
+
+            ui.add_space(10.0);
+
+            // ========================================================
+            // SECCIÓN 1: ACONDICIONAMIENTO BÁSICO, FRECUENCIA Y GANANCIA
+            // ========================================================
             accordion_section(
                 ui,
                 theme,
                 "generic_iq_params_basic",
-                AccordionOptions::new("1. Acondicionamiento Básico y Frecuencia").default_open(true),
+                AccordionOptions::new("1. Acondicionamiento Básico, Frecuencia y Ganancia").default_open(true),
                 |ui| {
+                    ui.label(
+                        RichText::new(
+                            "Ajusta el rango dinámico de las muestras complejas I/Q, traslada portadoras desplazadas al centro en 0 Hz \
+                             y corrige defectos habituales al capturar con receptores SDR de conversión directa.",
+                        )
+                        .size(11.5)
+                        .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
+
+                    // Factor de escala
                     ui.horizontal(|ui| {
-                        ui.label("Factor de Escala / Ganancia:");
+                        ui.label(RichText::new("Factor de Escala / Ganancia:").strong());
                         if ui.add(egui::Slider::new(&mut self.gain_factor, 0.1..=5.0).text("x")).changed() {
                             self.process_samples();
                         }
                     });
+                    ui.label(
+                        RichText::new("Multiplica la amplitud I/Q. Útil para normalizar grabaciones atenuadas (ej. enteros int8 de HackRF) sin alterar la fase.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
 
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
+
+                    // Desplazamiento de Frecuencia
                     ui.horizontal(|ui| {
-                        ui.label("Desplazamiento de Frecuencia (Shift Hz):");
+                        ui.label(RichText::new("Desplazamiento de Frecuencia (Shift Hz):").strong());
                         if ui.add(egui::Slider::new(&mut self.freq_shift_hz, -100_000.0..=100_000.0).suffix(" Hz")).changed() {
                             self.process_samples();
                         }
                     });
+                    ui.label(
+                        RichText::new("Aplica una mezcla compleja s(t)·e^(j2πΔft) para centrar portadoras fuera de sintonía o trasladar una FI a 0 Hz (DC).")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
 
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
+
+                    // Tasa de Muestreo SDR
                     ui.horizontal(|ui| {
-                        ui.label("Tasa de Muestreo SDR I/Q:");
+                        ui.label(RichText::new("Tasa de Muestreo SDR I/Q:").strong());
                         egui::ComboBox::from_id_salt("generic_iq_sdr_rate_combo")
                             .selected_text(format!("{} Sps ({} kHz)", self.sample_rate, self.sample_rate / 1000))
                             .show_ui(ui, |ui| {
@@ -337,28 +377,66 @@ impl GenericIqPipeline {
                             });
                         ui.add(egui::DragValue::new(&mut self.sample_rate).speed(1000).range(8_000..=20_000_000).suffix(" Hz"));
                     });
+                    let nyquist_khz = (self.sample_rate / 2) as f32 / 1000.0;
+                    ui.label(
+                        RichText::new(format!("Base temporal Fs: determina la escala del osciloscopio y el ancho de banda analizable (Criterio de Nyquist: ±{:.1} kHz).", nyquist_khz))
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
 
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
+
+                    // DC Offset e Inversión Espectral
                     ui.horizontal_wrapped(|ui| {
-                        if ui.checkbox(&mut self.remove_dc, "Eliminar componente continua (DC Offset)").changed() {
-                            self.process_samples();
-                        }
-                        if ui.checkbox(&mut self.invert_iq, "Invertir Espectro (Invert I/Q / Conjugate)").changed() {
+                        if ui.checkbox(&mut self.remove_dc, RichText::new("Eliminar componente continua (DC Offset)").strong()).changed() {
                             self.process_samples();
                         }
                     });
+                    ui.label(
+                        RichText::new("Resta la media μ_I y μ_Q. Suprime el pico central en 0 Hz provocado por la fuga del Oscilador Local (LO Leakage) del SDR.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
+
+                    ui.add_space(4.0);
+
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.checkbox(&mut self.invert_iq, RichText::new("Invertir Espectro (Invert I/Q / Conjugate: I - jQ)").strong()).changed() {
+                            self.process_samples();
+                        }
+                    });
+                    ui.label(
+                        RichText::new("Invierte el signo del canal Q. Corrige grabaciones capturadas con inyección de oscilador local alta o cableado en cuadratura invertido.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
                 },
             );
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
+
+            // ========================================================
+            // SECCIÓN 2: FILTROS Y SUPRESIÓN DE RUIDO (DENOISING)
+            // ========================================================
             accordion_section(
                 ui,
                 theme,
                 "generic_iq_params_filtering",
                 AccordionOptions::new("2. Filtros y Supresión de Ruido (Denoising)").default_open(true),
                 |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut self.lpf_enabled, "Activar Filtro Pasa-Bajos FIR").changed() {
+                    ui.label(
+                        RichText::new(
+                            "Elimina el ruido térmico fuera de la banda útil y silencia pausas en la transmisión para obtener nubes de constelación \
+                             nítidas y mediciones precisas de SNR.",
+                        )
+                        .size(11.5)
+                        .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
+
+                    // Filtro Pasa-Bajos FIR
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.checkbox(&mut self.lpf_enabled, RichText::new("Activar Filtro Pasa-Bajos FIR (Ventana de Hann)").strong()).changed() {
                             self.process_samples();
                         }
                         if self.lpf_enabled {
@@ -369,10 +447,17 @@ impl GenericIqPipeline {
                             }
                         }
                     });
+                    ui.label(
+                        RichText::new("Filtro digital FIR de fase lineal (31 coeficientes). Atenúa el ruido térmico y las emisiones adyacentes sin distorsionar la fase.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
 
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut self.squelch_enabled, "Activar Squelch / Supresor de Ruido").changed() {
+                    ui.add_space(6.0);
+
+                    // Squelch / Supresor de Ruido
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.checkbox(&mut self.squelch_enabled, RichText::new("Activar Squelch / Supresor de Ruido").strong()).changed() {
                             self.process_samples();
                         }
                         if self.squelch_enabled {
@@ -382,23 +467,49 @@ impl GenericIqPipeline {
                             }
                         }
                     });
+                    ui.label(
+                        RichText::new("Pone a cero (0, 0) las muestras cuya potencia instantánea cae por debajo del umbral, silenciando el canal durante pausas.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
                 },
             );
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
+
+            // ========================================================
+            // SECCIÓN 3: CORRECCIÓN DE HARDWARE Y BALANCE I/Q
+            // ========================================================
             accordion_section(
                 ui,
                 theme,
                 "generic_iq_params_balance",
-                AccordionOptions::new("3. Corrección de Hardware y Balance I/Q").default_open(false),
+                AccordionOptions::new("3. Corrección de Hardware y Balance I/Q").default_open(true),
                 |ui| {
-                    if ui.checkbox(&mut self.iq_balance_correction, "Corrección Automática de Desbalance de Ganancia y Ortogonalidad I/Q").changed() {
+                    ui.label(
+                        RichText::new(
+                            "Calibra y compensa imperfecciones físicas de los demoduladores de cuadratura analógicos del receptor SDR.",
+                        )
+                        .size(11.5)
+                        .color(theme.text_secondary()),
+                    );
+                    ui.add_space(8.0);
+
+                    // Gram-Schmidt Balance Correction
+                    if ui.checkbox(&mut self.iq_balance_correction, RichText::new("Corrección de Desbalance de Ganancia y Ortogonalidad I/Q (Gram-Schmidt)").strong()).changed() {
                         self.process_samples();
                     }
+                    ui.label(
+                        RichText::new("Estima la diferencia de ganancia y el error de desfase entre los canales I y Q. Restaura la simetría circular de la constelación y suprime señales imagen.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
 
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut self.agc_enabled, "Control Automático de Ganancia (AGC)").changed() {
+                    ui.add_space(6.0);
+
+                    // AGC
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.checkbox(&mut self.agc_enabled, RichText::new("Control Automático de Ganancia (AGC)").strong()).changed() {
                             self.process_samples();
                         }
                         if self.agc_enabled {
@@ -408,13 +519,20 @@ impl GenericIqPipeline {
                             }
                         }
                     });
+                    ui.label(
+                        RichText::new("Normaliza dinámicamente la envolvente a un valor constante para que los puntos de la constelación coincidan con las fronteras de decisión estándar.")
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                    );
                 },
             );
 
             ui.add_space(10.0);
+
+            // Barra de acciones y estado
             ui.horizontal_wrapped(|ui| {
                 let apply_btn = egui::Button::new(
-                    RichText::new("Aplicar Procesamiento").strong().color(Color32::WHITE),
+                    RichText::new(format!("{} Aplicar Procesamiento", crate::icons::ICON_TUNE.codepoint)).strong().color(Color32::WHITE),
                 )
                 .fill(theme.accent_blue())
                 .corner_radius(6.0);
@@ -424,7 +542,8 @@ impl GenericIqPipeline {
                 }
 
                 if !self.processed_iq_samples.is_empty() {
-                    if ui.button(RichText::new("Continuar a Efectos de Canal ->").strong()).clicked() {
+                    let next_label = format!("Continuar a Efectos de Canal {}", crate::icons::ICON_ARROW_FORWARD.codepoint);
+                    if ui.button(RichText::new(next_label).strong()).clicked() {
                         self.current_step = 2;
                     }
                 }

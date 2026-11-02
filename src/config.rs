@@ -94,19 +94,40 @@ impl AppConfig {
         #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
         {
             let mut candidates = Vec::new();
+
+            // PothosSDR vía variable de entorno oficial POTHOS_ROOT
+            if let Ok(pothos_root) = std::env::var("POTHOS_ROOT") {
+                candidates.push(PathBuf::from(pothos_root).join("bin"));
+            }
+
+            // Carpetas estándar de ProgramFiles para PothosSDR
+            if let Ok(pf) = std::env::var("ProgramFiles") {
+                candidates.push(PathBuf::from(&pf).join("PothosSDR").join("bin"));
+            }
+            if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+                candidates.push(PathBuf::from(&pf86).join("PothosSDR").join("bin"));
+            }
+
             if let Ok(userprofile) = std::env::var("USERPROFILE") {
                 candidates.push(PathBuf::from(&userprofile).join("radioconda").join("Library").join("bin"));
                 candidates.push(PathBuf::from(&userprofile).join("miniconda3").join("Library").join("bin"));
                 candidates.push(PathBuf::from(&userprofile).join("anaconda3").join("Library").join("bin"));
+                candidates.push(PathBuf::from(&userprofile).join("PothosSDR").join("bin"));
             }
             if let Ok(exe_path) = std::env::current_exe() {
                 if let Some(parent) = exe_path.parent() {
                     candidates.push(parent.to_path_buf());
                 }
             }
-            candidates.push(PathBuf::from(r"C:\radioconda\Library\bin"));
+
+            // Rutas directas en C: y D: para PothosSDR y Radioconda
             candidates.push(PathBuf::from(r"C:\Program Files\PothosSDR\bin"));
             candidates.push(PathBuf::from(r"C:\Program Files (x86)\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"C:\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"D:\Program Files\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"D:\PothosSDR\bin"));
+            candidates.push(PathBuf::from(r"C:\Users\USUARIO\radioconda\Library\bin"));
+            candidates.push(PathBuf::from(r"C:\radioconda\Library\bin"));
             candidates.push(PathBuf::from(r"C:\miniconda3\Library\bin"));
             candidates.push(PathBuf::from(r"C:\anaconda3\Library\bin"));
 

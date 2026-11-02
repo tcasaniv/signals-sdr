@@ -330,7 +330,7 @@ impl VirtualSinkModal {
                         ui.checkbox(
                             &mut self.constellation_vsa_mode,
                             RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
-                        );
+                        ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
 
                         if self.constellation_vsa_mode {
                             ui.add_space(4.0);
@@ -349,7 +349,7 @@ impl VirtualSinkModal {
                             ui.checkbox(
                                 &mut self.constellation_oqpsk_deoffset,
                                 RichText::new("OQPSK De-offset (Q = Ts/2)").size(11.0),
-                            );
+                            ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
 
                             let sps = self.constellation_sps.max(1);
                             if self.constellation_timing_phase >= sps {
@@ -357,15 +357,18 @@ impl VirtualSinkModal {
                             }
 
                             ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
-                            ui.add(egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)));
+                            ui.add(egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)))
+                                .on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
 
-                            if ui.button(RichText::new("Auto Ojo").size(11.0)).clicked() {
+                            if ui.button(RichText::new("Auto Ojo").size(11.0)).on_hover_text("Busca de forma automática la fase de reloj con máxima apertura de ojo").clicked() {
                                 let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
-                                self.constellation_timing_phase = find_best_eye_phase(samples, self.sample_cursor, sps, delay);
+                                let aligned_start = (self.sample_cursor / sps) * sps;
+                                self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
                             }
 
                             ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
-                            ui.add(egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"));
+                            ui.add(egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"))
+                                .on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
                         }
 
                         ui.add_space(6.0);
@@ -951,13 +954,16 @@ impl VirtualSinkModal {
         let rot_rad = self.constellation_carrier_phase_deg.to_radians();
         let (cos_rot, sin_rot) = (rot_rad.cos(), rot_rad.sin());
 
-        let start = self.sample_cursor;
+        // Bloqueo de fase de símbolo: alinear el cursor a múltiplos exactos de SPS
+        // Esto previene que el avance continuo del cursor a 60 FPS desplace la fase de muestreo entre frames,
+        // eliminando por completo la alternancia/parpadeo entre el ojo óptimo y las transiciones de símbolo.
+        let aligned_start = (self.sample_cursor / sps) * sps;
 
         if self.constellation_vsa_mode {
             // Modo Símbolos VSA: 1 muestra por símbolo decimado en la fase óptima del ojo
             let n_symbols = self.constellation_points.min(total_samples / sps);
             for i in 0..n_symbols {
-                let sample_idx = (start + i * sps + timing_phase) % total_samples;
+                let sample_idx = (aligned_start + i * sps + timing_phase) % total_samples;
                 let raw_i = samples[sample_idx].0;
 
                 // Si OQPSK está activo, alinear el canal Q retardado Ts/2
@@ -980,6 +986,7 @@ impl VirtualSinkModal {
         } else {
             // Modo Trayectoria Cruda: Muestra continua con persistencia fósforo
             let n = self.constellation_points.min(total_samples);
+            let start = self.sample_cursor;
             for i in 0..n {
                 let idx = (start + i) % total_samples;
                 let (raw_i, raw_q) = samples[idx];
@@ -1190,5 +1197,26 @@ mod tests {
 
         let best = find_best_eye_phase(&samples, 0, sps, sps / 2);
         assert_eq!(best, 1, "find_best_eye_phase debe identificar la fase 1 como centro del ojo");
+    }
+
+    #[test]
+    fn test_symbol_phase_alignment_stability() {
+        let sps = 4;
+        let timing_phase = 2;
+        let total_samples = 100_000;
+
+        // Simular avance continuo del cursor a diferentes velocidades y frames no múltiplos de SPS
+        for step in [1, 3, 17, 33, 4801, 7777] {
+            let sample_cursor = step;
+            let aligned_start = (sample_cursor / sps) * sps;
+            for i in 0..10 {
+                let sample_idx = (aligned_start + i * sps + timing_phase) % total_samples;
+                assert_eq!(
+                    sample_idx % sps,
+                    timing_phase,
+                    "La fase de muestreo de símbolo debe estar estrictamente bloqueada a timing_phase sin importar el cursor"
+                );
+            }
+        }
     }
 }
