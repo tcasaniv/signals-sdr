@@ -69,31 +69,40 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF -like "refs/tags/*") { $env:GITHUB_REF.Substring(10) } else { "v0.4.4" }
+          $tag = if ($env:GITHUB_REF -like "refs/tags/*") { $env:GITHUB_REF.Substring(10) } else { "v0.4.5" }
           $zipName = "signals-sdr-$tag-windows-amd64.zip"
-          Compress-Archive -Path "target\release\signals-sdr.exe", "README.md", "LICENSE" -DestinationPath $zipName
+          $files = @("target\release\signals-sdr.exe", "README.md", "LICENSE", "scripts\instalar-controladores-sdr.bat")
+          if (Test-Path "C:\Program Files\PothosSDR\bin\SoapySDR.dll") {
+            Copy-Item "C:\Program Files\PothosSDR\bin\SoapySDR.dll" ".\SoapySDR.dll"
+            $files += ".\SoapySDR.dll"
+          }
+          Compress-Archive -Path $files -DestinationPath $zipName
           echo "ASSET_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Package Binary (Linux)
         if: runner.os == 'Linux'
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.4"
+          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.5"
           TAR_NAME="signals-sdr-${TAG}-linux-amd64.tar.gz"
           cp target/release/signals-sdr ./signals-sdr
-          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE
-          rm ./signals-sdr
+          cp scripts/instalar-dependencias.sh ./instalar-dependencias.sh
+          chmod +x ./instalar-dependencias.sh
+          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE instalar-dependencias.sh
+          rm ./signals-sdr ./instalar-dependencias.sh
           echo "ASSET_PATH=$TAR_NAME" >> $GITHUB_ENV
 
       - name: Package Binary (macOS)
         if: runner.os == 'macOS'
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.4"
+          [ "$TAG" = "$GITHUB_REF" ] && TAG="v0.4.5"
           TAR_NAME="signals-sdr-${TAG}-macos-arm64.tar.gz"
           cp target/release/signals-sdr ./signals-sdr
-          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE
-          rm ./signals-sdr
+          cp scripts/instalar-dependencias.sh ./instalar-dependencias.sh
+          chmod +x ./instalar-dependencias.sh
+          tar -czvf "$TAR_NAME" signals-sdr README.md LICENSE instalar-dependencias.sh
+          rm ./signals-sdr ./instalar-dependencias.sh
           echo "ASSET_PATH=$TAR_NAME" >> $GITHUB_ENV
 
       - name: Upload Artifact

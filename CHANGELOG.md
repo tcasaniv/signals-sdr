@@ -7,6 +7,27 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [0.4.5] - 2026-11-02
+
+### Añadido (Features)
+- **Suite VSA para Diagrama de Constelación I/Q en el Instrumento Virtual**:
+  - **Modo Símbolos VSA**: Decimación a la tasa de símbolos con selección flexible de **SPS** (*Samples Per Symbol*: 1, 2, 4, 8, 16) para visualizar los puntos de decisión limpios en lugar de transiciones intermedias sobremuestreadas.
+  - **Alineación OQPSK (De-offset Q)**: Retardo automático de $T_{\text{sym}} / 2 = \text{SPS} / 2$ muestras en el canal $Q$, colapsando instantáneamente la nube de OQPSK (ej. Meteor LRPT 72k) en 4 atractores nítidos de decisión.
+  - **Sintonización de Fase de Ojo y Botón Auto-Ojo**: Ajuste micrométrico de la fase de muestreo ($0 \dots \text{SPS}-1$) con botón para centrar automáticamente la muestra en la máxima apertura del ojo.
+  - **Desrotación Fina de Portadora**: Control angular de $0^\circ \dots 360^\circ$ para alinear la orientación de constelaciones digitales (BPSK, QPSK, 8PSK, QAM).
+- **Herramientas Avanzadas de Acondicionamiento y Limpieza I/Q (Paso 2 - Generic IQ)**:
+  - **Filtro FIR Pasa-Bajos Simétrico (Denoising)**: Filtro de fase lineal con ventana de Hann y frecuencia de corte ajustable para suprimir ruido fuera de banda sin distorsionar la fase de los símbolos.
+  - **Corrección Automática de Desbalance de Ganancia y Ortogonalidad I/Q**: Compensación de relación de amplitudes y ortogonalización Gram-Schmidt para eliminar imágenes espectrales y elipticidad.
+  - **Inversión Espectral (Invert I/Q / Conjugate)**: Inversión de signo en el canal $Q$ para corregir grabaciones SDR con banda lateral invertida.
+  - **Control Automático de Ganancia (AGC)**: Normalización inteligente de envolvente ante variaciones dinámicas de potencia.
+  - **Supresor de Ruido / Squelch**: Umbral de corte configurable en dBFS.
+- **Portabilidad Out-of-the-Box y Desacoplamiento de SoapySDR en Windows**:
+  - **Delay-Loading (`/DELAYLOAD:SoapySDR.dll`)**: Eliminada la dependencia estática al inicio de Windows. La aplicación abre instantáneamente en cualquier equipo con Windows sin requerir instalaciones previas de Radioconda o PothosSDR ni arrojar la ventana *"No se encontró SoapySDR.dll"*.
+  - **Auto-detección Dinámica y Registro en Tiempo de Ejecución**: Escaneo silencioso al arrancar en ubicaciones estándar (Radioconda, PothosSDR, Conda) y registro automático en el cargador dinámico de Windows con `SetDllDirectoryW` y `PATH`.
+  - **Scripts Asistentes de Soporte Multiplataforma**: Inclusión de `instalar-controladores-sdr.bat` en Windows y `instalar-dependencias.sh` en Linux/macOS dentro de los paquetes de distribución.
+
+---
+
 ## [0.4.4] - 2026-10-31
 
 ### Añadido (Features)
