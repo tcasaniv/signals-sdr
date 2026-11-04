@@ -9,7 +9,10 @@
 
 use crate::icons;
 use crate::theme::AppTheme;
-use crate::ui::spectrogram::fft_radix2;
+use crate::ui::spectrogram::{
+    draw_dashed_line_horizontal, draw_dashed_line_vertical, draw_line_horizontal,
+    draw_line_segment, draw_line_vertical, draw_rect_filled, draw_rect_outline, fft_radix2,
+};
 use egui::{Color32, Frame, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 use num_complex::Complex32;
 use std::collections::VecDeque;
@@ -48,6 +51,14 @@ impl VirtualSinkTab {
     }
 }
 
+/// Modo de normalización de escala para el diagrama de constelación VSA
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConstellationNormMode {
+    #[default]
+    UnitEnergy,   // RF (Es=1.0): Coordenadas en ±1/√2 (±0.707) sobre círculo r=1.0 (evita saturar DAC de RF)
+    SymbolicGrid, // Grilla (±1.0): Coordenadas escaladas por √2 para alineación con marcas ±1.0 de ejes
+}
+
 /// Estado del instrumento virtual
 #[derive(Debug, Clone)]
 pub struct VirtualSinkModal {
@@ -83,6 +94,10 @@ pub struct VirtualSinkModal {
     pub constellation_timing_phase: usize,
     pub constellation_oqpsk_deoffset: bool,
     pub constellation_carrier_phase_deg: f32,
+    pub constellation_norm_mode: ConstellationNormMode,
+    pub show_constellation_circles: bool,
+    pub show_constellation_grid: bool,
+    pub export_status_message: Option<(String, bool)>,
 }
 
 impl Default for VirtualSinkModal {
@@ -115,6 +130,10 @@ impl Default for VirtualSinkModal {
             constellation_timing_phase: 0,
             constellation_oqpsk_deoffset: true,
             constellation_carrier_phase_deg: 0.0,
+            constellation_norm_mode: ConstellationNormMode::UnitEnergy,
+            show_constellation_circles: true,
+            show_constellation_grid: true,
+            export_status_message: None,
         }
     }
 }
@@ -327,17 +346,18 @@ impl VirtualSinkModal {
                         ui.add(egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
                     }
                     VirtualSinkTab::Constellation => {
+                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+
                         ui.checkbox(
                             &mut self.constellation_vsa_mode,
                             RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
                         ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
 
                         if self.constellation_vsa_mode {
-                            ui.add_space(4.0);
                             ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
                             egui::ComboBox::from_id_salt("sink_const_sps")
                                 .selected_text(format!("{} SPS", self.constellation_sps))
-                                .width(90.0)
+                                .width(70.0)
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
                                     ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
@@ -348,7 +368,7 @@ impl VirtualSinkModal {
 
                             ui.checkbox(
                                 &mut self.constellation_oqpsk_deoffset,
-                                RichText::new("OQPSK De-offset (Q = Ts/2)").size(11.0),
+                                RichText::new("OQPSK (Q = Ts/2)").size(11.0),
                             ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
 
                             let sps = self.constellation_sps.max(1);
@@ -357,8 +377,10 @@ impl VirtualSinkModal {
                             }
 
                             ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
-                            ui.add(egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)))
-                                .on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
+                            ui.add_sized(
+                                [70.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
+                            ).on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
 
                             if ui.button(RichText::new("Auto Ojo").size(11.0)).on_hover_text("Busca de forma automática la fase de reloj con máxima apertura de ojo").clicked() {
                                 let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
@@ -367,15 +389,51 @@ impl VirtualSinkModal {
                             }
 
                             ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
-                            ui.add(egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"))
-                                .on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
+                            ui.add_sized(
+                                [80.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
+                            ).on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
+
+                            // Selector de Escala de Potencia abreviado en UI con explicación didáctica completa en hover
+                            ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
+                            let norm_label = match self.constellation_norm_mode {
+                                ConstellationNormMode::UnitEnergy => "RF (Es=1)",
+                                ConstellationNormMode::SymbolicGrid => "Grilla (±1)",
+                            };
+                            egui::ComboBox::from_id_salt("sink_const_norm_mode")
+                                .selected_text(norm_label)
+                                .width(85.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.constellation_norm_mode,
+                                        ConstellationNormMode::UnitEnergy,
+                                        "RF (Es=1)",
+                                    ).on_hover_text(
+                                        "Norma de Potencia Unitaria (Es = 1.0): Estándar físico de ingeniería de radiofrecuencia (CCSDS/SDR). \
+                                         Los símbolos se sitúan en ±1/√2 (±0.707) sobre el círculo unitario r=1.0 para aprovechar el 100% \
+                                         del rango dinámico del DAC sin causar distorsión armónica ni saturación."
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.constellation_norm_mode,
+                                        ConstellationNormMode::SymbolicGrid,
+                                        "Grilla (±1)",
+                                    ).on_hover_text(
+                                        "Norma de Cuadrícula Simbólica (±1.0): Escala normalizada por √2 para que los centros de decisión \
+                                         coincidan exactamente con las marcas ±1.0 de los ejes cartesianos (representación convencional en textos teóricos)."
+                                    );
+                                });
                         }
 
-                        ui.add_space(6.0);
+                        // Toggles para círculos y cuadrícula
+                        ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0))
+                            .on_hover_text("Muestra u oculta los círculos concéntricos de referencia (r = 0.5 y círculo unitario r = 1.0).");
+                        ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0))
+                            .on_hover_text("Muestra u oculta la cuadrícula ortogonal (retícula en ±0.5 y ±1.0).");
+
                         ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
                         egui::ComboBox::from_id_salt("sink_const_zoom")
                             .selected_text(format!("{:.1}x", self.constellation_zoom))
-                            .width(65.0)
+                            .width(60.0)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
                                 ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
@@ -385,9 +443,11 @@ impl VirtualSinkModal {
                                 ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
                             });
 
-                        ui.add_space(4.0);
                         ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"));
+                        ui.add_sized(
+                            [85.0, 18.0],
+                            egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
+                        );
                     }
                     VirtualSinkTab::Metrics => {
                         ui.label(RichText::new("Cálculo en vivo de parámetros de RF y calidad de la señal modulada").size(11.5).color(theme.text_secondary()));
@@ -428,74 +488,96 @@ impl VirtualSinkModal {
             ui.add_space(8.0);
 
             // 3. Barra inferior de control de reproducción y simulación en tiempo real
-            self.render_playback_controls(ui, theme, samples.len(), sample_rate);
+            self.render_playback_controls(ui, theme, samples, sample_rate, center_freq_hz);
         });
     }
 
-    /// Barra de controles inferiores (Play, Pause, Cursor de tiempo, Velocidad, FFT size)
+    /// Barra de controles inferiores (Play, Pause, Cursor de tiempo, Velocidad, FFT size y Exportar PNG)
     fn render_playback_controls(
         &mut self,
         ui: &mut Ui,
         theme: &AppTheme,
-        total_samples: usize,
+        samples: &[(f32, f32)],
         sample_rate: u32,
+        center_freq_hz: f64,
     ) {
-        ui.horizontal(|ui| {
-            // Botón Play / Pause
-            let play_label = if self.is_playing {
-                format!("{} Pausar", icons::ICON_PAUSE.codepoint)
-            } else {
-                format!("{} Reproducir", icons::ICON_PLAY_ARROW.codepoint)
-            };
-            let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.0).color(Color32::WHITE))
-                .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
-                .corner_radius(6.0);
-            if ui.add(play_btn).clicked() {
-                self.is_playing = !self.is_playing;
-            }
+        let total_samples = samples.len();
+        let avail_w = ui.available_width();
 
-            // Botón Replay / Reiniciar
-            let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
-            if ui.add(reset_btn).clicked() {
-                self.sample_cursor = 0;
-                self.reset_peaks();
-                self.waterfall_history.clear();
-            }
+        if avail_w < 580.0 {
+            // Diseño responsivo en 2 filas para pantallas estrechas / móviles
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
 
-            ui.add_space(8.0);
-
-            // Control deslizante de posición temporal en la señal
-            if total_samples > 0 && sample_rate > 0 {
-                let total_secs = total_samples as f32 / sample_rate as f32;
-                let current_secs = self.sample_cursor as f32 / sample_rate as f32;
-                let mut cursor_val = self.sample_cursor;
-
-                let slider_w = (ui.available_width() - 340.0).max(100.0);
-                let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples)
-                    .show_value(false);
-
-                if ui.add_sized([slider_w, 20.0], slider).changed() {
-                    self.sample_cursor = cursor_val;
+                // Botón Play / Pause
+                let play_label = if self.is_playing {
+                    format!("{} Pausar", icons::ICON_PAUSE.codepoint)
+                } else {
+                    format!("{} Reproducir", icons::ICON_PLAY_ARROW.codepoint)
+                };
+                let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.0).color(Color32::WHITE))
+                    .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
+                    .corner_radius(6.0);
+                if ui.add(play_btn).clicked() {
+                    self.is_playing = !self.is_playing;
                 }
 
-                ui.label(
-                    RichText::new(format!(
-                        "{:02}:{:04.1} / {:02}:{:04.1}",
-                        (current_secs / 60.0).floor() as u32,
-                        current_secs % 60.0,
-                        (total_secs / 60.0).floor() as u32,
-                        total_secs % 60.0,
-                    ))
-                    .monospace()
-                    .size(11.5)
-                    .color(theme.text_secondary()),
-                );
-            }
+                // Botón Replay / Reiniciar
+                let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
+                if ui.add(reset_btn).clicked() {
+                    self.sample_cursor = 0;
+                    self.reset_peaks();
+                    self.waterfall_history.clear();
+                }
 
-            // Selector de velocidad y FFT
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Slider y tiempo
+                if total_samples > 0 && sample_rate > 0 {
+                    let total_secs = total_samples as f32 / sample_rate as f32;
+                    let current_secs = self.sample_cursor as f32 / sample_rate as f32;
+                    let mut cursor_val = self.sample_cursor;
+
+                    let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples).show_value(false);
+                    if ui.add_sized([90.0, 18.0], slider).changed() {
+                        self.sample_cursor = cursor_val;
+                    }
+
+                    ui.label(
+                        RichText::new(format!(
+                            "{:02}:{:04.1} / {:02}:{:04.1}",
+                            (current_secs / 60.0).floor() as u32,
+                            current_secs % 60.0,
+                            (total_secs / 60.0).floor() as u32,
+                            total_secs % 60.0,
+                        ))
+                        .monospace()
+                        .size(11.0)
+                        .color(theme.text_secondary()),
+                    );
+                }
+            });
+
+            ui.add_space(3.0);
+
+            // Segunda fila de controles secundarios
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+
+                // Selector de velocidad
+                egui::ComboBox::from_id_salt("sink_speed_combo")
+                    .selected_text(format!("{}x", self.playback_speed))
+                    .width(65.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
+                        ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
+                        ui.selectable_value(&mut self.playback_speed, 1.0, "1.0x (Real)");
+                        ui.selectable_value(&mut self.playback_speed, 2.0, "2.0x");
+                        ui.selectable_value(&mut self.playback_speed, 5.0, "5.0x");
+                    });
+
+                // Selector de FFT
                 egui::ComboBox::from_id_salt("sink_fft_size")
                     .selected_text(format!("FFT: {}", self.fft_size))
+                    .width(85.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.fft_size, 512, "512 bins");
                         ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
@@ -505,8 +587,80 @@ impl VirtualSinkModal {
                         ui.selectable_value(&mut self.fft_size, 16384, "16384 bins");
                     });
 
+                // Botón Guardar Captura PNG
+                let save_btn = egui::Button::new(
+                    RichText::new(format!("{} Guardar PNG", icons::ICON_CAMERA_ALT.codepoint)).size(11.5)
+                )
+                .fill(theme.surface_subtle())
+                .stroke(Stroke::new(1.0, theme.card_border()))
+                .corner_radius(6.0);
+
+                if ui.add(save_btn).on_hover_text("Guarda una imagen en alta resolución de la pestaña activa como archivo PNG").clicked() {
+                    self.export_active_view_png(samples, sample_rate, center_freq_hz);
+                }
+            });
+        } else {
+            // Diseño en una sola fila para pantallas estándar de escritorio
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+
+                // Botón Play / Pause
+                let play_label = if self.is_playing {
+                    format!("{} Pausar", icons::ICON_PAUSE.codepoint)
+                } else {
+                    format!("{} Reproducir", icons::ICON_PLAY_ARROW.codepoint)
+                };
+                let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.0).color(Color32::WHITE))
+                    .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
+                    .corner_radius(6.0);
+                if ui.add(play_btn).clicked() {
+                    self.is_playing = !self.is_playing;
+                }
+
+                // Botón Replay / Reiniciar
+                let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
+                if ui.add(reset_btn).clicked() {
+                    self.sample_cursor = 0;
+                    self.reset_peaks();
+                    self.waterfall_history.clear();
+                }
+
+                ui.add_space(4.0);
+
+                // Control deslizante de posición temporal en la señal
+                if total_samples > 0 && sample_rate > 0 {
+                    let total_secs = total_samples as f32 / sample_rate as f32;
+                    let current_secs = self.sample_cursor as f32 / sample_rate as f32;
+                    let mut cursor_val = self.sample_cursor;
+
+                    let slider_w = (ui.available_width() - 340.0).clamp(80.0, 320.0);
+                    let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples)
+                        .show_value(false);
+
+                    if ui.add_sized([slider_w, 20.0], slider).changed() {
+                        self.sample_cursor = cursor_val;
+                    }
+
+                    ui.label(
+                        RichText::new(format!(
+                            "{:02}:{:04.1} / {:02}:{:04.1}",
+                            (current_secs / 60.0).floor() as u32,
+                            current_secs % 60.0,
+                            (total_secs / 60.0).floor() as u32,
+                            total_secs % 60.0,
+                        ))
+                        .monospace()
+                        .size(11.5)
+                        .color(theme.text_secondary()),
+                    );
+                }
+
+                ui.add_space(4.0);
+
+                // Selector de velocidad
                 egui::ComboBox::from_id_salt("sink_speed_combo")
                     .selected_text(format!("{}x", self.playback_speed))
+                    .width(65.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
                         ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
@@ -514,8 +668,39 @@ impl VirtualSinkModal {
                         ui.selectable_value(&mut self.playback_speed, 2.0, "2.0x");
                         ui.selectable_value(&mut self.playback_speed, 5.0, "5.0x");
                     });
+
+                // Selector de FFT
+                egui::ComboBox::from_id_salt("sink_fft_size")
+                    .selected_text(format!("FFT: {}", self.fft_size))
+                    .width(85.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.fft_size, 512, "512 bins");
+                        ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
+                        ui.selectable_value(&mut self.fft_size, 2048, "2048 bins");
+                        ui.selectable_value(&mut self.fft_size, 4096, "4096 bins");
+                        ui.selectable_value(&mut self.fft_size, 8192, "8192 bins");
+                        ui.selectable_value(&mut self.fft_size, 16384, "16384 bins");
+                    });
+
+                // Botón Guardar Captura PNG
+                let save_btn = egui::Button::new(
+                    RichText::new(format!("{} Guardar PNG", icons::ICON_CAMERA_ALT.codepoint)).size(11.5)
+                )
+                .fill(theme.surface_subtle())
+                .stroke(Stroke::new(1.0, theme.card_border()))
+                .corner_radius(6.0);
+
+                if ui.add(save_btn).on_hover_text("Guarda una imagen en alta resolución de la pestaña activa como archivo PNG").clicked() {
+                    self.export_active_view_png(samples, sample_rate, center_freq_hz);
+                }
             });
-        });
+        }
+
+        if let Some((ref msg, is_err)) = self.export_status_message {
+            ui.add_space(2.0);
+            let col = if is_err { Color32::from_rgb(239, 68, 68) } else { Color32::from_rgb(34, 197, 94) };
+            ui.label(RichText::new(msg).size(11.0).color(col));
+        }
     }
 
     /// Calcula la FFT de la ventana actual de muestras con ventana Hann
@@ -684,6 +869,53 @@ impl VirtualSinkModal {
         if self.show_min_peak {
             painter.circle_filled(legend_pos + Vec2::new(10.0, 34.0), 3.5, Color32::from_rgb(236, 72, 153));
             painter.text(legend_pos + Vec2::new(20.0, 34.0), egui::Align2::LEFT_CENTER, "Min Peak", egui::FontId::proportional(10.5), Color32::WHITE);
+        }
+
+        // Inspección interactiva al pasar el mouse (Crosshair y Valores de Frecuencia/Potencia)
+        if let Some(mouse_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if plot_rect.contains(mouse_pos) && n > 1 {
+                let tx = ((mouse_pos.x - plot_rect.min.x) / plot_rect.width()).clamp(0.0, 1.0);
+                let bin_idx = ((tx * (n - 1) as f32).round() as usize).min(n - 1);
+                let db_at_cursor = db_vals[bin_idx];
+                let freq_offset_hz = (-0.5 + tx) * (sample_rate as f32);
+                let freq_text = if center_freq_hz > 0.0 {
+                    let actual_mhz = (center_freq_hz + freq_offset_hz as f64) / 1e6;
+                    format!("{:.4} MHz (Δf: {:+.1} kHz)", actual_mhz, freq_offset_hz / 1e3)
+                } else {
+                    format!("Δf: {:+.2} kHz", freq_offset_hz / 1e3)
+                };
+
+                // Línea vertical guía del cursor
+                painter.line_segment(
+                    [Pos2::new(mouse_pos.x, plot_rect.min.y), Pos2::new(mouse_pos.x, plot_rect.max.y)],
+                    Stroke::new(1.0, Color32::from_white_alpha(90)),
+                );
+
+                // Punto resaltado sobre la curva espectral
+                let ty_val = ((db_at_cursor - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+                let curve_pt = Pos2::new(mouse_pos.x, plot_rect.max.y - ty_val * plot_rect.height());
+                painter.circle_filled(curve_pt, 4.5, Color32::from_rgb(56, 189, 248));
+                painter.circle_stroke(curve_pt, 6.0, Stroke::new(1.0, Color32::WHITE));
+
+                // Tarjeta flotante con valores
+                let tooltip_text = format!("{} | {:.1} dBFS", freq_text, db_at_cursor);
+                let font = egui::FontId::monospace(11.0);
+                let card_w = tooltip_text.len() as f32 * 6.8 + 16.0;
+                let box_x = (mouse_pos.x + 12.0).min(plot_rect.max.x - card_w - 4.0);
+                let box_y = (mouse_pos.y - 28.0).max(plot_rect.min.y + 4.0);
+                painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(box_x, box_y), Vec2::new(card_w, 22.0)),
+                    4.0,
+                    Color32::from_black_alpha(220),
+                );
+                painter.text(
+                    Pos2::new(box_x + 8.0, box_y + 11.0),
+                    egui::Align2::LEFT_CENTER,
+                    tooltip_text,
+                    font,
+                    Color32::WHITE,
+                );
+            }
         }
     }
 
@@ -879,25 +1111,35 @@ impl VirtualSinkModal {
         let grid_col = if *theme == AppTheme::Dark { Color32::from_rgb(30, 42, 58) } else { Color32::from_rgb(220, 228, 238) };
         let tick_text_col = theme.text_secondary();
 
-        // Círculos concéntricos de referencia (r = 0.5, 1.0)
-        painter.circle_stroke(center, scale * 0.5, Stroke::new(1.0, grid_col));
-        painter.circle_stroke(center, scale * 1.0, Stroke::new(1.5, grid_col));
+        let norm_mult = match self.constellation_norm_mode {
+            ConstellationNormMode::UnitEnergy => 1.0f32,
+            ConstellationNormMode::SymbolicGrid => std::f32::consts::SQRT_2,
+        };
+        let effective_scale = scale * norm_mult;
 
-        // Retícula secundaria en ±1.0 y ±0.5
-        for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
-            let px = center.x + v * scale;
-            if px >= plot_rect.min.x && px <= plot_rect.max.x {
-                painter.line_segment(
-                    [Pos2::new(px, plot_rect.min.y), Pos2::new(px, plot_rect.max.y)],
-                    Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
-                );
-            }
-            let py = center.y - v * scale;
-            if py >= plot_rect.min.y && py <= plot_rect.max.y {
-                painter.line_segment(
-                    [Pos2::new(plot_rect.min.x, py), Pos2::new(plot_rect.max.x, py)],
-                    Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
-                );
+        // Círculos concéntricos de referencia (r = 0.5, 1.0) condicionales
+        if self.show_constellation_circles {
+            painter.circle_stroke(center, scale * 0.5, Stroke::new(1.0, grid_col));
+            painter.circle_stroke(center, scale * 1.0, Stroke::new(1.5, grid_col));
+        }
+
+        // Retícula secundaria en ±1.0 y ±0.5 condicional
+        if self.show_constellation_grid {
+            for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
+                let px = center.x + v * scale;
+                if px >= plot_rect.min.x && px <= plot_rect.max.x {
+                    painter.line_segment(
+                        [Pos2::new(px, plot_rect.min.y), Pos2::new(px, plot_rect.max.y)],
+                        Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
+                    );
+                }
+                let py = center.y - v * scale;
+                if py >= plot_rect.min.y && py <= plot_rect.max.y {
+                    painter.line_segment(
+                        [Pos2::new(plot_rect.min.x, py), Pos2::new(plot_rect.max.x, py)],
+                        Stroke::new(0.5, grid_col.gamma_multiply(0.4)),
+                    );
+                }
             }
         }
 
@@ -938,6 +1180,19 @@ impl VirtualSinkModal {
         painter.text(Pos2::new(plot_rect.max.x - 8.0, center.y - 14.0), egui::Align2::RIGHT_CENTER, "+I (Fase)", egui::FontId::monospace(11.0), theme.accent_blue());
         painter.text(Pos2::new(center.x + 10.0, plot_rect.min.y + 12.0), egui::Align2::LEFT_CENTER, "+Q (Cuadratura)", egui::FontId::monospace(11.0), theme.accent_blue());
 
+        // Badge didáctico en esquina superior izquierda del osciloscopio
+        let badge_text = match self.constellation_norm_mode {
+            ConstellationNormMode::UnitEnergy => "Norma: RF (Es=1.0) | r = 1.00 (I,Q = ±0.707)",
+            ConstellationNormMode::SymbolicGrid => "Norma: Grilla (±1.0) | I,Q = ±1.000 (|s| = 1.414)",
+        };
+        painter.text(
+            Pos2::new(plot_rect.min.x + 8.0, plot_rect.min.y + 8.0),
+            egui::Align2::LEFT_TOP,
+            badge_text,
+            egui::FontId::monospace(10.5),
+            theme.accent_blue(),
+        );
+
         if samples.is_empty() {
             return;
         }
@@ -974,7 +1229,7 @@ impl VirtualSinkModal {
                 let i_rot = raw_i * cos_rot - raw_q * sin_rot;
                 let q_rot = raw_i * sin_rot + raw_q * cos_rot;
 
-                let pt = Pos2::new(center.x + i_rot * scale, center.y - q_rot * scale);
+                let pt = Pos2::new(center.x + i_rot * effective_scale, center.y - q_rot * effective_scale);
 
                 let age_factor = i as f32 / n_symbols.max(1) as f32;
                 let alpha = (90.0 + age_factor * 165.0) as u8;
@@ -994,13 +1249,53 @@ impl VirtualSinkModal {
                 let i_rot = raw_i * cos_rot - raw_q * sin_rot;
                 let q_rot = raw_i * sin_rot + raw_q * cos_rot;
 
-                let pt = Pos2::new(center.x + i_rot * scale, center.y - q_rot * scale);
+                let pt = Pos2::new(center.x + i_rot * effective_scale, center.y - q_rot * effective_scale);
 
                 let age_factor = i as f32 / n as f32;
                 let alpha = (50.0 + age_factor * 180.0) as u8;
                 let dot_col = Color32::from_rgba_premultiplied(56, 189, 248, alpha);
 
                 painter.circle_filled(pt, 1.8, dot_col);
+            }
+        }
+
+        // Inspección interactiva al pasar el mouse (Crosshair y Valores I, Q, |s|, θ)
+        if let Some(mouse_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if plot_rect.contains(mouse_pos) {
+                let i_val = (mouse_pos.x - center.x) / effective_scale;
+                let q_val = -(mouse_pos.y - center.y) / effective_scale;
+                let mag = (i_val * i_val + q_val * q_val).sqrt();
+                let phase_deg = q_val.atan2(i_val).to_degrees();
+
+                // Mira interactiva
+                painter.line_segment(
+                    [Pos2::new(plot_rect.min.x, mouse_pos.y), Pos2::new(plot_rect.max.x, mouse_pos.y)],
+                    Stroke::new(0.8, Color32::from_white_alpha(80)),
+                );
+                painter.line_segment(
+                    [Pos2::new(mouse_pos.x, plot_rect.min.y), Pos2::new(mouse_pos.x, plot_rect.max.y)],
+                    Stroke::new(0.8, Color32::from_white_alpha(80)),
+                );
+                painter.circle_stroke(mouse_pos, 4.0, Stroke::new(1.0, theme.accent_blue()));
+
+                // Tarjeta flotante con valores bajo el puntero
+                let tip = format!("I: {:+.3} | Q: {:+.3} | |s|: {:.3} | θ: {:+.1}°", i_val, q_val, mag, phase_deg);
+                let font = egui::FontId::monospace(11.0);
+                let tip_w = tip.len() as f32 * 6.5 + 16.0;
+                let box_x = (mouse_pos.x + 12.0).min(plot_rect.max.x - tip_w - 4.0);
+                let box_y = (mouse_pos.y - 28.0).max(plot_rect.min.y + 4.0);
+                painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(box_x, box_y), Vec2::new(tip_w, 22.0)),
+                    4.0,
+                    Color32::from_black_alpha(220),
+                );
+                painter.text(
+                    Pos2::new(box_x + 8.0, box_y + 11.0),
+                    egui::Align2::LEFT_CENTER,
+                    tip,
+                    font,
+                    Color32::WHITE,
+                );
             }
         }
     }
@@ -1038,52 +1333,449 @@ impl VirtualSinkModal {
             dc_q += q;
         }
 
-        let rms_pwr = sum_sq / (n as f32);
+        let n_f = n as f32;
+        let rms_pwr = sum_sq / n_f;
         let rms_db = 10.0 * (rms_pwr + 1e-12).log10();
         let peak_db = 10.0 * (peak_sq + 1e-12).log10();
         let papr_db = (peak_db - rms_db).max(0.0);
-        let dc_i_mean = dc_i / (n as f32);
-        let dc_q_mean = dc_q / (n as f32);
+        let dc_i_mean = dc_i / n_f;
+        let dc_q_mean = dc_q / n_f;
+
+        // Desbalance I/Q (Ganancia y Fase de cuadratura)
+        let mut sum_i_sq = 0.0f32;
+        let mut sum_q_sq = 0.0f32;
+        let mut sum_iq = 0.0f32;
+        for &(i, q) in &samples[..n] {
+            sum_i_sq += i * i;
+            sum_q_sq += q * q;
+            sum_iq += i * q;
+        }
+        let var_i = (sum_i_sq / n_f - dc_i_mean * dc_i_mean).max(1e-12);
+        let var_q = (sum_q_sq / n_f - dc_q_mean * dc_q_mean).max(1e-12);
+        let cov_iq = sum_iq / n_f - dc_i_mean * dc_q_mean;
+        let gain_imbalance_db = 10.0 * (var_i / var_q).log10();
+        let phase_imbalance_deg = (cov_iq / (var_i.sqrt() * var_q.sqrt()).max(1e-12))
+            .clamp(-1.0, 1.0)
+            .asin()
+            .to_degrees();
+
+        // Estimación de SNR a partir de la FFT actual
+        let db_vals = self.compute_current_fft(samples);
+        let mut sorted_dbs = db_vals.clone();
+        sorted_dbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let fft_len = sorted_dbs.len();
+        let noise_floor_median = if fft_len > 0 {
+            sorted_dbs[fft_len / 4]
+        } else {
+            -90.0
+        };
+        let fft_peak_db = if fft_len > 0 {
+            sorted_dbs[fft_len.saturating_sub(4)]
+        } else {
+            -10.0
+        };
+        let estimated_snr_db = (fft_peak_db - noise_floor_median).clamp(0.0, 65.0);
+
+        // Estimación de EVM y MER (sobre símbolos decimados VSA)
+        let sps = self.constellation_sps.max(1);
+        let aligned_start = (self.sample_cursor / sps) * sps;
+        let timing_phase = self.constellation_timing_phase % sps;
+        let oqpsk_delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
+        let rot_rad = self.constellation_carrier_phase_deg.to_radians();
+        let (cos_rot, sin_rot) = (rot_rad.cos(), rot_rad.sin());
+
+        let n_symbols = 256.min(samples.len() / sps);
+        let mut sum_err_sq = 0.0f32;
+
+        for i in 0..n_symbols {
+            let s_idx = (aligned_start + i * sps + timing_phase) % samples.len();
+            let raw_i = samples[s_idx].0;
+            let q_idx = (s_idx + oqpsk_delay) % samples.len();
+            let raw_q = samples[q_idx].1;
+
+            let i_rot = raw_i * cos_rot - raw_q * sin_rot;
+            let q_rot = raw_i * sin_rot + raw_q * cos_rot;
+
+            let ideal_i = if i_rot >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
+            let ideal_q = if q_rot >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
+
+            let err_i = i_rot - ideal_i;
+            let err_q = q_rot - ideal_q;
+            sum_err_sq += err_i * err_i + err_q * err_q;
+        }
+
+        let evm_rms_pct = if n_symbols > 0 {
+            ((sum_err_sq / (n_symbols as f32)).sqrt() * 100.0).clamp(0.1, 99.9)
+        } else {
+            0.0
+        };
+        let mer_db = (-20.0 * (evm_rms_pct / 100.0).log10()).clamp(0.0, 50.0);
 
         ui.vertical(|ui| {
-            ui.label(RichText::new("Telemetría y Diagnóstico de Señal").strong().size(16.0).color(theme.accent_blue()));
-            ui.label(RichText::new("Parámetros de potencia RF, factor de cresta y offset calculados sobre la señal activa.").size(12.0).color(theme.text_secondary()));
-            ui.add_space(12.0);
+            ui.label(RichText::new("Telemetría y Diagnóstico de Señal RF").strong().size(16.0).color(theme.accent_blue()));
+            ui.label(RichText::new("Cálculo en vivo de SNR, EVM, MER, potencia espectral y balance I/Q sobre la señal activa.").size(12.0).color(theme.text_secondary()));
+            ui.add_space(10.0);
 
-            ui.columns(3, |cols| {
-                // Tarjeta 1: Potencias
+            let avail_w = ui.available_width();
+            let num_cols = if avail_w >= 840.0 { 4 } else if avail_w >= 480.0 { 2 } else { 1 };
+
+            ui.columns(num_cols, |cols| {
+                // Tarjeta 1: Potencias RF
                 Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[0], |ui| {
-                    ui.label(RichText::new("Potencia de Transmisión").strong().color(theme.text_primary()));
+                    ui.label(RichText::new("Potencia RF").strong().color(theme.text_primary()));
                     ui.add_space(6.0);
                     ui.label(RichText::new(format!("Potencia Pico: {:.2} dBFS", peak_db)).size(13.0).color(theme.accent_blue()));
                     ui.label(RichText::new(format!("Potencia RMS: {:.2} dBFS", rms_db)).size(13.0));
                     ui.label(RichText::new(format!("PAPR / Cresta: {:.2} dB", papr_db)).size(13.0).color(Color32::from_rgb(234, 179, 8)));
                 });
 
-                // Tarjeta 2: Balance I/Q y DC Offset
-                Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[1], |ui| {
-                    ui.label(RichText::new("Balance y Offset DC").strong().color(theme.text_primary()));
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(format!("DC Offset I: {:+.4}", dc_i_mean)).size(13.0));
-                    ui.label(RichText::new(format!("DC Offset Q: {:+.4}", dc_q_mean)).size(13.0));
-                    let isolation = 10.0 * (1.0 / (dc_i_mean.abs() + dc_q_mean.abs() + 1e-6)).log10();
-                    ui.label(RichText::new(format!("Aislamiento Carrier: {:.1} dB", isolation)).size(13.0).color(Color32::from_rgb(34, 197, 94)));
-                });
+                // Tarjeta 2: Calidad Digital (SNR & EVM)
+                if num_cols > 1 {
+                    Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[1], |ui| {
+                        ui.label(RichText::new("Calidad de Modulación").strong().color(theme.text_primary()));
+                        ui.add_space(6.0);
+                        ui.label(RichText::new(format!("SNR Estimada: {:.1} dB", estimated_snr_db)).size(13.0).color(Color32::from_rgb(34, 197, 94)));
+                        ui.label(RichText::new(format!("EVM RMS: {:.2} %", evm_rms_pct)).size(13.0).color(if evm_rms_pct < 15.0 { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(234, 179, 8) }));
+                        ui.label(RichText::new(format!("MER: {:.1} dB", mer_db)).size(13.0));
+                    });
+                }
 
-                // Tarjeta 3: Configuración de Frecuencia
-                Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[2], |ui| {
-                    ui.label(RichText::new("Parámetros de RF").strong().color(theme.text_primary()));
-                    ui.add_space(6.0);
-                    if center_freq_hz > 0.0 {
-                        ui.label(RichText::new(format!("Frecuencia Central: {:.3} MHz", center_freq_hz / 1e6)).size(13.0).color(theme.accent_blue()));
-                    } else {
-                        ui.label(RichText::new("Frecuencia Central: Baseband (0 Hz)").size(13.0));
-                    }
-                    ui.label(RichText::new(format!("Sample Rate: {} Sps", sample_rate)).size(13.0));
-                    ui.label(RichText::new(format!("Ancho de Banda Nyquist: {} kHz", sample_rate / 1000)).size(13.0));
-                });
+                // Tarjeta 3: Balance I/Q y DC Offset
+                if num_cols > 2 {
+                    Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[2], |ui| {
+                        ui.label(RichText::new("Balance y Offset DC").strong().color(theme.text_primary()));
+                        ui.add_space(6.0);
+                        ui.label(RichText::new(format!("DC Offset: I={:+.3}, Q={:+.3}", dc_i_mean, dc_q_mean)).size(12.5));
+                        ui.label(RichText::new(format!("Desbalance G: {:+.2} dB", gain_imbalance_db)).size(12.5));
+                        ui.label(RichText::new(format!("Error Fase: {:+.2}°", phase_imbalance_deg)).size(12.5));
+                    });
+                }
+
+                // Tarjeta 4: Configuración RF
+                if num_cols > 3 {
+                    Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[3], |ui| {
+                        ui.label(RichText::new("Parámetros de RF").strong().color(theme.text_primary()));
+                        ui.add_space(6.0);
+                        if center_freq_hz > 0.0 {
+                            ui.label(RichText::new(format!("Frecuencia: {:.3} MHz", center_freq_hz / 1e6)).size(13.0).color(theme.accent_blue()));
+                        } else {
+                            ui.label(RichText::new("Frecuencia: 0 Hz (Baseband)").size(13.0));
+                        }
+                        ui.label(RichText::new(format!("Sample Rate: {} Sps", sample_rate)).size(13.0));
+                        ui.label(RichText::new(format!("Ancho Banda: {} kHz", sample_rate / 1000)).size(13.0));
+                    });
+                }
             });
         });
+    }
+
+    /// Exporta una captura de imagen en formato PNG de la pestaña activa del instrumento virtual
+    pub fn export_active_view_png(&mut self, samples: &[(f32, f32)], sample_rate: u32, center_freq_hz: f64) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let tab_name = match self.active_tab {
+                VirtualSinkTab::Spectrum => "espectro_rf",
+                VirtualSinkTab::Waterfall => "cascada_rf",
+                VirtualSinkTab::TimeDomain => "osciloscopio_iq",
+                VirtualSinkTab::Constellation => "constelacion_iq",
+                VirtualSinkTab::Metrics => "metricas_rf",
+            };
+            let default_name = format!("{}_{}.png", tab_name, chrono::Local::now().format("%Y%m%d_%H%M%S"));
+
+            if let Some(path) = crate::file_dialog::FileDialog::new()
+                .set_file_name(&default_name)
+                .add_filter("Imagen PNG", &["png"])
+                .save_file()
+            {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+
+                let img = match self.active_tab {
+                    VirtualSinkTab::Constellation => self.render_constellation_to_image(samples),
+                    VirtualSinkTab::Spectrum => self.render_spectrum_to_image(samples, sample_rate, center_freq_hz),
+                    VirtualSinkTab::Waterfall => self.render_waterfall_to_image(),
+                    VirtualSinkTab::TimeDomain => self.render_time_domain_to_image(samples, sample_rate),
+                    VirtualSinkTab::Metrics => self.render_metrics_to_image(samples, sample_rate, center_freq_hz),
+                };
+
+                match img.save(&path) {
+                    Ok(_) => {
+                        self.export_status_message = Some((
+                            format!("Captura guardada con éxito: {}", path.display()),
+                            false,
+                        ));
+                    }
+                    Err(e) => {
+                        self.export_status_message = Some((
+                            format!("Error al guardar imagen: {}", e),
+                            true,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_constellation_to_image(&self, samples: &[(f32, f32)]) -> image::RgbaImage {
+        let side = 800u32;
+        let mut img = image::RgbaImage::from_pixel(side, side, image::Rgba([8, 12, 18, 255]));
+
+        let center_x = side as i32 / 2;
+        let center_y = side as i32 / 2;
+        let scale = (side as f32 * 0.40) * self.constellation_zoom;
+
+        let norm_mult = match self.constellation_norm_mode {
+            ConstellationNormMode::UnitEnergy => 1.0f32,
+            ConstellationNormMode::SymbolicGrid => std::f32::consts::SQRT_2,
+        };
+        let effective_scale = scale * norm_mult;
+
+        // Círculos de referencia
+        if self.show_constellation_circles {
+            draw_img_circle_stroke(&mut img, center_x, center_y, (scale * 0.5).round() as i32, [45, 55, 75, 255]);
+            draw_img_circle_stroke(&mut img, center_x, center_y, (scale * 1.0).round() as i32, [60, 75, 100, 255]);
+        }
+
+        // Grilla cartesiana
+        if self.show_constellation_grid {
+            for &v in &[-1.0f32, -0.5, 0.5, 1.0] {
+                let px = (center_x as f32 + v * scale).round() as u32;
+                if px < side {
+                    draw_dashed_line_vertical(&mut img, px, 0, side, [255, 255, 255, 40]);
+                }
+                let py = (center_y as f32 - v * scale).round() as u32;
+                if py < side {
+                    draw_dashed_line_horizontal(&mut img, 0, side, py, [255, 255, 255, 40]);
+                }
+            }
+        }
+
+        // Ejes principales
+        draw_line_horizontal(&mut img, 0, side, center_y as u32, [70, 90, 120, 255]);
+        draw_line_vertical(&mut img, center_x as u32, 0, side, [70, 90, 120, 255]);
+
+        if !samples.is_empty() {
+            let total = samples.len();
+            let sps = self.constellation_sps.max(1);
+            let timing_phase = self.constellation_timing_phase % sps;
+            let oqpsk_delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
+            let rot_rad = self.constellation_carrier_phase_deg.to_radians();
+            let (cos_rot, sin_rot) = (rot_rad.cos(), rot_rad.sin());
+            let aligned_start = (self.sample_cursor / sps) * sps;
+
+            if self.constellation_vsa_mode {
+                let n_sym = self.constellation_points.min(total / sps);
+                for i in 0..n_sym {
+                    let s_idx = (aligned_start + i * sps + timing_phase) % total;
+                    let raw_i = samples[s_idx].0;
+                    let q_idx = (s_idx + oqpsk_delay) % total;
+                    let raw_q = samples[q_idx].1;
+
+                    let i_rot = raw_i * cos_rot - raw_q * sin_rot;
+                    let q_rot = raw_i * sin_rot + raw_q * cos_rot;
+
+                    let px = (center_x as f32 + i_rot * effective_scale).round() as i32;
+                    let py = (center_y as f32 - q_rot * effective_scale).round() as i32;
+                    draw_img_circle_filled(&mut img, px, py, 3, [56, 189, 248, 240]);
+                }
+            } else {
+                let n_pts = self.constellation_points.min(total);
+                let start = self.sample_cursor;
+                for i in 0..n_pts {
+                    let idx = (start + i) % total;
+                    let (raw_i, raw_q) = samples[idx];
+                    let i_rot = raw_i * cos_rot - raw_q * sin_rot;
+                    let q_rot = raw_i * sin_rot + raw_q * cos_rot;
+                    let px = (center_x as f32 + i_rot * effective_scale).round() as i32;
+                    let py = (center_y as f32 - q_rot * effective_scale).round() as i32;
+                    draw_img_circle_filled(&mut img, px, py, 2, [56, 189, 248, 180]);
+                }
+            }
+        }
+        img
+    }
+
+    fn render_spectrum_to_image(&mut self, samples: &[(f32, f32)], _sample_rate: u32, _center_freq_hz: f64) -> image::RgbaImage {
+        let w = 1280u32;
+        let h = 640u32;
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([6, 10, 16, 255]));
+
+        let db_vals = self.compute_current_fft(samples);
+        let n = db_vals.len();
+
+        let margin_l = 60u32;
+        let margin_b = 40u32;
+        let plot_w = w - margin_l - 20;
+        let plot_h = h - margin_b - 20;
+
+        draw_rect_filled(&mut img, margin_l, 20, plot_w, plot_h, [10, 15, 24, 255]);
+
+        // Ejes y cuadrícula
+        for &db in &[-80.0f32, -60.0, -40.0, -20.0, 0.0] {
+            let t = ((db - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+            let y = 20 + plot_h - (t * plot_h as f32).round() as u32;
+            draw_dashed_line_horizontal(&mut img, margin_l, margin_l + plot_w, y, [255, 255, 255, 35]);
+        }
+
+        if n > 1 {
+            let pts: Vec<(i32, i32)> = (0..n).map(|i| {
+                let tx = i as f32 / (n - 1) as f32;
+                let ty = ((db_vals[i] - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+                (
+                    (margin_l as f32 + tx * plot_w as f32).round() as i32,
+                    (20.0 + (1.0 - ty) * plot_h as f32).round() as i32,
+                )
+            }).collect();
+
+            for window in pts.windows(2) {
+                draw_line_segment(&mut img, window[0].0, window[0].1, window[1].0, window[1].1, [56, 189, 248, 255]);
+            }
+        }
+        img
+    }
+
+    fn render_waterfall_to_image(&self) -> image::RgbaImage {
+        let w = 1280u32;
+        let h = 640u32;
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([6, 10, 16, 255]));
+
+        let rows = self.waterfall_history.len();
+        if rows > 0 {
+            for (r, row_db) in self.waterfall_history.iter().enumerate() {
+                let y0 = (r as f32 / rows as f32 * h as f32) as u32;
+                let y1 = ((r + 1) as f32 / rows as f32 * h as f32) as u32;
+                let n_cols = row_db.len();
+                if n_cols > 0 {
+                    for c in 0..n_cols {
+                        let x0 = (c as f32 / n_cols as f32 * w as f32) as u32;
+                        let x1 = ((c + 1) as f32 / n_cols as f32 * w as f32) as u32;
+                        let db = row_db[c];
+                        let norm = ((db - self.db_min) / (self.db_max - self.db_min)).clamp(0.0, 1.0);
+                        let col = waterfall_colormap(norm);
+                        draw_rect_filled(&mut img, x0, y0, (x1 - x0).max(1), (y1 - y0).max(1), [col.r(), col.g(), col.b(), 255]);
+                    }
+                }
+            }
+        }
+        img
+    }
+
+    fn render_time_domain_to_image(&self, samples: &[(f32, f32)], _sample_rate: u32) -> image::RgbaImage {
+        let w = 1280u32;
+        let h = 640u32;
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([6, 10, 16, 255]));
+
+        let margin_l = 60u32;
+        let margin_b = 40u32;
+        let plot_w = w - margin_l - 20;
+        let plot_h = h - margin_b - 20;
+
+        draw_rect_filled(&mut img, margin_l, 20, plot_w, plot_h, [10, 15, 24, 255]);
+
+        let center_y = 20 + plot_h / 2;
+        draw_line_horizontal(&mut img, margin_l, margin_l + plot_w, center_y, [255, 255, 255, 60]);
+
+        let n = self.time_window_samples.min(samples.len().max(1));
+        if n > 1 {
+            let start = self.sample_cursor;
+            let mut prev_i = None;
+            let mut prev_q = None;
+
+            for idx in 0..n {
+                let s_idx = (start + idx) % samples.len();
+                let (re, im) = samples[s_idx];
+                let tx = idx as f32 / (n - 1) as f32;
+                let px = (margin_l as f32 + tx * plot_w as f32).round() as i32;
+
+                let py_i = (center_y as f32 - (re * 0.40 * plot_h as f32)).round() as i32;
+                let py_q = (center_y as f32 - (im * 0.40 * plot_h as f32)).round() as i32;
+
+                if let Some((x0, y0)) = prev_i {
+                    draw_line_segment(&mut img, x0, y0, px, py_i, [59, 130, 246, 255]);
+                }
+                if let Some((x0, y0)) = prev_q {
+                    draw_line_segment(&mut img, x0, y0, px, py_q, [16, 185, 129, 255]);
+                }
+
+                prev_i = Some((px, py_i));
+                prev_q = Some((px, py_q));
+            }
+        }
+        img
+    }
+
+    fn render_metrics_to_image(&mut self, samples: &[(f32, f32)], _sample_rate: u32, _center_freq_hz: f64) -> image::RgbaImage {
+        // Renderiza un resumen diagnóstico de telemetría a PNG de 900x500
+        let w = 900u32;
+        let h = 500u32;
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([14, 18, 25, 255]));
+
+        draw_rect_outline(&mut img, 20, 20, w - 40, h - 40, [56, 189, 248, 120]);
+        // Trazar barras diagnósticas de potencia
+        let n = samples.len().min(4096);
+        let mut peak_sq = 0.0f32;
+        let mut sum_sq = 0.0f32;
+        for &(i, q) in &samples[..n] {
+            let pwr = i * i + q * q;
+            sum_sq += pwr;
+            if pwr > peak_sq { peak_sq = pwr; }
+        }
+        let rms_pwr = if n > 0 { sum_sq / n as f32 } else { 0.0 };
+        let rms_bar_w = ((rms_pwr.sqrt()).clamp(0.0, 1.0) * 400.0).round() as u32;
+        let peak_bar_w = ((peak_sq.sqrt()).clamp(0.0, 1.0) * 400.0).round() as u32;
+
+        draw_rect_filled(&mut img, 80, 100, rms_bar_w, 24, [59, 130, 246, 255]);
+        draw_rect_filled(&mut img, 80, 160, peak_bar_w, 24, [234, 179, 8, 255]);
+        img
+    }
+}
+
+fn draw_img_circle_stroke(img: &mut image::RgbaImage, cx: i32, cy: i32, r: i32, col: [u8; 4]) {
+    if r <= 0 { return; }
+    let w = img.width() as i32;
+    let h = img.height() as i32;
+    let mut x = r;
+    let mut y = 0;
+    let mut err = 0;
+
+    while x >= y {
+        let pts = [
+            (cx + x, cy + y), (cx + y, cy + x),
+            (cx - y, cy + x), (cx - x, cy + y),
+            (cx - x, cy - y), (cx - y, cy - x),
+            (cx + y, cy - x), (cx + x, cy - y),
+        ];
+        for (px, py) in pts {
+            if px >= 0 && px < w && py >= 0 && py < h {
+                img.put_pixel(px as u32, py as u32, image::Rgba(col));
+            }
+        }
+        if err <= 0 {
+            y += 1;
+            err += 2 * y + 1;
+        }
+        if err > 0 {
+            x -= 1;
+            err -= 2 * x + 1;
+        }
+    }
+}
+
+fn draw_img_circle_filled(img: &mut image::RgbaImage, cx: i32, cy: i32, r: i32, col: [u8; 4]) {
+    let w = img.width() as i32;
+    let h = img.height() as i32;
+    let r_sq = r * r;
+    for dy in -r..=r {
+        let py = cy + dy;
+        if py < 0 || py >= h { continue; }
+        for dx in -r..=r {
+            let px = cx + dx;
+            if px < 0 || px >= w { continue; }
+            if dx * dx + dy * dy <= r_sq {
+                img.put_pixel(px as u32, py as u32, image::Rgba(col));
+            }
+        }
     }
 }
 

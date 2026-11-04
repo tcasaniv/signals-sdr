@@ -282,17 +282,24 @@ impl GenericIqPipeline {
 
             ui.add_space(10.0);
             if !self.raw_iq_samples.is_empty() {
-                let next_label = format!(
-                    "Continuar a Procesamiento y Análisis {}",
-                    crate::icons::ICON_ARROW_FORWARD.codepoint
-                );
-                if ui
-                    .button(RichText::new(next_label).strong())
-                    .clicked()
-                {
-                    self.process_samples();
-                    self.current_step = 1;
-                }
+                ui.horizontal_wrapped(|ui| {
+                    let next_label = format!(
+                        "Continuar a Procesamiento (Opcional) {}",
+                        crate::icons::ICON_ARROW_FORWARD.codepoint
+                    );
+                    if ui.button(RichText::new(next_label).strong()).clicked() {
+                        self.process_samples();
+                        self.current_step = 1;
+                    }
+
+                    let direct_label = format!(
+                        "Ir Directo a Transmisión {}",
+                        crate::icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint
+                    );
+                    if ui.button(RichText::new(direct_label)).on_hover_text("Transmite el archivo I/Q original sin aplicar filtros ni efectos adicionales.").clicked() {
+                        self.current_step = 3;
+                    }
+                });
             }
         });
     }
@@ -309,7 +316,17 @@ impl GenericIqPipeline {
                  para analizar la constelación digital (BPSK, QPSK, OQPSK, QAM) y mediciones RF en el instrumento virtual.",
             );
 
-            ui.add_space(10.0);
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(crate::icons::ICON_INFO.codepoint).size(16.0).color(theme.accent_blue()));
+                ui.label(
+                    RichText::new("Nota didáctica: Este paso es opcional. Puedes experimentar con filtros y calibración I/Q o avanzar directamente sin alterar la señal.")
+                        .size(12.0)
+                        .color(theme.text_secondary()),
+                );
+            });
+
+            ui.add_space(8.0);
 
             // ========================================================
             // SECCIÓN 1: ACONDICIONAMIENTO BÁSICO, FRECUENCIA Y GANANCIA
@@ -541,10 +558,15 @@ impl GenericIqPipeline {
                     self.process_samples();
                 }
 
-                if !self.processed_iq_samples.is_empty() {
+                if !self.raw_iq_samples.is_empty() {
                     let next_label = format!("Continuar a Efectos de Canal {}", crate::icons::ICON_ARROW_FORWARD.codepoint);
                     if ui.button(RichText::new(next_label).strong()).clicked() {
                         self.current_step = 2;
+                    }
+
+                    let skip_label = format!("Omitir a Transmisión {}", crate::icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
+                    if ui.button(RichText::new(skip_label)).on_hover_text("Pasa directamente a la transmisión con SDR sin aplicar efectos de canal.").clicked() {
+                        self.current_step = 3;
                     }
                 }
             });

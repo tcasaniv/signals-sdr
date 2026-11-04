@@ -83,7 +83,7 @@ impl eframe::App for SignalsSdrApp {
         }
 
         let screen_width = ui.ctx().viewport_rect().width();
-        let is_mobile = screen_width < 720.0;
+        let is_mobile = screen_width < 840.0;
 
         if is_mobile {
             self.render_mobile_ui(ui, &theme);
@@ -185,11 +185,12 @@ impl SignalsSdrApp {
 
         // 2. Panel flexible secundario (solo si side_panel_expanded es true)
         if self.desktop_nav.side_panel_expanded {
-            let catalog_response = Panel::left("desktop_catalog")
+            let max_catalog_w = (ui.available_width() * 0.35).clamp(240.0, 340.0);
+            Panel::left("desktop_catalog")
                 .resizable(true)
-                .default_size(self.desktop_nav.catalog_width)
-                .min_size(220.0)
-                .max_size(450.0)
+                .default_size(260.0)
+                .min_size(190.0)
+                .max_size(max_catalog_w)
                 .frame(
                     Frame::new()
                         .fill(theme.surface_container_low())
@@ -215,15 +216,6 @@ impl SignalsSdrApp {
                         }
                     }
                 });
-
-            // Sincronizar el ancho SOLO si el usuario está arrastrando activamente el divisor de redimensionamiento
-            let is_dragging_separator = ui
-                .ctx()
-                .read_response(egui::Id::new("desktop_catalog").with("__resize"))
-                .is_some_and(|r| r.dragged());
-            if is_dragging_separator {
-                self.desktop_nav.catalog_width = catalog_response.response.rect.width();
-            }
         }
 
         // 3. Panel central principal (ocupa toda la altura y el ancho restante del viewport)
@@ -505,14 +497,100 @@ impl SignalsSdrApp {
                         );
                         ui.add_space(10.0);
 
-                        ui.label(RichText::new("Ruta actual de binarios / bibliotecas:").strong().size(12.5));
+                        ui.label(RichText::new("Instalaciones Detectadas en el Sistema").strong().size(13.5).color(theme.accent_blue()));
                         ui.add_space(4.0);
 
-                        ui.horizontal(|ui| {
+                        // Escaneo automático inicial
+                        if !self.desktop_nav.soapy_scan_done {
+                            self.desktop_nav.soapy_scan_done = true;
+                            let active_ref = self.config.soapy_search_path.as_deref();
+                            self.desktop_nav.detected_soapy_installations = scan_all_soapy_installations(active_ref);
+                        }
+
+                        let mut selected_to_use: Option<(String, String)> = None;
+
+                        if self.desktop_nav.detected_soapy_installations.is_empty() {
+                            ui.label(
+                                RichText::new("No se detectaron instalaciones automáticas en las rutas habituales. Puedes usar 'Buscar Instalaciones' o ingresar la ruta manualmente.")
+                                    .size(11.5)
+                                    .color(theme.text_secondary())
+                            );
+                        } else {
+                            ui.label(
+                                RichText::new("Se detectaron las siguientes instalaciones de controladores SDR en su equipo. Seleccione la versión que desee activar:")
+                                    .size(11.5)
+                                    .color(theme.text_secondary())
+                            );
+                            ui.add_space(4.0);
+
+                            for inst in &self.desktop_nav.detected_soapy_installations {
+                                let is_active = inst.is_active || self.config.soapy_search_path.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(&inst.path));
+                                Frame::new()
+                                    .fill(if is_active { theme.surface_container_high() } else { theme.surface_subtle() })
+                                    .stroke(Stroke::new(1.0, if is_active { theme.accent_blue() } else { theme.card_border() }))
+                                    .corner_radius(6.0)
+                                    .inner_margin(8.0)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            let icon = if inst.name.to_lowercase().contains("pothos") {
+                                                crate::icons::ICON_RADIO.codepoint
+                                            } else {
+                                                crate::icons::ICON_TUNE.codepoint
+                                            };
+                                            ui.label(RichText::new(icon).size(16.0).color(if is_active { theme.accent_blue() } else { theme.text_secondary() }));
+
+                                            ui.vertical(|ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(RichText::new(&inst.name).strong().size(12.5));
+                                                    if is_active {
+                                                        ui.label(RichText::new("[ ✓ ACTIVO ]").strong().size(10.5).color(Color32::from_rgb(34, 197, 94)));
+                                                    }
+                                                });
+                                                ui.label(RichText::new(&inst.path).size(10.5).monospace().color(theme.text_secondary()));
+                                            });
+
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                if !is_active {
+                                                    let use_btn = egui::Button::new(
+                                                        RichText::new("Usar esta versión").size(11.0).strong().color(Color32::WHITE)
+                                                    )
+                                                    .fill(theme.accent_blue())
+                                                    .corner_radius(6.0);
+
+                                                    if ui.add(use_btn).clicked() {
+                                                        selected_to_use = Some((inst.name.clone(), inst.path.clone()));
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    });
+                                ui.add_space(4.0);
+                            }
+                        }
+
+                        if let Some((name, path)) = selected_to_use {
+                            self.desktop_nav.soapy_path_input = path.clone();
+                            self.config.soapy_search_path = Some(path.clone());
+                            self.config.apply_environment();
+                            self.config.save();
+                            for item in &mut self.desktop_nav.detected_soapy_installations {
+                                item.is_active = item.path.eq_ignore_ascii_case(&path);
+                            }
+                            self.desktop_nav.soapy_test_status = Some((
+                                format!("¡Controlador cambiado a {} y aplicado al entorno de ejecución con éxito!: {}", name, path),
+                                true,
+                            ));
+                        }
+
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Ruta manual personalizada:").strong().size(12.5));
+                        ui.add_space(4.0);
+
+                        ui.horizontal_wrapped(|ui| {
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.desktop_nav.soapy_path_input)
                                     .hint_text("Ej: C:\\Program Files\\PothosSDR\\bin o C:\\Users\\USUARIO\\radioconda\\Library\\bin")
-                                    .desired_width((ui.available_width() - 100.0).max(180.0)),
+                                    .desired_width((ui.available_width() - 110.0).clamp(180.0, 420.0)),
                             );
 
                             let save_btn = egui::Button::new(
@@ -536,30 +614,28 @@ impl SignalsSdrApp {
                             }
                         });
 
-                        ui.add_space(10.0);
+                        ui.add_space(8.0);
 
                         ui.horizontal_wrapped(|ui| {
                             let detect_btn = egui::Button::new(
-                                RichText::new(format!("{} Auto-detectar Radioconda / PothosSDR / Conda", crate::icons::ICON_SEARCH.codepoint)).size(12.0)
+                                RichText::new(format!("{} Buscar / Detectar Instalaciones", crate::icons::ICON_SEARCH.codepoint)).size(12.0)
                             )
                             .fill(theme.surface_subtle())
                             .stroke(Stroke::new(1.0_f32, theme.card_border()))
                             .corner_radius(6.0);
 
                             if ui.add(detect_btn).clicked() {
-                                if let Some((cand, flavor)) = auto_detect_soapy_env() {
-                                    self.desktop_nav.soapy_path_input = cand.clone();
-                                    self.config.soapy_search_path = Some(cand.clone());
-                                    self.config.apply_environment();
-                                    self.config.save();
+                                let active_ref = self.config.soapy_search_path.as_deref();
+                                self.desktop_nav.detected_soapy_installations = scan_all_soapy_installations(active_ref);
+                                if self.desktop_nav.detected_soapy_installations.is_empty() {
                                     self.desktop_nav.soapy_test_status = Some((
-                                        format!("¡Instalación de {} detectada y vinculada con éxito!: {}", flavor, cand),
-                                        true,
+                                        "No se encontró automáticamente una instalación de PothosSDR ni Radioconda en las rutas estándar. Puedes indicar la carpeta manualmente.".to_string(),
+                                        false,
                                     ));
                                 } else {
                                     self.desktop_nav.soapy_test_status = Some((
-                                        "No se encontró automáticamente una instalación de PothosSDR ni Radioconda en las rutas estándar. Puedes instalar PothosSDR o Radioconda o ingresar la carpeta manualmente.".to_string(),
-                                        false,
+                                        format!("Se encontraron {} instalación(es) de SoapySDR en su equipo.", self.desktop_nav.detected_soapy_installations.len()),
+                                        true,
                                     ));
                                 }
                             }
@@ -803,38 +879,29 @@ impl SignalsSdrApp {
     }
 }
 
-fn auto_detect_soapy_env() -> Option<(String, &'static str)> {
+fn scan_all_soapy_installations(current_active: Option<&str>) -> Vec<crate::ui::desktop_nav::SoapyInstallation> {
+    let mut results = Vec::new();
+
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if let Some(path) = crate::config::AppConfig::find_system_soapy_path() {
-            let path_str = path.display().to_string();
-            let flavor = if path_str.to_lowercase().contains("pothos") {
-                "PothosSDR"
-            } else if path_str.to_lowercase().contains("radioconda") {
-                "Radioconda"
-            } else {
-                "SoapySDR / Conda"
-            };
-            return Some((path_str, flavor));
-        }
-
+        let mut seen = std::collections::HashSet::new();
         let mut candidates: Vec<(String, &'static str)> = Vec::new();
 
         if let Ok(pothos_root) = std::env::var("POTHOS_ROOT") {
-            candidates.push((format!("{}\\bin", pothos_root), "PothosSDR"));
+            candidates.push((format!("{}\\bin", pothos_root), "PothosSDR (Oficial)"));
         }
         if let Ok(pf) = std::env::var("ProgramFiles") {
-            candidates.push((format!("{}\\PothosSDR\\bin", pf), "PothosSDR"));
+            candidates.push((format!("{}\\PothosSDR\\bin", pf), "PothosSDR (64-bit)"));
         }
         if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
-            candidates.push((format!("{}\\PothosSDR\\bin", pf86), "PothosSDR"));
+            candidates.push((format!("{}\\PothosSDR\\bin", pf86), "PothosSDR (32-bit)"));
         }
 
         if let Ok(userprofile) = std::env::var("USERPROFILE") {
-            candidates.push((format!("{}\\radioconda\\Library\\bin", userprofile), "Radioconda"));
-            candidates.push((format!("{}\\miniconda3\\Library\\bin", userprofile), "Conda"));
-            candidates.push((format!("{}\\anaconda3\\Library\\bin", userprofile), "Anaconda"));
-            candidates.push((format!("{}\\PothosSDR\\bin", userprofile), "PothosSDR"));
+            candidates.push((format!("{}\\radioconda\\Library\\bin", userprofile), "Radioconda (Usuario)"));
+            candidates.push((format!("{}\\miniconda3\\Library\\bin", userprofile), "Miniconda (Usuario)"));
+            candidates.push((format!("{}\\anaconda3\\Library\\bin", userprofile), "Anaconda (Usuario)"));
+            candidates.push((format!("{}\\PothosSDR\\bin", userprofile), "PothosSDR (Usuario)"));
         }
 
         candidates.push((r"C:\Program Files\PothosSDR\bin".to_string(), "PothosSDR"));
@@ -842,19 +909,49 @@ fn auto_detect_soapy_env() -> Option<(String, &'static str)> {
         candidates.push((r"C:\PothosSDR\bin".to_string(), "PothosSDR"));
         candidates.push((r"D:\Program Files\PothosSDR\bin".to_string(), "PothosSDR"));
         candidates.push((r"D:\PothosSDR\bin".to_string(), "PothosSDR"));
-        candidates.push((r"C:\Users\USUARIO\radioconda\Library\bin".to_string(), "Radioconda"));
-        candidates.push((r"C:\radioconda\Library\bin".to_string(), "Radioconda"));
-        candidates.push((r"C:\miniconda3\Library\bin".to_string(), "Conda"));
-        candidates.push((r"C:\anaconda3\Library\bin".to_string(), "Anaconda"));
+        candidates.push((r"C:\radioconda\Library\bin".to_string(), "Radioconda (Raíz C:)"));
+        candidates.push((r"C:\miniconda3\Library\bin".to_string(), "Conda (Raíz C:)"));
+        candidates.push((r"C:\anaconda3\Library\bin".to_string(), "Anaconda (Raíz C:)"));
+
+        // Inspeccionar el PATH global
+        if let Ok(path_var) = std::env::var("PATH") {
+            for entry in path_var.split(';') {
+                let trimmed = entry.trim();
+                if !trimmed.is_empty() {
+                    let lower = trimmed.to_lowercase();
+                    if lower.contains("pothos") {
+                        candidates.push((trimmed.to_string(), "PothosSDR (en PATH)"));
+                    } else if lower.contains("radioconda") {
+                        candidates.push((trimmed.to_string(), "Radioconda (en PATH)"));
+                    } else if lower.contains("conda") {
+                        candidates.push((trimmed.to_string(), "Conda / Soapy (en PATH)"));
+                    }
+                }
+            }
+        }
 
         for (cand, flavor) in candidates {
             let p = std::path::Path::new(&cand);
-            if p.exists() && (p.join("SoapySDR.dll").exists() || p.join("SoapySDRUtil.exe").exists()) {
-                return Some((cand, flavor));
+            if p.is_dir() && (p.join("SoapySDR.dll").exists() || p.join("SoapySDRUtil.exe").exists() || p.join("libSoapySDR.so").exists()) {
+                let norm = cand.to_lowercase().replace('/', "\\");
+                if seen.insert(norm) {
+                    let is_active = if let Some(active) = current_active {
+                        active.trim().eq_ignore_ascii_case(&cand)
+                    } else {
+                        results.is_empty()
+                    };
+
+                    results.push(crate::ui::desktop_nav::SoapyInstallation {
+                        name: flavor.to_string(),
+                        path: cand,
+                        is_active,
+                    });
+                }
             }
         }
     }
-    None
+
+    results
 }
 
 fn test_soapy_detection(path_input: &str) -> (String, bool) {

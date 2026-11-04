@@ -93,6 +93,13 @@ impl SettingsTab {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SoapyInstallation {
+    pub name: String,
+    pub path: String,
+    pub is_active: bool,
+}
+
 pub struct DesktopNavState {
     pub active_section: NavSection,
     pub search_query: String,
@@ -102,6 +109,8 @@ pub struct DesktopNavState {
     pub active_settings_tab: SettingsTab,
     pub soapy_test_status: Option<(String, bool)>, // (Mensaje, es_exito)
     pub soapy_path_input: String,
+    pub detected_soapy_installations: Vec<SoapyInstallation>,
+    pub soapy_scan_done: bool,
     pub license_copied_feedback: bool,
 }
 
@@ -111,11 +120,13 @@ impl Default for DesktopNavState {
             active_section: NavSection::Pipelines,
             search_query: String::new(),
             filter_category: PipelineFilterCategory::All,
-            catalog_width: 290.0,
+            catalog_width: 260.0,
             side_panel_expanded: true,
             active_settings_tab: SettingsTab::General,
             soapy_test_status: None,
             soapy_path_input: String::new(),
+            detected_soapy_installations: Vec::new(),
+            soapy_scan_done: false,
             license_copied_feedback: false,
         }
     }

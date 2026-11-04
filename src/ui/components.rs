@@ -90,9 +90,9 @@ pub fn step_bar(
     ];
 
     let avail_w = ui.available_width();
-    if avail_w < 520.0 {
+    if avail_w < 650.0 {
         // En pantallas móviles / estrechas, renderizar en cuadrícula 2x2 tipo control segmentado responsivo sin flechas rotas
-        let col_w = ((avail_w - 6.0) / 2.0).max(120.0);
+        let col_w = ((avail_w - 12.0) / 2.0).clamp(90.0, 260.0);
         for row in 0..2 {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
