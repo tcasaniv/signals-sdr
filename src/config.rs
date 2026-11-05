@@ -152,13 +152,16 @@ impl AppConfig {
                 if path.is_dir() {
                     let path_str = path.display().to_string();
                     if let Ok(current_path) = std::env::var("PATH") {
-                        let contains = current_path
+                        // Limpiar cualquier otra ruta de SoapySDR y anteponer la seleccionada
+                        let filtered_entries: Vec<&str> = current_path
                             .split(';')
-                            .any(|p| p.trim().eq_ignore_ascii_case(&path_str));
-                        if !contains {
-                            let new_path = format!("{};{}", path_str, current_path);
-                            std::env::set_var("PATH", new_path);
-                        }
+                            .filter(|p| {
+                                let l = p.trim().to_lowercase();
+                                !l.is_empty() && !l.eq_ignore_ascii_case(&path_str)
+                            })
+                            .collect();
+                        let new_path = format!("{};{}", path_str, filtered_entries.join(";"));
+                        std::env::set_var("PATH", new_path);
                     }
 
                     // Registrar directorio en el cargador dinámico de Windows (kernel32!SetDllDirectoryW)
@@ -169,6 +172,16 @@ impl AppConfig {
                     }
                     unsafe {
                         SetDllDirectoryW(wide.as_ptr());
+                    }
+
+                    // Configurar SOAPY_SDR_ROOT para que Soapy cargue los módulos específicos de esta distribución
+                    if let Some(parent) = path.parent() {
+                        let root = if path.ends_with("bin") && parent.ends_with("Library") {
+                            parent.parent().unwrap_or(parent)
+                        } else {
+                            parent
+                        };
+                        std::env::set_var("SOAPY_SDR_ROOT", root.display().to_string());
                     }
                 }
             }
@@ -186,5 +199,25 @@ impl AppConfig {
                 let _ = std::fs::write(file_path, serialized);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_properties() {
+        let cfg = AppConfig::default();
+        assert!(cfg.default_output_dir.to_string_lossy().contains("Signals_SDR"));
+        assert!(cfg.soapy_search_path.is_none());
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn test_system_soapy_detection_or_fallback() {
+        let _ = AppConfig::find_system_soapy_path();
+        let cfg = AppConfig::default();
+        cfg.apply_environment();
     }
 }

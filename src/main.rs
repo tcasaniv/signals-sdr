@@ -7,6 +7,8 @@ fn main() -> eframe::Result<()> {
     #[cfg(target_os = "windows")]
     attach_console_if_needed();
 
+    init_app_logger();
+
     use signals_sdr::server::{parse_cli_args, print_help, print_version, run_server, CliMode};
 
     match parse_cli_args() {
@@ -28,8 +30,6 @@ fn main() -> eframe::Result<()> {
             // Continúa a ejecutar la interfaz gráfica nativa de escritorio
         }
     }
-
-    env_logger::init();
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1100.0, 780.0])
@@ -91,9 +91,44 @@ fn main() {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+struct SignalsLogFilter<L> {
+    inner: L,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<L: log::Log> log::Log for SignalsLogFilter<L> {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.inner.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        // Filtrar advertencias benignas de enumeración SDRplay cuando el servicio no está corriendo
+        if record.target() == "soapysdr" {
+            let msg = format!("{}", record.args());
+            if msg.contains("sdrplay_api") || msg.contains("sdrplay") {
+                return;
+            }
+        }
+        self.inner.log(record);
+    }
+
+    fn flush(&self) {
+        self.inner.flush();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn init_app_logger() {
+    let inner = env_logger::Builder::from_default_env().build();
+    let max_level = inner.filter();
+    let filter = SignalsLogFilter { inner };
+    let _ = log::set_boxed_logger(Box::new(filter));
+    log::set_max_level(max_level);
+}
+
 #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
 fn attach_console_if_needed() {
-    #[link(name = "kernel32")]
     extern "system" {
         fn AttachConsole(dwProcessId: u32) -> i32;
     }
