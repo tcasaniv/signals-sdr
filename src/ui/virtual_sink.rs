@@ -301,70 +301,154 @@ impl VirtualSinkModal {
             ui.add_space(8.0);
 
             // Sub-barra contextual de opciones según pestaña activa
+            let avail_w = ui.available_width();
             match self.active_tab {
                 VirtualSinkTab::Spectrum => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                        ui.checkbox(&mut self.show_max_peak, RichText::new("Max Peak (Amarillo)").size(11.5).color(Color32::from_rgb(234, 179, 8)));
-                        ui.checkbox(&mut self.show_min_peak, RichText::new("Min Peak (Magenta)").size(11.5).color(Color32::from_rgb(236, 72, 153)));
-                        if ui.button(RichText::new(format!("{} Limpiar Picos", icons::ICON_CLEAR_ALL.codepoint)).size(11.0)).clicked() {
-                            self.reset_peaks();
-                        }
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB").show_value(true));
+                    if avail_w < 620.0 {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+                                ui.checkbox(&mut self.show_max_peak, RichText::new("Max Peak").size(11.0).color(Color32::from_rgb(234, 179, 8)));
+                                ui.checkbox(&mut self.show_min_peak, RichText::new("Min Peak").size(11.0).color(Color32::from_rgb(236, 72, 153)));
+                                if ui.button(RichText::new(format!("{} Limpiar", icons::ICON_CLEAR_ALL.codepoint)).size(11.0)).on_hover_text("Reinicia las trazas de retención de picos").clicked() {
+                                    self.reset_peaks();
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                    ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized([60.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                    ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized([60.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                                });
+                            });
                         });
+                    } else {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB").show_value(true));
+                            ui.spacing_mut().item_spacing = Vec2::new(10.0, 4.0);
+                            ui.checkbox(&mut self.show_max_peak, RichText::new("Max Peak (Amarillo)").size(11.5).color(Color32::from_rgb(234, 179, 8)));
+                            ui.checkbox(&mut self.show_min_peak, RichText::new("Min Peak (Magenta)").size(11.5).color(Color32::from_rgb(236, 72, 153)));
+                            if ui.button(RichText::new(format!("{} Limpiar Picos", icons::ICON_CLEAR_ALL.codepoint)).size(11.0)).clicked() {
+                                self.reset_peaks();
+                            }
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB").show_value(true));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB").show_value(true));
+                            });
                         });
-                    });
+                    }
                 }
                 VirtualSinkTab::Waterfall => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                        ui.label(RichText::new("Resolución de Cascada:").size(11.5).color(theme.text_secondary()));
-                        egui::ComboBox::from_id_salt("sink_waterfall_res")
-                            .selected_text(match self.waterfall_resolution_mode {
-                                0 => "Baja (64 columnas)",
-                                1 => "Media (128 columnas)",
-                                2 => "Alta (256 columnas)",
-                                3 => "Ultra (512 columnas)",
-                                _ => "Nativa (Resolución FFT completa)",
-                            })
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.waterfall_resolution_mode, 0, "Baja (64 columnas)");
-                                ui.selectable_value(&mut self.waterfall_resolution_mode, 1, "Media (128 columnas)");
-                                ui.selectable_value(&mut self.waterfall_resolution_mode, 2, "Alta (256 columnas)");
-                                ui.selectable_value(&mut self.waterfall_resolution_mode, 3, "Ultra (512 columnas)");
-                                ui.selectable_value(&mut self.waterfall_resolution_mode, 4, "Nativa (Resolución FFT completa)");
+                    if avail_w < 620.0 {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
+                                ui.label(RichText::new("Resolución:").size(11.0).color(theme.text_secondary()));
+                                egui::ComboBox::from_id_salt("sink_waterfall_res")
+                                    .selected_text(match self.waterfall_resolution_mode {
+                                        0 => "Baja (64)",
+                                        1 => "Media (128)",
+                                        2 => "Alta (256)",
+                                        3 => "Ultra (512)",
+                                        _ => "Nativa (FFT)",
+                                    })
+                                    .width(95.0)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut self.waterfall_resolution_mode, 0, "Baja (64 columnas)");
+                                        ui.selectable_value(&mut self.waterfall_resolution_mode, 1, "Media (128 columnas)");
+                                        ui.selectable_value(&mut self.waterfall_resolution_mode, 2, "Alta (256 columnas)");
+                                        ui.selectable_value(&mut self.waterfall_resolution_mode, 3, "Ultra (512 columnas)");
+                                        ui.selectable_value(&mut self.waterfall_resolution_mode, 4, "Nativa (FFT completa)");
+                                    });
                             });
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                    ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized([60.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                    ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized([60.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                                });
+                            });
                         });
+                    } else {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                            ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+                            ui.label(RichText::new("Resolución de Cascada:").size(11.5).color(theme.text_secondary()));
+                            egui::ComboBox::from_id_salt("sink_waterfall_res")
+                                .selected_text(match self.waterfall_resolution_mode {
+                                    0 => "Baja (64 columnas)",
+                                    1 => "Media (128 columnas)",
+                                    2 => "Alta (256 columnas)",
+                                    3 => "Ultra (512 columnas)",
+                                    _ => "Nativa (Resolución FFT completa)",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.waterfall_resolution_mode, 0, "Baja (64 columnas)");
+                                    ui.selectable_value(&mut self.waterfall_resolution_mode, 1, "Media (128 columnas)");
+                                    ui.selectable_value(&mut self.waterfall_resolution_mode, 2, "Alta (256 columnas)");
+                                    ui.selectable_value(&mut self.waterfall_resolution_mode, 3, "Ultra (512 columnas)");
+                                    ui.selectable_value(&mut self.waterfall_resolution_mode, 4, "Nativa (Resolución FFT completa)");
+                                });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                            });
                         });
-                    });
+                    }
                 }
                 VirtualSinkTab::TimeDomain => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                        ui.checkbox(&mut self.show_i, RichText::new("I(t) Fase").size(11.5).color(Color32::from_rgb(59, 130, 246)));
-                        ui.checkbox(&mut self.show_q, RichText::new("Q(t) Cuadratura").size(11.5).color(Color32::from_rgb(16, 185, 129)));
-                        ui.checkbox(&mut self.show_envelope, RichText::new("|IQ| Envolvente").size(11.5).color(Color32::from_rgb(245, 158, 11)));
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized([75.0, 18.0], egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
+                    if avail_w < 620.0 {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+                                ui.checkbox(&mut self.show_i, RichText::new("I(t) Fase").size(11.0).color(Color32::from_rgb(59, 130, 246)));
+                                ui.checkbox(&mut self.show_q, RichText::new("Q(t) Cuad.").size(11.0).color(Color32::from_rgb(16, 185, 129)));
+                                ui.checkbox(&mut self.show_envelope, RichText::new("|IQ| Env.").size(11.0).color(Color32::from_rgb(245, 158, 11)));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([80.0, 18.0], egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
+                            });
                         });
-                    });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+                            ui.checkbox(&mut self.show_i, RichText::new("I(t) Fase").size(11.5).color(Color32::from_rgb(59, 130, 246)));
+                            ui.checkbox(&mut self.show_q, RichText::new("Q(t) Cuadratura").size(11.5).color(Color32::from_rgb(16, 185, 129)));
+                            ui.checkbox(&mut self.show_envelope, RichText::new("|IQ| Envolvente").size(11.5).color(Color32::from_rgb(245, 158, 11)));
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                                ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized([75.0, 18.0], egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
+                            });
+                        });
+                    }
                 }
                 VirtualSinkTab::Constellation => {
                     self.render_constellation_subbar(ui, theme, samples);
@@ -383,20 +467,20 @@ impl VirtualSinkModal {
             let plot_h = match self.active_tab {
                 VirtualSinkTab::Constellation => {
                     if avail_w < 600.0 {
-                        // En móvil se acota para mantener la relación de aspecto cuadrada y no ocultar los controles inferiores
-                        (avail_w - 24.0).clamp(240.0, 360.0)
+                        // En móvil acotamos para mantener relación de aspecto y no desplazar la barra inferior
+                        (avail_w - 30.0).clamp(200.0, 280.0)
                     } else {
-                        (ui.available_height() - 130.0).clamp(320.0, 580.0)
+                        (ui.available_height() - 160.0).clamp(280.0, 520.0)
                     }
                 }
                 VirtualSinkTab::Metrics => {
-                    (ui.available_height() - 100.0).clamp(280.0, 620.0)
+                    (ui.available_height() - 120.0).clamp(260.0, 520.0)
                 }
                 _ => {
                     if avail_w < 600.0 {
-                        (ui.available_height() - 110.0).clamp(260.0, 420.0)
+                        (avail_w * 0.60).clamp(180.0, 260.0)
                     } else {
-                        (ui.available_height() - 110.0).clamp(340.0, 680.0)
+                        (ui.available_height() - 160.0).clamp(260.0, 520.0)
                     }
                 }
             };
@@ -438,25 +522,25 @@ impl VirtualSinkModal {
         let avail_w = ui.available_width();
 
         if avail_w < 600.0 {
-            // Modo móvil / pantalla estrecha (<600px): 3 filas limpias perfectamente acotadas
+            // Modo móvil / pantalla estrecha (<600px): 3 filas limpias atómicas
             ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 3.0);
 
                 // Fila 1: Modo VSA, SPS y OQPSK
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
                     ui.checkbox(
                         &mut self.constellation_vsa_mode,
-                        RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
+                        RichText::new("Modo Símbolos (VSA)").size(11.0).strong().color(theme.accent_blue()),
                     ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
 
                     if self.constellation_vsa_mode {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
+                            ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                            ui.label(RichText::new("SPS:").size(10.5).color(theme.text_secondary()));
                             egui::ComboBox::from_id_salt("sink_const_sps_mob")
                                 .selected_text(format!("{} SPS", self.constellation_sps))
-                                .width(60.0)
+                                .width(56.0)
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
                                     ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
@@ -468,7 +552,7 @@ impl VirtualSinkModal {
 
                         ui.checkbox(
                             &mut self.constellation_oqpsk_deoffset,
-                            RichText::new("OQPSK").size(11.0),
+                            RichText::new("OQPSK").size(10.5),
                         ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
                     }
                 });
@@ -480,42 +564,42 @@ impl VirtualSinkModal {
                         self.constellation_timing_phase = 0;
                     }
 
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(5.0, 0.0);
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
+                            ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                            ui.label(RichText::new("Ojo:").size(10.5).color(theme.text_secondary()));
                             ui.add_sized(
-                                [50.0, 18.0],
+                                [42.0, 18.0],
                                 egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
                             );
                         });
 
-                        if ui.button(RichText::new("Auto Ojo").size(11.0)).clicked() {
+                        if ui.button(RichText::new("Auto").size(10.5)).on_hover_text("Busca automáticamente la mejor fase de muestreo de ojo").clicked() {
                             let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
                             let aligned_start = (self.sample_cursor / sps) * sps;
                             self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
                         }
 
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
+                            ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                            ui.label(RichText::new("θ:").size(10.5).color(theme.text_secondary()));
                             ui.add_sized(
-                                [55.0, 18.0],
+                                [46.0, 18.0],
                                 egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
                             );
                         });
 
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                            ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
+                            ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                            ui.label(RichText::new("Esc:").size(10.5).color(theme.text_secondary()));
                             let norm_label = match self.constellation_norm_mode {
                                 ConstellationNormMode::UnitEnergy => "RF",
                                 ConstellationNormMode::SymbolicGrid => "Grilla",
                             };
                             egui::ComboBox::from_id_salt("sink_const_norm_mob")
                                 .selected_text(norm_label)
-                                .width(55.0)
+                                .width(50.0)
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::UnitEnergy, "RF (Es=1)");
                                     ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::SymbolicGrid, "Grilla (±1)");
@@ -525,17 +609,17 @@ impl VirtualSinkModal {
                 }
 
                 // Fila 3: Círculos, Grilla, Zoom y Puntos
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                    ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0));
-                    ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0));
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(5.0, 0.0);
+                    ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(10.5));
+                    ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(10.5));
 
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                        ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
+                        ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                        ui.label(RichText::new("Zoom:").size(10.5).color(theme.text_secondary()));
                         egui::ComboBox::from_id_salt("sink_const_zoom_mob")
                             .selected_text(format!("{:.1}x", self.constellation_zoom))
-                            .width(50.0)
+                            .width(46.0)
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
                                 ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
@@ -547,11 +631,11 @@ impl VirtualSinkModal {
                     });
 
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
-                        ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
+                        ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                        ui.label(RichText::new("Pts:").size(10.5).color(theme.text_secondary()));
                         ui.add_sized(
-                            [65.0, 18.0],
-                            egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
+                            [50.0, 18.0],
+                            egui::Slider::new(&mut self.constellation_points, 256..=4096),
                         );
                     });
                 });
@@ -705,101 +789,200 @@ impl VirtualSinkModal {
         let total_samples = samples.len();
         let avail_w = ui.available_width();
 
-        if avail_w < 820.0 {
-            // Diseño responsivo en 2 filas limpias para pantallas móviles e intermedias (<820px)
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+        if avail_w < 480.0 {
+            // Diseño móvil ultra-compacto (<480px): 3 filas ordenadas sin truncamiento de tiempo ni desbordes
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 3.0);
 
-                // Botón Play / Pause
-                let play_label = if self.is_playing {
-                    format!("{} Pausar", icons::ICON_PAUSE.codepoint)
-                } else {
-                    format!("{} Reproducir", icons::ICON_PLAY_ARROW.codepoint)
-                };
-                let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.0).color(Color32::WHITE))
-                    .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
-                    .corner_radius(6.0);
-                if ui.add(play_btn).clicked() {
-                    self.is_playing = !self.is_playing;
-                }
+                // Fila 1: Botones de transporte y contador de tiempo
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
 
-                // Botón Replay / Reiniciar
-                let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
-                if ui.add(reset_btn).clicked() {
-                    self.sample_cursor = 0;
-                    self.reset_peaks();
-                    self.waterfall_history.clear();
-                }
-
-                // Slider y tiempo con ancho elástico adaptativo
-                if total_samples > 0 && sample_rate > 0 {
-                    let total_secs = total_samples as f32 / sample_rate as f32;
-                    let current_secs = self.sample_cursor as f32 / sample_rate as f32;
-                    let mut cursor_val = self.sample_cursor;
-
-                    let slider_w = (ui.available_width() - 130.0).clamp(50.0, 180.0);
-                    let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples).show_value(false);
-                    if ui.add_sized([slider_w, 18.0], slider).changed() {
-                        self.sample_cursor = cursor_val;
+                    let play_label = if self.is_playing {
+                        format!("{} Pausar", icons::ICON_PAUSE.codepoint)
+                    } else {
+                        format!("{} Play", icons::ICON_PLAY_ARROW.codepoint)
+                    };
+                    let play_btn = egui::Button::new(RichText::new(play_label).strong().size(11.0).color(Color32::WHITE))
+                        .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
+                        .corner_radius(6.0);
+                    if ui.add(play_btn).clicked() {
+                        self.is_playing = !self.is_playing;
                     }
 
-                    ui.label(
-                        RichText::new(format!(
-                            "{:02}:{:04.1} / {:02}:{:04.1}",
-                            (current_secs / 60.0).floor() as u32,
-                            current_secs % 60.0,
-                            (total_secs / 60.0).floor() as u32,
-                            total_secs % 60.0,
-                        ))
-                        .monospace()
-                        .size(11.0)
-                        .color(theme.text_secondary()),
-                    );
+                    let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(11.0));
+                    if ui.add(reset_btn).clicked() {
+                        self.sample_cursor = 0;
+                        self.reset_peaks();
+                        self.waterfall_history.clear();
+                    }
+
+                    if total_samples > 0 && sample_rate > 0 {
+                        let total_secs = total_samples as f32 / sample_rate as f32;
+                        let current_secs = self.sample_cursor as f32 / sample_rate as f32;
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{:02}:{:02} / {:02}:{:02}",
+                                    (current_secs / 60.0).floor() as u32,
+                                    (current_secs % 60.0).floor() as u32,
+                                    (total_secs / 60.0).floor() as u32,
+                                    (total_secs % 60.0).floor() as u32,
+                                ))
+                                .monospace()
+                                .size(10.5)
+                                .color(theme.text_secondary()),
+                            );
+                        });
+                    }
+                });
+
+                // Fila 2: Barra de progreso a todo lo ancho disponible
+                if total_samples > 0 && sample_rate > 0 {
+                    let mut cursor_val = self.sample_cursor;
+                    let full_w = (ui.available_width() - 8.0).max(80.0);
+                    let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples).show_value(false);
+                    if ui.add_sized([full_w, 18.0], slider).changed() {
+                        self.sample_cursor = cursor_val;
+                    }
                 }
+
+                // Fila 3: Velocidad, FFT y Guardar PNG
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
+
+                    egui::ComboBox::from_id_salt("sink_speed_combo")
+                        .selected_text(format!("{}x", self.playback_speed))
+                        .width(52.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
+                            ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
+                            ui.selectable_value(&mut self.playback_speed, 1.0, "1.0x");
+                            ui.selectable_value(&mut self.playback_speed, 2.0, "2.0x");
+                            ui.selectable_value(&mut self.playback_speed, 5.0, "5.0x");
+                        });
+
+                    egui::ComboBox::from_id_salt("sink_fft_size")
+                        .selected_text(format!("FFT: {}", self.fft_size))
+                        .width(76.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.fft_size, 512, "512");
+                            ui.selectable_value(&mut self.fft_size, 1024, "1024");
+                            ui.selectable_value(&mut self.fft_size, 2048, "2048");
+                            ui.selectable_value(&mut self.fft_size, 4096, "4096");
+                            ui.selectable_value(&mut self.fft_size, 8192, "8192");
+                            ui.selectable_value(&mut self.fft_size, 16384, "16384");
+                        });
+
+                    let save_btn = egui::Button::new(
+                        RichText::new(format!("{} PNG", icons::ICON_CAMERA_ALT.codepoint)).size(11.0)
+                    )
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0, theme.card_border()))
+                    .corner_radius(6.0);
+
+                    if ui.add(save_btn).on_hover_text("Guarda una imagen en alta resolución de la pestaña activa como archivo PNG").clicked() {
+                        self.export_active_view_png(samples, sample_rate, center_freq_hz);
+                    }
+                });
             });
+        } else if avail_w < 820.0 {
+            // Diseño intermedio (480px..820px): 2 filas limpias
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 3.0);
 
-            ui.add_space(3.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
 
-            // Segunda fila de controles secundarios (Velocidad, FFT, Guardar PNG)
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+                    // Botón Play / Pause
+                    let play_label = if self.is_playing {
+                        format!("{} Pausar", icons::ICON_PAUSE.codepoint)
+                    } else {
+                        format!("{} Reproducir", icons::ICON_PLAY_ARROW.codepoint)
+                    };
+                    let play_btn = egui::Button::new(RichText::new(play_label).strong().size(12.0).color(Color32::WHITE))
+                        .fill(if self.is_playing { Color32::from_rgb(220, 38, 38) } else { theme.accent_blue() })
+                        .corner_radius(6.0);
+                    if ui.add(play_btn).clicked() {
+                        self.is_playing = !self.is_playing;
+                    }
 
-                // Selector de velocidad
-                egui::ComboBox::from_id_salt("sink_speed_combo")
-                    .selected_text(format!("{}x", self.playback_speed))
-                    .width(60.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
-                        ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
-                        ui.selectable_value(&mut self.playback_speed, 1.0, "1.0x (Real)");
-                        ui.selectable_value(&mut self.playback_speed, 2.0, "2.0x");
-                        ui.selectable_value(&mut self.playback_speed, 5.0, "5.0x");
-                    });
+                    // Botón Replay / Reiniciar
+                    let reset_btn = egui::Button::new(RichText::new(format!("{} Reiniciar", icons::ICON_REPLAY.codepoint)).size(12.0));
+                    if ui.add(reset_btn).clicked() {
+                        self.sample_cursor = 0;
+                        self.reset_peaks();
+                        self.waterfall_history.clear();
+                    }
 
-                // Selector de FFT
-                egui::ComboBox::from_id_salt("sink_fft_size")
-                    .selected_text(format!("FFT: {}", self.fft_size))
-                    .width(82.0)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.fft_size, 512, "512 bins");
-                        ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
-                        ui.selectable_value(&mut self.fft_size, 2048, "2048 bins");
-                        ui.selectable_value(&mut self.fft_size, 4096, "4096 bins");
-                        ui.selectable_value(&mut self.fft_size, 8192, "8192 bins");
-                        ui.selectable_value(&mut self.fft_size, 16384, "16384 bins");
-                    });
+                    // Slider y tiempo con ancho elástico adaptativo
+                    if total_samples > 0 && sample_rate > 0 {
+                        let total_secs = total_samples as f32 / sample_rate as f32;
+                        let current_secs = self.sample_cursor as f32 / sample_rate as f32;
+                        let mut cursor_val = self.sample_cursor;
 
-                // Botón Guardar Captura PNG
-                let save_btn = egui::Button::new(
-                    RichText::new(format!("{} Guardar PNG", icons::ICON_CAMERA_ALT.codepoint)).size(11.5)
-                )
-                .fill(theme.surface_subtle())
-                .stroke(Stroke::new(1.0, theme.card_border()))
-                .corner_radius(6.0);
+                        let slider_w = (ui.available_width() - 150.0).clamp(60.0, 220.0);
+                        let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples).show_value(false);
+                        if ui.add_sized([slider_w, 18.0], slider).changed() {
+                            self.sample_cursor = cursor_val;
+                        }
 
-                if ui.add(save_btn).on_hover_text("Guarda una imagen en alta resolución de la pestaña activa como archivo PNG").clicked() {
-                    self.export_active_view_png(samples, sample_rate, center_freq_hz);
-                }
+                        ui.label(
+                            RichText::new(format!(
+                                "{:02}:{:04.1} / {:02}:{:04.1}",
+                                (current_secs / 60.0).floor() as u32,
+                                current_secs % 60.0,
+                                (total_secs / 60.0).floor() as u32,
+                                total_secs % 60.0,
+                            ))
+                            .monospace()
+                            .size(11.0)
+                            .color(theme.text_secondary()),
+                        );
+                    }
+                });
+
+                // Segunda fila de controles secundarios (Velocidad, FFT, Guardar PNG)
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+
+                    // Selector de velocidad
+                    egui::ComboBox::from_id_salt("sink_speed_combo")
+                        .selected_text(format!("{}x", self.playback_speed))
+                        .width(60.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
+                            ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
+                            ui.selectable_value(&mut self.playback_speed, 1.0, "1.0x (Real)");
+                            ui.selectable_value(&mut self.playback_speed, 2.0, "2.0x");
+                            ui.selectable_value(&mut self.playback_speed, 5.0, "5.0x");
+                        });
+
+                    // Selector de FFT
+                    egui::ComboBox::from_id_salt("sink_fft_size")
+                        .selected_text(format!("FFT: {}", self.fft_size))
+                        .width(82.0)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.fft_size, 512, "512 bins");
+                            ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
+                            ui.selectable_value(&mut self.fft_size, 2048, "2048 bins");
+                            ui.selectable_value(&mut self.fft_size, 4096, "4096 bins");
+                            ui.selectable_value(&mut self.fft_size, 8192, "8192 bins");
+                            ui.selectable_value(&mut self.fft_size, 16384, "16384 bins");
+                        });
+
+                    // Botón Guardar Captura PNG
+                    let save_btn = egui::Button::new(
+                        RichText::new(format!("{} Guardar PNG", icons::ICON_CAMERA_ALT.codepoint)).size(11.5)
+                    )
+                    .fill(theme.surface_subtle())
+                    .stroke(Stroke::new(1.0, theme.card_border()))
+                    .corner_radius(6.0);
+
+                    if ui.add(save_btn).on_hover_text("Guarda una imagen en alta resolución de la pestaña activa como archivo PNG").clicked() {
+                        self.export_active_view_png(samples, sample_rate, center_freq_hz);
+                    }
+                });
             });
         } else {
             // Diseño en una sola fila para pantallas de escritorio amplias (>=820px)
@@ -1379,34 +1562,45 @@ impl VirtualSinkModal {
             }
         }
 
+        let is_compact_plot = plot_rect.width() < 340.0;
+        let q_label = if is_compact_plot { "+Q" } else { "+Q (Cuadratura)" };
+        let i_label = if is_compact_plot { "+I" } else { "+I (Fase)" };
+
         painter.text(
             Pos2::new(plot_rect.max.x - 8.0, center.y - 14.0),
             egui::Align2::RIGHT_CENTER,
-            "+I (Fase)",
-            egui::FontId::monospace(11.0),
+            i_label,
+            egui::FontId::monospace(if is_compact_plot { 10.0 } else { 11.0 }),
             theme.accent_blue(),
         );
         painter.text(
             Pos2::new(center.x + 8.0, plot_rect.min.y + 12.0),
             egui::Align2::LEFT_TOP,
-            "+Q (Cuadratura)",
-            egui::FontId::monospace(11.0),
+            q_label,
+            egui::FontId::monospace(if is_compact_plot { 10.0 } else { 11.0 }),
             theme.accent_blue(),
         );
 
         // Distintivo compacto de norma en esquina superior izquierda (sin invadir el semieje central)
-        let badge_text = match self.constellation_norm_mode {
-            ConstellationNormMode::UnitEnergy => "Norma: RF (Es=1.0)",
-            ConstellationNormMode::SymbolicGrid => "Norma: Grilla (±1.0)",
+        let (badge_text, badge_w) = if is_compact_plot {
+            match self.constellation_norm_mode {
+                ConstellationNormMode::UnitEnergy => ("RF", 36.0),
+                ConstellationNormMode::SymbolicGrid => ("Grilla", 52.0),
+            }
+        } else {
+            match self.constellation_norm_mode {
+                ConstellationNormMode::UnitEnergy => ("Norma: RF (Es=1.0)", 138.0),
+                ConstellationNormMode::SymbolicGrid => ("Norma: Grilla (±1.0)", 138.0),
+            }
         };
-        let badge_rect = Rect::from_min_size(Pos2::new(plot_rect.min.x + 8.0, plot_rect.min.y + 8.0), Vec2::new(138.0, 22.0));
+        let badge_rect = Rect::from_min_size(Pos2::new(plot_rect.min.x + 8.0, plot_rect.min.y + 8.0), Vec2::new(badge_w, 20.0));
         painter.rect_filled(badge_rect, 4.0, Color32::from_black_alpha(180));
         painter.rect_stroke(badge_rect, 4.0, Stroke::new(1.0, theme.accent_blue().gamma_multiply(0.35)), egui::StrokeKind::Inside);
         painter.text(
             badge_rect.center(),
             egui::Align2::CENTER_CENTER,
             badge_text,
-            egui::FontId::monospace(10.5),
+            egui::FontId::monospace(if is_compact_plot { 9.5 } else { 10.5 }),
             theme.accent_blue(),
         );
 
