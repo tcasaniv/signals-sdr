@@ -301,21 +301,30 @@ impl VirtualSinkModal {
             ui.add_space(8.0);
 
             // Sub-barra contextual de opciones según pestaña activa
-            ui.horizontal_wrapped(|ui| {
-                match self.active_tab {
-                    VirtualSinkTab::Spectrum => {
+            match self.active_tab {
+                VirtualSinkTab::Spectrum => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                         ui.checkbox(&mut self.show_max_peak, RichText::new("Max Peak (Amarillo)").size(11.5).color(Color32::from_rgb(234, 179, 8)));
                         ui.checkbox(&mut self.show_min_peak, RichText::new("Min Peak (Magenta)").size(11.5).color(Color32::from_rgb(236, 72, 153)));
                         if ui.button(RichText::new(format!("{} Limpiar Picos", icons::ICON_CLEAR_ALL.codepoint)).size(11.0)).clicked() {
                             self.reset_peaks();
                         }
-                        ui.add_space(8.0);
-                        ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB").show_value(true));
-                        ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB").show_value(true));
-                    }
-                    VirtualSinkTab::Waterfall => {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB").show_value(true));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB").show_value(true));
+                        });
+                    });
+                }
+                VirtualSinkTab::Waterfall => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                         ui.label(RichText::new("Resolución de Cascada:").size(11.5).color(theme.text_secondary()));
                         egui::ComboBox::from_id_salt("sink_waterfall_res")
                             .selected_text(match self.waterfall_resolution_mode {
@@ -332,249 +341,66 @@ impl VirtualSinkModal {
                                 ui.selectable_value(&mut self.waterfall_resolution_mode, 3, "Ultra (512 columnas)");
                                 ui.selectable_value(&mut self.waterfall_resolution_mode, 4, "Nativa (Resolución FFT completa)");
                             });
-                        ui.add_space(8.0);
-                        ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
-                        ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
-                    }
-                    VirtualSinkTab::TimeDomain => {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("dB Mín:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_min, -140.0..=-30.0).suffix(" dB"));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("dB Máx:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized([70.0, 18.0], egui::Slider::new(&mut self.db_max, -20.0..=10.0).suffix(" dB"));
+                        });
+                    });
+                }
+                VirtualSinkTab::TimeDomain => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                         ui.checkbox(&mut self.show_i, RichText::new("I(t) Fase").size(11.5).color(Color32::from_rgb(59, 130, 246)));
                         ui.checkbox(&mut self.show_q, RichText::new("Q(t) Cuadratura").size(11.5).color(Color32::from_rgb(16, 185, 129)));
                         ui.checkbox(&mut self.show_envelope, RichText::new("|IQ| Envolvente").size(11.5).color(Color32::from_rgb(245, 158, 11)));
-                        ui.add_space(8.0);
-                        ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
-                        ui.add(egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
-                    }
-                    VirtualSinkTab::Constellation => {
-                        let avail_w = ui.available_width();
-                        if avail_w < 600.0 {
-                            // Modo móvil / pantalla estrecha: distribución estructurada por filas limpias sin compresión
-                            ui.vertical(|ui| {
-                                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.checkbox(
-                                        &mut self.constellation_vsa_mode,
-                                        RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
-                                    ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
-
-                                    if self.constellation_vsa_mode {
-                                        ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
-                                        egui::ComboBox::from_id_salt("sink_const_sps_mob")
-                                            .selected_text(format!("{} SPS", self.constellation_sps))
-                                            .width(65.0)
-                                            .show_ui(ui, |ui| {
-                                                ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
-                                                ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
-                                                ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
-                                                ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
-                                                ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
-                                            });
-
-                                        ui.checkbox(
-                                            &mut self.constellation_oqpsk_deoffset,
-                                            RichText::new("OQPSK").size(11.0),
-                                        ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
-                                    }
-                                });
-
-                                if self.constellation_vsa_mode {
-                                    let sps = self.constellation_sps.max(1);
-                                    if self.constellation_timing_phase >= sps {
-                                        self.constellation_timing_phase = 0;
-                                    }
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
-                                        ui.add_sized(
-                                            [60.0, 18.0],
-                                            egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
-                                        );
-
-                                        if ui.button(RichText::new("Auto Ojo").size(11.0)).clicked() {
-                                            let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
-                                            let aligned_start = (self.sample_cursor / sps) * sps;
-                                            self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
-                                        }
-
-                                        ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
-                                        ui.add_sized(
-                                            [65.0, 18.0],
-                                            egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
-                                        );
-
-                                        ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
-                                        let norm_label = match self.constellation_norm_mode {
-                                            ConstellationNormMode::UnitEnergy => "RF",
-                                            ConstellationNormMode::SymbolicGrid => "Grilla",
-                                        };
-                                        egui::ComboBox::from_id_salt("sink_const_norm_mob")
-                                            .selected_text(norm_label)
-                                            .width(60.0)
-                                            .show_ui(ui, |ui| {
-                                                ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::UnitEnergy, "RF (Es=1)");
-                                                ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::SymbolicGrid, "Grilla (±1)");
-                                            });
-                                    });
-                                }
-
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0));
-                                    ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0));
-
-                                    ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
-                                    egui::ComboBox::from_id_salt("sink_const_zoom_mob")
-                                        .selected_text(format!("{:.1}x", self.constellation_zoom))
-                                        .width(55.0)
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
-                                            ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
-                                            ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
-                                            ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
-                                            ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
-                                            ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
-                                        });
-
-                                    ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
-                                    ui.add_sized(
-                                        [75.0, 18.0],
-                                        egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
-                                    );
-                                });
-                            });
-                        } else {
-                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-
-                            ui.checkbox(
-                                &mut self.constellation_vsa_mode,
-                                RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
-                            ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
-
-                            if self.constellation_vsa_mode {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                    ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
-                                    egui::ComboBox::from_id_salt("sink_const_sps")
-                                        .selected_text(format!("{} SPS", self.constellation_sps))
-                                        .width(70.0)
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
-                                            ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
-                                            ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
-                                            ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
-                                            ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
-                                        });
-                                });
-
-                                ui.checkbox(
-                                    &mut self.constellation_oqpsk_deoffset,
-                                    RichText::new("OQPSK (Q = Ts/2)").size(11.0),
-                                ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
-
-                                let sps = self.constellation_sps.max(1);
-                                if self.constellation_timing_phase >= sps {
-                                    self.constellation_timing_phase = 0;
-                                }
-
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                    ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
-                                    ui.add_sized(
-                                        [70.0, 18.0],
-                                        egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
-                                    ).on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
-                                });
-
-                                if ui.button(RichText::new("Auto Ojo").size(11.0)).on_hover_text("Busca de forma automática la fase de reloj con máxima apertura de ojo").clicked() {
-                                    let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
-                                    let aligned_start = (self.sample_cursor / sps) * sps;
-                                    self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
-                                }
-
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                    ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
-                                    ui.add_sized(
-                                        [80.0, 18.0],
-                                        egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
-                                    ).on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
-                                });
-
-                                // Selector de Escala de Potencia abreviado en UI con explicación didáctica completa en hover
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                    ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
-                                    let norm_label = match self.constellation_norm_mode {
-                                        ConstellationNormMode::UnitEnergy => "RF (Es=1)",
-                                        ConstellationNormMode::SymbolicGrid => "Grilla (±1)",
-                                    };
-                                    egui::ComboBox::from_id_salt("sink_const_norm_mode")
-                                        .selected_text(norm_label)
-                                        .width(85.0)
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut self.constellation_norm_mode,
-                                                ConstellationNormMode::UnitEnergy,
-                                                "RF (Es=1)",
-                                            ).on_hover_text(
-                                                "Norma de Potencia Unitaria (Es = 1.0): Estándar físico de ingeniería de radiofrecuencia (CCSDS/SDR). \
-                                                 Los símbolos se sitúan en ±1/√2 (±0.707) sobre el círculo unitario r=1.0 para aprovechar el 100% \
-                                                 del rango dinámico del DAC sin causar distorsión armónica ni saturación."
-                                            );
-                                            ui.selectable_value(
-                                                &mut self.constellation_norm_mode,
-                                                ConstellationNormMode::SymbolicGrid,
-                                                "Grilla (±1)",
-                                            ).on_hover_text(
-                                                "Norma de Cuadrícula Simbólica (±1.0): Escala normalizada por √2 para que los centros de decisión \
-                                                 coincidan exactamente con las marcas ±1.0 de los ejes cartesianos (representación convencional en textos teóricos)."
-                                            );
-                                        });
-                                });
-                            }
-
-                            // Toggles para círculos y cuadrícula
-                            ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0))
-                                .on_hover_text("Muestra u oculta los círculos concéntricos de referencia (r = 0.5 y círculo unitario r = 1.0).");
-                            ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0))
-                                .on_hover_text("Muestra u oculta la cuadrícula ortogonal (retícula en ±0.5 y ±1.0).");
-
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
-                                egui::ComboBox::from_id_salt("sink_const_zoom")
-                                    .selected_text(format!("{:.1}x", self.constellation_zoom))
-                                    .width(60.0)
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
-                                        ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
-                                        ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
-                                        ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
-                                        ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
-                                        ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
-                                    });
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                                ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
-                                ui.add_sized(
-                                    [85.0, 18.0],
-                                    egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
-                                );
-                            });
-                        }
-                    }
-                    VirtualSinkTab::Metrics => {
-                        ui.label(RichText::new("Cálculo en vivo de parámetros de RF y calidad de la señal modulada").size(11.5).color(theme.text_secondary()));
-                    }
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Ventana:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized([75.0, 18.0], egui::Slider::new(&mut self.time_window_samples, 128..=2048).suffix(" pts"));
+                        });
+                    });
                 }
-            });
+                VirtualSinkTab::Constellation => {
+                    self.render_constellation_subbar(ui, theme, samples);
+                }
+                VirtualSinkTab::Metrics => {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("Cálculo en vivo de parámetros de RF y calidad de la señal modulada").size(11.5).color(theme.text_secondary()));
+                    });
+                }
+            }
 
             ui.add_space(4.0);
 
-            // 2. Área principal de graficación
-            let plot_h = (ui.available_height() - 100.0).clamp(420.0, 720.0);
-            let avail_size = Vec2::new(ui.available_width(), plot_h);
+            // 2. Área principal de graficación con altura adaptativa según la pestaña y resolución
+            let avail_w = ui.available_width();
+            let plot_h = match self.active_tab {
+                VirtualSinkTab::Constellation => {
+                    if avail_w < 600.0 {
+                        // En móvil se acota para mantener la relación de aspecto cuadrada y no ocultar los controles inferiores
+                        (avail_w - 24.0).clamp(240.0, 360.0)
+                    } else {
+                        (ui.available_height() - 130.0).clamp(320.0, 580.0)
+                    }
+                }
+                VirtualSinkTab::Metrics => {
+                    (ui.available_height() - 100.0).clamp(280.0, 620.0)
+                }
+                _ => {
+                    if avail_w < 600.0 {
+                        (ui.available_height() - 110.0).clamp(260.0, 420.0)
+                    } else {
+                        (ui.available_height() - 110.0).clamp(340.0, 680.0)
+                    }
+                }
+            };
+            let avail_size = Vec2::new(avail_w, plot_h);
             Frame::new()
                 .fill(if *theme == AppTheme::Dark { Color32::from_rgb(8, 12, 18) } else { Color32::from_rgb(255, 255, 255) })
                 .stroke(Stroke::new(1.0, theme.card_border()))
@@ -607,6 +433,266 @@ impl VirtualSinkModal {
         });
     }
 
+    /// Sub-barra contextual de constelación estructurada en filas semánticas atómicas (sin quiebre vertical de letras)
+    fn render_constellation_subbar(&mut self, ui: &mut Ui, theme: &AppTheme, samples: &[(f32, f32)]) {
+        let avail_w = ui.available_width();
+
+        if avail_w < 600.0 {
+            // Modo móvil / pantalla estrecha (<600px): 3 filas limpias perfectamente acotadas
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+
+                // Fila 1: Modo VSA, SPS y OQPSK
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                    ui.checkbox(
+                        &mut self.constellation_vsa_mode,
+                        RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
+                    ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
+
+                    if self.constellation_vsa_mode {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
+                            egui::ComboBox::from_id_salt("sink_const_sps_mob")
+                                .selected_text(format!("{} SPS", self.constellation_sps))
+                                .width(60.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
+                                });
+                        });
+
+                        ui.checkbox(
+                            &mut self.constellation_oqpsk_deoffset,
+                            RichText::new("OQPSK").size(11.0),
+                        ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
+                    }
+                });
+
+                // Fila 2: Fase Ojo, Auto Ojo, Fase Portadora y Escala
+                if self.constellation_vsa_mode {
+                    let sps = self.constellation_sps.max(1);
+                    if self.constellation_timing_phase >= sps {
+                        self.constellation_timing_phase = 0;
+                    }
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized(
+                                [50.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
+                            );
+                        });
+
+                        if ui.button(RichText::new("Auto Ojo").size(11.0)).clicked() {
+                            let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
+                            let aligned_start = (self.sample_cursor / sps) * sps;
+                            self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized(
+                                [55.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
+                            );
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
+                            let norm_label = match self.constellation_norm_mode {
+                                ConstellationNormMode::UnitEnergy => "RF",
+                                ConstellationNormMode::SymbolicGrid => "Grilla",
+                            };
+                            egui::ComboBox::from_id_salt("sink_const_norm_mob")
+                                .selected_text(norm_label)
+                                .width(55.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::UnitEnergy, "RF (Es=1)");
+                                    ui.selectable_value(&mut self.constellation_norm_mode, ConstellationNormMode::SymbolicGrid, "Grilla (±1)");
+                                });
+                        });
+                    });
+                }
+
+                // Fila 3: Círculos, Grilla, Zoom y Puntos
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+                    ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0));
+                    ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0));
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                        ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
+                        egui::ComboBox::from_id_salt("sink_const_zoom_mob")
+                            .selected_text(format!("{:.1}x", self.constellation_zoom))
+                            .width(50.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                        ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
+                        ui.add_sized(
+                            [65.0, 18.0],
+                            egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
+                        );
+                    });
+                });
+            });
+        } else {
+            // Modo escritorio / ventana estándar (>=600px): 2 filas semánticas atómicas
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+
+                // Fila 1: Sincronización y Decisión de Símbolos
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+
+                    ui.checkbox(
+                        &mut self.constellation_vsa_mode,
+                        RichText::new("Modo Símbolos (VSA)").size(11.5).strong().color(theme.accent_blue()),
+                    ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
+
+                    if self.constellation_vsa_mode {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
+                            egui::ComboBox::from_id_salt("sink_const_sps")
+                                .selected_text(format!("{} SPS", self.constellation_sps))
+                                .width(70.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
+                                    ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
+                                    ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
+                                });
+                        });
+
+                        ui.checkbox(
+                            &mut self.constellation_oqpsk_deoffset,
+                            RichText::new("OQPSK (Ts/2)").size(11.0),
+                        ).on_hover_text("Compensa el retardo de medio símbolo (Ts/2) entre las ramas I y Q en señales OQPSK para colapsar la constelación a 4 cuadrantes estándar.");
+
+                        let sps = self.constellation_sps.max(1);
+                        if self.constellation_timing_phase >= sps {
+                            self.constellation_timing_phase = 0;
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized(
+                                [60.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
+                            ).on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
+                        });
+
+                        if ui.button(RichText::new("Auto Ojo").size(11.0)).on_hover_text("Busca de forma automática la fase de reloj con máxima apertura de ojo").clicked() {
+                            let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
+                            let aligned_start = (self.sample_cursor / sps) * sps;
+                            self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
+                        }
+                    }
+                });
+
+                // Fila 2: Visualización, Ejes y Escalas
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
+
+                    if self.constellation_vsa_mode {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
+                            ui.add_sized(
+                                [65.0, 18.0],
+                                egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
+                            ).on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                            ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
+                            let norm_label = match self.constellation_norm_mode {
+                                ConstellationNormMode::UnitEnergy => "RF (Es=1)",
+                                ConstellationNormMode::SymbolicGrid => "Grilla (±1)",
+                            };
+                            egui::ComboBox::from_id_salt("sink_const_norm_mode")
+                                .selected_text(norm_label)
+                                .width(78.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.constellation_norm_mode,
+                                        ConstellationNormMode::UnitEnergy,
+                                        "RF (Es=1)",
+                                    ).on_hover_text(
+                                        "Norma de Potencia Unitaria (Es = 1.0): Estándar físico de ingeniería de radiofrecuencia (CCSDS/SDR). \
+                                         Los símbolos se sitúan en ±1/√2 (±0.707) sobre el círculo unitario r=1.0 para aprovechar el 100% \
+                                         del rango dinámico del DAC sin causar distorsión armónica ni saturación."
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.constellation_norm_mode,
+                                        ConstellationNormMode::SymbolicGrid,
+                                        "Grilla (±1)",
+                                    ).on_hover_text(
+                                        "Norma de Cuadrícula Simbólica (±1.0): Escala normalizada por √2 para que los centros de decisión \
+                                         coincidan exactamente con las marcas ±1.0 de los ejes cartesianos (representación convencional en textos teóricos)."
+                                    );
+                                });
+                        });
+                    }
+
+                    ui.checkbox(&mut self.show_constellation_circles, RichText::new("Círculos").size(11.0))
+                        .on_hover_text("Muestra u oculta los círculos concéntricos de referencia (r = 0.5 y círculo unitario r = 1.0).");
+                    ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0))
+                        .on_hover_text("Muestra u oculta la cuadrícula ortogonal (retícula en ±0.5 y ±1.0).");
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                        ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
+                        egui::ComboBox::from_id_salt("sink_const_zoom")
+                            .selected_text(format!("{:.1}x", self.constellation_zoom))
+                            .width(55.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
+                                ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
+                                ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(3.0, 0.0);
+                        ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
+                        ui.add_sized(
+                            [70.0, 18.0],
+                            egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
+                        );
+                    });
+                });
+            });
+        }
+    }
+
     /// Barra de controles inferiores (Play, Pause, Cursor de tiempo, Velocidad, FFT size y Exportar PNG)
     fn render_playback_controls(
         &mut self,
@@ -619,8 +705,8 @@ impl VirtualSinkModal {
         let total_samples = samples.len();
         let avail_w = ui.available_width();
 
-        if avail_w < 580.0 {
-            // Diseño responsivo en 2 filas para pantallas estrechas / móviles
+        if avail_w < 820.0 {
+            // Diseño responsivo en 2 filas limpias para pantallas móviles e intermedias (<820px)
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
 
@@ -645,14 +731,15 @@ impl VirtualSinkModal {
                     self.waterfall_history.clear();
                 }
 
-                // Slider y tiempo
+                // Slider y tiempo con ancho elástico adaptativo
                 if total_samples > 0 && sample_rate > 0 {
                     let total_secs = total_samples as f32 / sample_rate as f32;
                     let current_secs = self.sample_cursor as f32 / sample_rate as f32;
                     let mut cursor_val = self.sample_cursor;
 
+                    let slider_w = (ui.available_width() - 130.0).clamp(50.0, 180.0);
                     let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples).show_value(false);
-                    if ui.add_sized([90.0, 18.0], slider).changed() {
+                    if ui.add_sized([slider_w, 18.0], slider).changed() {
                         self.sample_cursor = cursor_val;
                     }
 
@@ -673,14 +760,14 @@ impl VirtualSinkModal {
 
             ui.add_space(3.0);
 
-            // Segunda fila de controles secundarios
+            // Segunda fila de controles secundarios (Velocidad, FFT, Guardar PNG)
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
 
                 // Selector de velocidad
                 egui::ComboBox::from_id_salt("sink_speed_combo")
                     .selected_text(format!("{}x", self.playback_speed))
-                    .width(65.0)
+                    .width(60.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
                         ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
@@ -692,7 +779,7 @@ impl VirtualSinkModal {
                 // Selector de FFT
                 egui::ComboBox::from_id_salt("sink_fft_size")
                     .selected_text(format!("FFT: {}", self.fft_size))
-                    .width(85.0)
+                    .width(82.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.fft_size, 512, "512 bins");
                         ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
@@ -715,7 +802,7 @@ impl VirtualSinkModal {
                 }
             });
         } else {
-            // Diseño en una sola fila para pantallas estándar de escritorio
+            // Diseño en una sola fila para pantallas de escritorio amplias (>=820px)
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 4.0);
 
@@ -748,7 +835,7 @@ impl VirtualSinkModal {
                     let current_secs = self.sample_cursor as f32 / sample_rate as f32;
                     let mut cursor_val = self.sample_cursor;
 
-                    let slider_w = (ui.available_width() - 340.0).clamp(80.0, 320.0);
+                    let slider_w = (ui.available_width() - 360.0).clamp(80.0, 240.0);
                     let slider = egui::Slider::new(&mut cursor_val, 0..=total_samples)
                         .show_value(false);
 
@@ -775,7 +862,7 @@ impl VirtualSinkModal {
                 // Selector de velocidad
                 egui::ComboBox::from_id_salt("sink_speed_combo")
                     .selected_text(format!("{}x", self.playback_speed))
-                    .width(65.0)
+                    .width(60.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.playback_speed, 0.25, "0.25x");
                         ui.selectable_value(&mut self.playback_speed, 0.5, "0.5x");
@@ -787,7 +874,7 @@ impl VirtualSinkModal {
                 // Selector de FFT
                 egui::ComboBox::from_id_salt("sink_fft_size")
                     .selected_text(format!("FFT: {}", self.fft_size))
-                    .width(85.0)
+                    .width(82.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.fft_size, 512, "512 bins");
                         ui.selectable_value(&mut self.fft_size, 1024, "1024 bins");
@@ -1435,19 +1522,35 @@ impl VirtualSinkModal {
                 );
                 painter.circle_stroke(mouse_pos, 4.0, Stroke::new(1.0, theme.accent_blue()));
 
-                // Tarjeta flotante con valores bajo el puntero
-                let tip = format!("I: {:+.3} | Q: {:+.3} | |s|: {:.3} | θ: {:+.1}°", i_val, q_val, mag, phase_deg);
-                let font = egui::FontId::monospace(11.0);
-                let tip_w = tip.len() as f32 * 6.5 + 16.0;
-                let box_x = (mouse_pos.x + 12.0).min(plot_rect.max.x - tip_w - 4.0);
-                let box_y = (mouse_pos.y - 28.0).max(plot_rect.min.y + 4.0);
+                // Tarjeta flotante con valores bajo el puntero adaptada a pantallas móviles y de escritorio
+                let is_narrow_plot = plot_rect.width() < 340.0;
+                let (tip, tip_w, tip_h) = if is_narrow_plot {
+                    let text = format!("I:{:+.2} Q:{:+.2}\n|s|:{:.2} θ:{:+.0}°", i_val, q_val, mag, phase_deg);
+                    (text, 140.0f32, 34.0f32)
+                } else {
+                    let text = format!("I: {:+.3} | Q: {:+.3} | |s|: {:.3} | θ: {:+.1}°", i_val, q_val, mag, phase_deg);
+                    let w = text.len() as f32 * 6.5 + 16.0;
+                    (text, w, 22.0f32)
+                };
+
+                let font = egui::FontId::monospace(if is_narrow_plot { 10.0 } else { 11.0 });
+                let min_x = plot_rect.min.x + 6.0;
+                let max_x = (plot_rect.max.x - tip_w - 6.0).max(min_x);
+                let box_x = (mouse_pos.x + 12.0).clamp(min_x, max_x);
+
+                let box_y = if mouse_pos.y - tip_h - 8.0 < plot_rect.min.y + 6.0 {
+                    mouse_pos.y + 14.0
+                } else {
+                    mouse_pos.y - tip_h - 6.0
+                }.clamp(plot_rect.min.y + 6.0, (plot_rect.max.y - tip_h - 6.0).max(plot_rect.min.y + 6.0));
+
                 painter.rect_filled(
-                    Rect::from_min_size(Pos2::new(box_x, box_y), Vec2::new(tip_w, 22.0)),
+                    Rect::from_min_size(Pos2::new(box_x, box_y), Vec2::new(tip_w, tip_h)),
                     4.0,
                     Color32::from_black_alpha(220),
                 );
                 painter.text(
-                    Pos2::new(box_x + 8.0, box_y + 11.0),
+                    Pos2::new(box_x + 8.0, box_y + tip_h * 0.5),
                     egui::Align2::LEFT_CENTER,
                     tip,
                     font,
