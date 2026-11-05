@@ -136,7 +136,7 @@ impl SignalsSdrApp {
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(10.0))
             .show(ui, |ui| {
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_max_width(ui.available_width());
+                    ui.set_width(ui.available_width());
                     match self.desktop_nav.active_section {
                         NavSection::Settings => {
                             if self.mobile_nav.showing_detail {
@@ -185,12 +185,11 @@ impl SignalsSdrApp {
 
         // 2. Panel flexible secundario (solo si side_panel_expanded es true)
         if self.desktop_nav.side_panel_expanded {
-            let max_catalog_w = (ui.available_width() * 0.35).clamp(240.0, 340.0);
             Panel::left("desktop_catalog")
                 .resizable(true)
-                .default_size(260.0)
-                .min_size(190.0)
-                .max_size(max_catalog_w)
+                .default_size(240.0)
+                .min_size(180.0)
+                .max_size(360.0)
                 .frame(
                     Frame::new()
                         .fill(theme.surface_container_low())
@@ -223,7 +222,7 @@ impl SignalsSdrApp {
             .frame(Frame::new().fill(theme.bg_canvas()).inner_margin(16.0))
             .show(ui, |ui| {
                 ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_max_width(ui.available_width());
+                    ui.set_width(ui.available_width());
                     match self.desktop_nav.active_section {
                         NavSection::Settings => self.render_settings_detail(ui, theme),
                         NavSection::Pipelines => self.render_active_pipeline(ui, theme),
@@ -262,17 +261,21 @@ impl SignalsSdrApp {
     }
 
     fn render_settings_detail(&mut self, ui: &mut Ui, theme: &AppTheme) {
-        match self.desktop_nav.active_settings_tab {
-            SettingsTab::General => self.render_settings_general(ui, theme),
-            SettingsTab::Appearance => self.render_settings_appearance(ui, theme),
-            SettingsTab::SoapySdr => self.render_settings_soapy(ui, theme),
-            SettingsTab::License => self.render_settings_license(ui, theme),
-            SettingsTab::About => self.render_settings_about(ui, theme),
-        }
+        ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
+            match self.desktop_nav.active_settings_tab {
+                SettingsTab::General => self.render_settings_general(ui, theme),
+                SettingsTab::Appearance => self.render_settings_appearance(ui, theme),
+                SettingsTab::SoapySdr => self.render_settings_soapy(ui, theme),
+                SettingsTab::License => self.render_settings_license(ui, theme),
+                SettingsTab::About => self.render_settings_about(ui, theme),
+            }
+        });
     }
 
     fn render_settings_appearance(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
             ui.label(RichText::new("Apariencia y Tema Visual").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Personalice el modo de color y contraste visual de la interfaz.")
@@ -288,6 +291,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Modo de Color").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
@@ -319,6 +323,7 @@ impl SignalsSdrApp {
 
     fn render_settings_general(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
             ui.label(RichText::new("Rutas y Salidas").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Configure el almacenamiento de señales y exportaciones en disco.")
@@ -334,6 +339,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Carpeta Base de Exportación y Señales").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
@@ -405,6 +411,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Aviso Legal y Uso Responsable de Radiofrecuencia").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
@@ -430,6 +437,7 @@ impl SignalsSdrApp {
 
     fn render_settings_soapy(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
             ui.label(RichText::new("Controlador SoapySDR (Radioconda / PothosSDR)").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Configuración de rutas dinámicas de SoapySDR para la detección de dispositivos SDR en Windows.")
@@ -456,6 +464,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(12.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         let icon = if is_available { crate::icons::ICON_CHECK_CIRCLE.codepoint } else { crate::icons::ICON_INFO.codepoint };
                         ui.label(RichText::new(icon).size(18.0).color(status_stroke));
@@ -479,6 +488,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Ruta de Bibliotecas SoapySDR (Windows)").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);
@@ -696,6 +706,7 @@ impl SignalsSdrApp {
         const LICENSE_TEXT: &str = include_str!("../LICENSE");
 
         ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
             ui.label(RichText::new("Licencia de Software").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Signals SDR es software libre distribuido bajo los términos de la GNU General Public License v3 (GPLv3).")
@@ -710,6 +721,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(
@@ -770,6 +782,7 @@ impl SignalsSdrApp {
 
     fn render_settings_about(&mut self, ui: &mut Ui, theme: &AppTheme) {
         ui.vertical(|ui| {
+            ui.set_width(ui.available_width());
             ui.label(RichText::new("Acerca de Signals SDR").strong().size(18.0).color(theme.text_primary()));
             ui.label(
                 RichText::new("Información del proyecto, repositorio de código abierto y contribuciones.")
@@ -785,6 +798,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(16.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!("../assets/icon_256.png"))
@@ -827,6 +841,7 @@ impl SignalsSdrApp {
                 .corner_radius(8.0)
                 .inner_margin(14.0)
                 .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Repositorio y Código Fuente").strong().size(14.0).color(theme.accent_blue()));
                         ui.add_space(6.0);

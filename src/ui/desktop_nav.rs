@@ -618,7 +618,6 @@ pub fn render_desktop_settings_list(
         ui.add_space(8.0);
 
         let tabs = SettingsTab::all();
-        let avail_w = ui.available_width();
 
         for &tab in tabs {
             let is_active = state.active_settings_tab == tab;
@@ -639,7 +638,7 @@ pub fn render_desktop_settings_list(
                 .inner_margin(Margin::symmetric(14, 10));
 
             let resp = card_frame.show(ui, |ui| {
-                ui.set_width(avail_w - 2.0);
+                ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(tab.icon())
@@ -647,19 +646,27 @@ pub fn render_desktop_settings_list(
                             .color(if is_active { theme.accent_blue() } else { theme.text_secondary() }),
                     );
                     ui.add_space(6.0);
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new(tab.title())
-                                .strong()
-                                .size(13.0)
-                                .color(if is_active { theme.accent_blue() } else { theme.text_primary() }),
-                        );
-                        ui.label(
-                            RichText::new(tab.description())
-                                .size(10.5)
-                                .color(theme.text_secondary()),
-                        );
-                    });
+                    let text_w = (ui.available_width() - 28.0).max(40.0);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(text_w, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.label(
+                                RichText::new(tab.title())
+                                    .strong()
+                                    .size(13.0)
+                                    .color(if is_active { theme.accent_blue() } else { theme.text_primary() }),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(tab.description())
+                                        .size(10.5)
+                                        .color(theme.text_secondary()),
+                                )
+                                .wrap(),
+                            );
+                        },
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(icons::ICON_CHEVRON_RIGHT.codepoint)

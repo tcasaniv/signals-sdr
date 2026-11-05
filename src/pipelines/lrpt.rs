@@ -680,7 +680,24 @@ impl LrptPipeline {
             self.step_2_build_ccsds_fec();
         }
 
-        let base_iq = modulation::modulate_cadu_stream(&self.encoded_cadus);
+        let mut base_iq = modulation::modulate_cadu_stream(&self.encoded_cadus);
+
+        // Normalizar amplitud de la señal OQPSK para óptimo aprovechamiento del rango dinámico del DAC (pico a 0.95)
+        let mut max_mag = 0.0f32;
+        for &(i, q) in &base_iq {
+            let m = (i * i + q * q).sqrt();
+            if m > max_mag {
+                max_mag = m;
+            }
+        }
+        if max_mag > 1e-4 {
+            let scale_factor = 0.95 / max_mag;
+            for sample in &mut base_iq {
+                sample.0 *= scale_factor;
+                sample.1 *= scale_factor;
+            }
+        }
+
         if self.sdr_sample_rate == 288_000 {
             self.iq_samples = base_iq;
         } else {

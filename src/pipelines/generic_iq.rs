@@ -6,9 +6,16 @@ use crate::theme::AppTheme;
 use crate::ui::channel_effects::render_channel_effects_tab;
 use crate::ui::components::{accordion_section, info_card, step_bar, AccordionOptions};
 use crate::ui::transmission::{render_transmission_tab, TransmissionTabState};
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Sense, Stroke, Ui, Vec2};
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GenericIqProcessingMode {
+    #[default]
+    WithoutProcessing, // Sin procesamiento
+    WithProcessing,    // Con procesamiento
+}
 
 pub struct GenericIqPipeline {
     pub current_step: usize,
@@ -17,6 +24,7 @@ pub struct GenericIqPipeline {
     pub sample_rate: u32,
     pub raw_iq_samples: Vec<(f32, f32)>,
     pub processed_iq_samples: Vec<(f32, f32)>,
+    pub processing_mode: GenericIqProcessingMode,
     pub async_file_receiver: Option<Arc<Mutex<Option<(String, Vec<u8>)>>>>,
     // Ajustes de procesamiento y limpieza I/Q
     pub gain_factor: f32,
@@ -45,6 +53,7 @@ impl Default for GenericIqPipeline {
             sample_rate: 288_000,
             raw_iq_samples: Vec::new(),
             processed_iq_samples: Vec::new(),
+            processing_mode: GenericIqProcessingMode::WithoutProcessing,
             async_file_receiver: None,
             gain_factor: 1.0,
             freq_shift_hz: 0.0,
@@ -75,7 +84,7 @@ impl GenericIqPipeline {
     }
 
     pub fn get_effective_iq(&self) -> &[(f32, f32)] {
-        let base = if !self.processed_iq_samples.is_empty() {
+        let base = if self.processing_mode == GenericIqProcessingMode::WithProcessing && !self.processed_iq_samples.is_empty() {
             &self.processed_iq_samples
         } else {
             &self.raw_iq_samples
@@ -110,7 +119,7 @@ impl GenericIqPipeline {
             0 => self.render_step_source(ui, theme),
             1 => self.render_step_processing(ui, theme, config),
             2 => {
-                let base = if !self.processed_iq_samples.is_empty() {
+                let base = if self.processing_mode == GenericIqProcessingMode::WithProcessing && !self.processed_iq_samples.is_empty() {
                     &self.processed_iq_samples
                 } else {
                     &self.raw_iq_samples
@@ -132,7 +141,7 @@ impl GenericIqPipeline {
                 }
             }
             3 => {
-                let base = if !self.processed_iq_samples.is_empty() {
+                let base = if self.processing_mode == GenericIqProcessingMode::WithProcessing && !self.processed_iq_samples.is_empty() {
                     &self.processed_iq_samples
                 } else {
                     &self.raw_iq_samples
@@ -306,27 +315,118 @@ impl GenericIqPipeline {
 
     fn render_step_processing(&mut self, ui: &mut Ui, theme: &AppTheme, config: &AppConfig) {
         ui.vertical(|ui| {
-            // Cabecera didáctica informativa del procesamiento DSP en banda base
-            info_card(
-                ui,
-                theme,
-                "Acondicionamiento y Procesamiento DSP de Señales I/Q",
-                "Permite limpiar el ruido de canal, compensar imperfecciones analógicas del receptor SDR \
-                 (como la fuga del oscilador local / pico DC y desbalance en cuadratura) y ajustar la frecuencia \
-                 para analizar la constelación digital (BPSK, QPSK, OQPSK, QAM) y mediciones RF en el instrumento virtual.",
-            );
+            ui.set_width(ui.available_width());
 
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(crate::icons::ICON_INFO.codepoint).size(16.0).color(theme.accent_blue()));
+            // Selector segmentado de modo: Sin procesamiento vs Con procesamiento (Paridad visual con Paso 3)
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
-                    RichText::new("Nota didáctica: Este paso es opcional. Puedes experimentar con filtros y calibración I/Q o avanzar directamente sin alterar la señal.")
-                        .size(12.0)
-                        .color(theme.text_secondary()),
+                    RichText::new("Modo de Procesamiento:")
+                        .strong()
+                        .size(13.5)
+                        .color(theme.text_primary()),
                 );
+                ui.add_space(8.0);
+
+                let is_without = self.processing_mode == GenericIqProcessingMode::WithoutProcessing;
+                let is_with = self.processing_mode == GenericIqProcessingMode::WithProcessing;
+
+                let without_btn = egui::Button::new(
+                    RichText::new("  Sin procesamiento  ")
+                        .size(13.0)
+                        .strong()
+                        .color(if is_without { Color32::WHITE } else { theme.text_secondary() }),
+                )
+                .fill(if is_without { theme.accent_blue() } else { theme.card_bg() })
+                .stroke(if is_without { Stroke::NONE } else { Stroke::new(1.0, theme.card_border()) })
+                .corner_radius(16.0);
+
+                if ui.add(without_btn).clicked() {
+                    self.processing_mode = GenericIqProcessingMode::WithoutProcessing;
+                }
+
+                let with_btn = egui::Button::new(
+                    RichText::new("  Con procesamiento  ")
+                        .size(13.0)
+                        .strong()
+                        .color(if is_with { Color32::WHITE } else { theme.text_secondary() }),
+                )
+                .fill(if is_with { theme.accent_blue() } else { theme.card_bg() })
+                .stroke(if is_with { Stroke::NONE } else { Stroke::new(1.0, theme.card_border()) })
+                .corner_radius(16.0);
+
+                if ui.add(with_btn).clicked() {
+                    self.processing_mode = GenericIqProcessingMode::WithProcessing;
+                    if self.processed_iq_samples.is_empty() && !self.raw_iq_samples.is_empty() {
+                        self.process_samples();
+                    }
+                }
             });
 
-            ui.add_space(8.0);
+            ui.add_space(10.0);
+
+            if self.processing_mode == GenericIqProcessingMode::WithoutProcessing {
+                // Modo Sin Procesamiento (Transmisión Directa)
+                Frame::new()
+                    .fill(theme.card_bg())
+                    .stroke(Stroke::new(1.0_f32, theme.card_border()))
+                    .corner_radius(8.0)
+                    .inner_margin(16.0)
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                let (dot_rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), Sense::hover());
+                                ui.painter().circle_filled(dot_rect.center(), 5.0, theme.accent_blue());
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new("Modo Sin Procesamiento DSP (Transmisión Directa)")
+                                        .strong()
+                                        .size(14.0)
+                                        .color(theme.text_primary()),
+                                );
+                            });
+                            ui.add_space(6.0);
+                            ui.label(
+                                RichText::new(
+                                    "Las muestras I/Q cargadas del archivo se transmiten o pasan a efectos de canal de forma directa en su formato original, sin alterar amplitud, frecuencia, ni aplicar filtros.",
+                                )
+                                .size(12.5)
+                                .color(theme.text_secondary()),
+                            );
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("¿Cuándo utilizar este modo?").strong().size(12.0));
+                            ui.label(RichText::new("• Archivos I/Q ya pre-filtrados o calibrados en software externo (SDR#, GNU Radio, GQRX).").size(11.5).color(theme.text_secondary()));
+                            ui.label(RichText::new("• Inspección pura y transmisión de capturas sin alterar el espectro ni las decisiones de símbolo.").size(11.5).color(theme.text_secondary()));
+                            ui.label(RichText::new("• Máximo rendimiento computacional y fidelidad a la señal grabada al omitir etapas de filtrado.").size(11.5).color(theme.text_secondary()));
+                        });
+                    });
+
+                ui.add_space(12.0);
+                if !self.raw_iq_samples.is_empty() {
+                    ui.horizontal_wrapped(|ui| {
+                        let next_label = format!("Continuar a Efectos de Canal {}", crate::icons::ICON_ARROW_FORWARD.codepoint);
+                        if ui.button(RichText::new(next_label).strong()).clicked() {
+                            self.current_step = 2;
+                        }
+
+                        let skip_label = format!("Omitir a Transmisión {}", crate::icons::ICON_SETTINGS_INPUT_ANTENNA.codepoint);
+                        if ui.button(RichText::new(skip_label)).on_hover_text("Pasa directamente a la transmisión con SDR sin aplicar efectos de canal.").clicked() {
+                            self.current_step = 3;
+                        }
+                    });
+                }
+            } else {
+                // Modo Con Procesamiento DSP
+                info_card(
+                    ui,
+                    theme,
+                    "Acondicionamiento y Procesamiento DSP de Señales I/Q",
+                    "Permite limpiar el ruido de canal, compensar imperfecciones analógicas del receptor SDR \
+                     (como la fuga del oscilador local / pico DC y desbalance en cuadratura) y ajustar la frecuencia \
+                     para analizar la constelación digital (BPSK, QPSK, OQPSK, QAM) y mediciones RF en el instrumento virtual.",
+                );
+
+                ui.add_space(10.0);
 
             // ========================================================
             // SECCIÓN 1: ACONDICIONAMIENTO BÁSICO, FRECUENCIA Y GANANCIA
@@ -571,10 +671,11 @@ impl GenericIqPipeline {
                 }
             });
 
-            ui.add_space(6.0);
-            ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+                ui.add_space(6.0);
+                ui.label(RichText::new(&self.status_message).size(12.0).color(theme.text_secondary()));
+            }
 
-            let active_samples = if !self.processed_iq_samples.is_empty() {
+            let active_samples = if self.processing_mode == GenericIqProcessingMode::WithProcessing && !self.processed_iq_samples.is_empty() {
                 &self.processed_iq_samples
             } else {
                 &self.raw_iq_samples
