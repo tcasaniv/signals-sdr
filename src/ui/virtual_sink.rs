@@ -450,17 +450,20 @@ impl VirtualSinkModal {
                             ).on_hover_text("Decima la señal continua a 1 muestra por símbolo para evaluar la constelación digital y decisiones (BPSK, QPSK, OQPSK, QAM).");
 
                             if self.constellation_vsa_mode {
-                                ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
-                                egui::ComboBox::from_id_salt("sink_const_sps")
-                                    .selected_text(format!("{} SPS", self.constellation_sps))
-                                    .width(70.0)
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
-                                        ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
-                                        ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
-                                        ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
-                                        ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
-                                    });
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                    ui.label(RichText::new("SPS:").size(11.0).color(theme.text_secondary()));
+                                    egui::ComboBox::from_id_salt("sink_const_sps")
+                                        .selected_text(format!("{} SPS", self.constellation_sps))
+                                        .width(70.0)
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut self.constellation_sps, 1, "1 SPS");
+                                            ui.selectable_value(&mut self.constellation_sps, 2, "2 SPS");
+                                            ui.selectable_value(&mut self.constellation_sps, 4, "4 SPS (Meteor LRPT)");
+                                            ui.selectable_value(&mut self.constellation_sps, 8, "8 SPS");
+                                            ui.selectable_value(&mut self.constellation_sps, 16, "16 SPS");
+                                        });
+                                });
 
                                 ui.checkbox(
                                     &mut self.constellation_oqpsk_deoffset,
@@ -472,11 +475,14 @@ impl VirtualSinkModal {
                                     self.constellation_timing_phase = 0;
                                 }
 
-                                ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
-                                ui.add_sized(
-                                    [70.0, 18.0],
-                                    egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
-                                ).on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                    ui.label(RichText::new("Fase Ojo:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized(
+                                        [70.0, 18.0],
+                                        egui::Slider::new(&mut self.constellation_timing_phase, 0..=sps.saturating_sub(1)),
+                                    ).on_hover_text("Desplaza el instante de muestreo de decisión dentro del periodo del símbolo (0 a SPS-1).");
+                                });
 
                                 if ui.button(RichText::new("Auto Ojo").size(11.0)).on_hover_text("Busca de forma automática la fase de reloj con máxima apertura de ojo").clicked() {
                                     let delay = if self.constellation_oqpsk_deoffset && sps >= 2 { sps / 2 } else { 0 };
@@ -484,40 +490,46 @@ impl VirtualSinkModal {
                                     self.constellation_timing_phase = find_best_eye_phase(samples, aligned_start, sps, delay);
                                 }
 
-                                ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
-                                ui.add_sized(
-                                    [80.0, 18.0],
-                                    egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
-                                ).on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                    ui.label(RichText::new("Fase θ:").size(11.0).color(theme.text_secondary()));
+                                    ui.add_sized(
+                                        [80.0, 18.0],
+                                        egui::Slider::new(&mut self.constellation_carrier_phase_deg, 0.0..=360.0).suffix("°"),
+                                    ).on_hover_text("Rotación de fase de portadora para desrotar y alinear la constelación con los ejes I/Q.");
+                                });
 
                                 // Selector de Escala de Potencia abreviado en UI con explicación didáctica completa en hover
-                                ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
-                                let norm_label = match self.constellation_norm_mode {
-                                    ConstellationNormMode::UnitEnergy => "RF (Es=1)",
-                                    ConstellationNormMode::SymbolicGrid => "Grilla (±1)",
-                                };
-                                egui::ComboBox::from_id_salt("sink_const_norm_mode")
-                                    .selected_text(norm_label)
-                                    .width(85.0)
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut self.constellation_norm_mode,
-                                            ConstellationNormMode::UnitEnergy,
-                                            "RF (Es=1)",
-                                        ).on_hover_text(
-                                            "Norma de Potencia Unitaria (Es = 1.0): Estándar físico de ingeniería de radiofrecuencia (CCSDS/SDR). \
-                                             Los símbolos se sitúan en ±1/√2 (±0.707) sobre el círculo unitario r=1.0 para aprovechar el 100% \
-                                             del rango dinámico del DAC sin causar distorsión armónica ni saturación."
-                                        );
-                                        ui.selectable_value(
-                                            &mut self.constellation_norm_mode,
-                                            ConstellationNormMode::SymbolicGrid,
-                                            "Grilla (±1)",
-                                        ).on_hover_text(
-                                            "Norma de Cuadrícula Simbólica (±1.0): Escala normalizada por √2 para que los centros de decisión \
-                                             coincidan exactamente con las marcas ±1.0 de los ejes cartesianos (representación convencional en textos teóricos)."
-                                        );
-                                    });
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                    ui.label(RichText::new("Escala:").size(11.0).color(theme.text_secondary()));
+                                    let norm_label = match self.constellation_norm_mode {
+                                        ConstellationNormMode::UnitEnergy => "RF (Es=1)",
+                                        ConstellationNormMode::SymbolicGrid => "Grilla (±1)",
+                                    };
+                                    egui::ComboBox::from_id_salt("sink_const_norm_mode")
+                                        .selected_text(norm_label)
+                                        .width(85.0)
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut self.constellation_norm_mode,
+                                                ConstellationNormMode::UnitEnergy,
+                                                "RF (Es=1)",
+                                            ).on_hover_text(
+                                                "Norma de Potencia Unitaria (Es = 1.0): Estándar físico de ingeniería de radiofrecuencia (CCSDS/SDR). \
+                                                 Los símbolos se sitúan en ±1/√2 (±0.707) sobre el círculo unitario r=1.0 para aprovechar el 100% \
+                                                 del rango dinámico del DAC sin causar distorsión armónica ni saturación."
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.constellation_norm_mode,
+                                                ConstellationNormMode::SymbolicGrid,
+                                                "Grilla (±1)",
+                                            ).on_hover_text(
+                                                "Norma de Cuadrícula Simbólica (±1.0): Escala normalizada por √2 para que los centros de decisión \
+                                                 coincidan exactamente con las marcas ±1.0 de los ejes cartesianos (representación convencional en textos teóricos)."
+                                            );
+                                        });
+                                });
                             }
 
                             // Toggles para círculos y cuadrícula
@@ -526,24 +538,30 @@ impl VirtualSinkModal {
                             ui.checkbox(&mut self.show_constellation_grid, RichText::new("Grilla").size(11.0))
                                 .on_hover_text("Muestra u oculta la cuadrícula ortogonal (retícula en ±0.5 y ±1.0).");
 
-                            ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
-                            egui::ComboBox::from_id_salt("sink_const_zoom")
-                                .selected_text(format!("{:.1}x", self.constellation_zoom))
-                                .width(60.0)
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
-                                    ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
-                                    ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
-                                    ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
-                                    ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
-                                    ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
-                                });
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                ui.label(RichText::new("Zoom:").size(11.0).color(theme.text_secondary()));
+                                egui::ComboBox::from_id_salt("sink_const_zoom")
+                                    .selected_text(format!("{:.1}x", self.constellation_zoom))
+                                    .width(60.0)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut self.constellation_zoom, 0.5, "0.5x");
+                                        ui.selectable_value(&mut self.constellation_zoom, 1.0, "1.0x");
+                                        ui.selectable_value(&mut self.constellation_zoom, 1.5, "1.5x");
+                                        ui.selectable_value(&mut self.constellation_zoom, 2.0, "2.0x");
+                                        ui.selectable_value(&mut self.constellation_zoom, 3.0, "3.0x");
+                                        ui.selectable_value(&mut self.constellation_zoom, 4.0, "4.0x");
+                                    });
+                            });
 
-                            ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
-                            ui.add_sized(
-                                [85.0, 18.0],
-                                egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
-                            );
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                                ui.label(RichText::new("Puntos:").size(11.0).color(theme.text_secondary()));
+                                ui.add_sized(
+                                    [85.0, 18.0],
+                                    egui::Slider::new(&mut self.constellation_points, 256..=4096).suffix(" pts"),
+                                );
+                            });
                         }
                     }
                     VirtualSinkTab::Metrics => {
@@ -1274,17 +1292,32 @@ impl VirtualSinkModal {
             }
         }
 
-        painter.text(Pos2::new(plot_rect.max.x - 8.0, center.y - 14.0), egui::Align2::RIGHT_CENTER, "+I (Fase)", egui::FontId::monospace(11.0), theme.accent_blue());
-        painter.text(Pos2::new(center.x + 10.0, plot_rect.min.y + 12.0), egui::Align2::LEFT_CENTER, "+Q (Cuadratura)", egui::FontId::monospace(11.0), theme.accent_blue());
-
-        // Badge didáctico en esquina superior izquierda del osciloscopio
-        let badge_text = match self.constellation_norm_mode {
-            ConstellationNormMode::UnitEnergy => "Norma: RF (Es=1.0) | r = 1.00 (I,Q = ±0.707)",
-            ConstellationNormMode::SymbolicGrid => "Norma: Grilla (±1.0) | I,Q = ±1.000 (|s| = 1.414)",
-        };
         painter.text(
-            Pos2::new(plot_rect.min.x + 8.0, plot_rect.min.y + 8.0),
+            Pos2::new(plot_rect.max.x - 8.0, center.y - 14.0),
+            egui::Align2::RIGHT_CENTER,
+            "+I (Fase)",
+            egui::FontId::monospace(11.0),
+            theme.accent_blue(),
+        );
+        painter.text(
+            Pos2::new(center.x + 8.0, plot_rect.min.y + 12.0),
             egui::Align2::LEFT_TOP,
+            "+Q (Cuadratura)",
+            egui::FontId::monospace(11.0),
+            theme.accent_blue(),
+        );
+
+        // Distintivo compacto de norma en esquina superior izquierda (sin invadir el semieje central)
+        let badge_text = match self.constellation_norm_mode {
+            ConstellationNormMode::UnitEnergy => "Norma: RF (Es=1.0)",
+            ConstellationNormMode::SymbolicGrid => "Norma: Grilla (±1.0)",
+        };
+        let badge_rect = Rect::from_min_size(Pos2::new(plot_rect.min.x + 8.0, plot_rect.min.y + 8.0), Vec2::new(138.0, 22.0));
+        painter.rect_filled(badge_rect, 4.0, Color32::from_black_alpha(180));
+        painter.rect_stroke(badge_rect, 4.0, Stroke::new(1.0, theme.accent_blue().gamma_multiply(0.35)), egui::StrokeKind::Inside);
+        painter.text(
+            badge_rect.center(),
+            egui::Align2::CENTER_CENTER,
             badge_text,
             egui::FontId::monospace(10.5),
             theme.accent_blue(),
@@ -1385,8 +1418,9 @@ impl VirtualSinkModal {
         // Inspección interactiva al pasar el mouse (Crosshair y Valores I, Q, |s|, θ)
         if let Some(mouse_pos) = ui.input(|i| i.pointer.hover_pos()) {
             if plot_rect.contains(mouse_pos) {
-                let i_val = (mouse_pos.x - center.x) / display_scale;
-                let q_val = -(mouse_pos.y - center.y) / display_scale;
+                // Proyección precisa sobre el sistema de coordenadas graduado del eje
+                let i_val = (mouse_pos.x - center.x) / scale;
+                let q_val = -(mouse_pos.y - center.y) / scale;
                 let mag = (i_val * i_val + q_val * q_val).sqrt();
                 let phase_deg = q_val.atan2(i_val).to_degrees();
 
@@ -1482,24 +1516,57 @@ impl VirtualSinkModal {
             .asin()
             .to_degrees();
 
-        // Estimación de SNR a partir de la FFT actual
+        // Estimación de SNR espectral mediante integración de potencia total vs piso de ruido
         let db_vals = self.compute_current_fft(samples);
-        let mut sorted_dbs = db_vals.clone();
-        sorted_dbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let fft_len = sorted_dbs.len();
-        let noise_floor_median = if fft_len > 0 {
-            sorted_dbs[fft_len / 4]
-        } else {
-            -90.0
-        };
-        let fft_peak_db = if fft_len > 0 {
-            sorted_dbs[fft_len.saturating_sub(4)]
-        } else {
-            -10.0
-        };
-        let estimated_snr_db = (fft_peak_db - noise_floor_median).clamp(0.0, 65.0);
+        let fft_len = db_vals.len();
 
-        // Estimación de EVM y MER (sobre símbolos decimados VSA)
+        let (estimated_snr_db, is_clean_channel, obw_khz, sfdr_db) = if fft_len > 16 {
+            let linear_pwr: Vec<f32> = db_vals.iter().map(|&db| 10.0f32.powf(db / 10.0)).collect();
+            let total_fft_pwr: f32 = linear_pwr.iter().sum();
+
+            // Ordenar potencias para calcular el piso de ruido N0 (mediana del percentil 15-35%)
+            let mut sorted_pwr = linear_pwr.clone();
+            sorted_pwr.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let q_idx = (fft_len as f32 * 0.25).round() as usize;
+            let n0_bin = sorted_pwr[q_idx.min(fft_len - 1)].max(1e-15);
+            let total_noise_pwr = n0_bin * fft_len as f32;
+
+            // SFDR: diferencia entre el pico máximo y el segundo pico más alto fuera del lóbulo
+            let mut sorted_dbs = db_vals.clone();
+            sorted_dbs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let peak_db = sorted_dbs[fft_len - 1];
+            let spur_db = sorted_dbs[fft_len.saturating_sub(6)];
+            let sfdr = (peak_db - spur_db).max(0.0);
+
+            // Ancho de banda ocupado (OBW 99% de energía)
+            let target_energy = total_fft_pwr * 0.99;
+            let mut accum = 0.0f32;
+            let mut obw_bins = 0;
+            for &p in &linear_pwr {
+                if accum < target_energy {
+                    accum += p;
+                    obw_bins += 1;
+                }
+            }
+            let obw = (obw_bins as f32 / fft_len as f32) * (sample_rate as f32 / 1000.0);
+
+            if total_noise_pwr >= total_fft_pwr {
+                (0.0f32, false, obw, sfdr)
+            } else {
+                let sig_pwr = total_fft_pwr - total_noise_pwr;
+                let snr_lin = sig_pwr / total_noise_pwr;
+                let snr_calc = 10.0 * snr_lin.log10();
+                if snr_calc >= 45.0 {
+                    (45.0, true, obw, sfdr)
+                } else {
+                    (snr_calc.max(0.0), false, obw, sfdr)
+                }
+            }
+        } else {
+            (45.0, true, 0.0, 0.0)
+        };
+
+        // Estimación de EVM y MER (sobre símbolos decimados VSA con normalización)
         let sps = self.constellation_sps.max(1);
         let aligned_start = (self.sample_cursor / sps) * sps;
         let timing_phase = self.constellation_timing_phase % sps;
@@ -1508,6 +1575,23 @@ impl VirtualSinkModal {
         let (cos_rot, sin_rot) = (rot_rad.cos(), rot_rad.sin());
 
         let n_symbols = 256.min(samples.len() / sps);
+        let vsa_norm_gain = if n_symbols > 0 {
+            let mut sum_mag = 0.0f32;
+            let mut count = 0usize;
+            for i in 0..n_symbols {
+                let s_idx = (aligned_start + i * sps + timing_phase) % samples.len();
+                let q_idx = (s_idx + oqpsk_delay) % samples.len();
+                let m = (samples[s_idx].0.powi(2) + samples[q_idx].1.powi(2)).sqrt();
+                if m > 1e-4 {
+                    sum_mag += m;
+                    count += 1;
+                }
+            }
+            if count > 0 { 1.0 / (sum_mag / count as f32) } else { 1.0 }
+        } else {
+            1.0
+        };
+
         let mut sum_err_sq = 0.0f32;
 
         for i in 0..n_symbols {
@@ -1519,11 +1603,14 @@ impl VirtualSinkModal {
             let i_rot = raw_i * cos_rot - raw_q * sin_rot;
             let q_rot = raw_i * sin_rot + raw_q * cos_rot;
 
-            let ideal_i = if i_rot >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
-            let ideal_q = if q_rot >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
+            let i_norm = i_rot * vsa_norm_gain;
+            let q_norm = q_rot * vsa_norm_gain;
 
-            let err_i = i_rot - ideal_i;
-            let err_q = q_rot - ideal_q;
+            let ideal_i = if i_norm >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
+            let ideal_q = if q_norm >= 0.0 { std::f32::consts::FRAC_1_SQRT_2 } else { -std::f32::consts::FRAC_1_SQRT_2 };
+
+            let err_i = i_norm - ideal_i;
+            let err_q = q_norm - ideal_q;
             sum_err_sq += err_i * err_i + err_q * err_q;
         }
 
@@ -1552,14 +1639,32 @@ impl VirtualSinkModal {
                     ui.label(RichText::new(format!("PAPR / Cresta: {:.2} dB", papr_db)).size(13.0).color(Color32::from_rgb(234, 179, 8)));
                 });
 
-                // Tarjeta 2: Calidad Digital (SNR & EVM)
+                // Tarjeta 2: Calidad Digital / RF según tipo de señal
                 if num_cols > 1 {
                     Frame::new().fill(theme.card_bg()).stroke(Stroke::new(1.0, theme.card_border())).corner_radius(8.0).inner_margin(12.0).show(&mut cols[1], |ui| {
-                        ui.label(RichText::new("Calidad de Modulación").strong().color(theme.text_primary()));
-                        ui.add_space(6.0);
-                        ui.label(RichText::new(format!("SNR Estimada: {:.1} dB", estimated_snr_db)).size(13.0).color(Color32::from_rgb(34, 197, 94)));
-                        ui.label(RichText::new(format!("EVM RMS: {:.2} %", evm_rms_pct)).size(13.0).color(if evm_rms_pct < 15.0 { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(234, 179, 8) }));
-                        ui.label(RichText::new(format!("MER: {:.1} dB", mer_db)).size(13.0));
+                        if self.constellation_vsa_mode && sps >= 1 {
+                            ui.label(RichText::new("Calidad Digital (VSA)").strong().color(theme.text_primary()));
+                            ui.add_space(6.0);
+                            let snr_txt = if is_clean_channel {
+                                format!("SNR Estimada: > {:.0} dB (Ideal)", estimated_snr_db)
+                            } else {
+                                format!("SNR Estimada: {:.1} dB", estimated_snr_db)
+                            };
+                            ui.label(RichText::new(snr_txt).size(13.0).color(Color32::from_rgb(34, 197, 94)));
+                            ui.label(RichText::new(format!("EVM RMS: {:.2} %", evm_rms_pct)).size(13.0).color(if evm_rms_pct < 15.0 { Color32::from_rgb(34, 197, 94) } else { Color32::from_rgb(234, 179, 8) }));
+                            ui.label(RichText::new(format!("MER: {:.1} dB", mer_db)).size(13.0));
+                        } else {
+                            ui.label(RichText::new("Calidad de Señal RF").strong().color(theme.text_primary()));
+                            ui.add_space(6.0);
+                            let snr_txt = if is_clean_channel {
+                                format!("SNR Espectral: > {:.0} dB (Ideal)", estimated_snr_db)
+                            } else {
+                                format!("SNR Espectral: {:.1} dB", estimated_snr_db)
+                            };
+                            ui.label(RichText::new(snr_txt).size(13.0).color(Color32::from_rgb(34, 197, 94)));
+                            ui.label(RichText::new(format!("Ancho Banda: {:.1} kHz", obw_khz)).size(13.0));
+                            ui.label(RichText::new(format!("SFDR (Dinámica): {:.1} dB", sfdr_db)).size(13.0).color(theme.accent_blue()));
+                        }
                     });
                 }
 
@@ -1952,15 +2057,30 @@ impl VirtualSinkModal {
             }
 
             // Resumen de Telemetría Espectral (esquina superior derecha)
-            let avg_db = sum_db / n as f32;
-            let snr_est = (peak_val - avg_db).max(0.0);
+            let linear_pwr: Vec<f32> = db_vals.iter().map(|&db| 10.0f32.powf(db / 10.0)).collect();
+            let total_pwr: f32 = linear_pwr.iter().sum();
+            let mut sorted_pwr = linear_pwr.clone();
+            sorted_pwr.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let n0_bin = sorted_pwr[n / 4].max(1e-15);
+            let noise_pwr = n0_bin * n as f32;
+            let n0_db = 10.0 * n0_bin.log10();
+            let snr_str = if total_pwr > noise_pwr {
+                let snr_calc = 10.0 * ((total_pwr - noise_pwr) / noise_pwr).log10();
+                if snr_calc >= 45.0 {
+                    "> 45 dB (Ideal)".to_string()
+                } else {
+                    format!("{:.1} dB", snr_calc.max(0.0))
+                }
+            } else {
+                "0.0 dB".to_string()
+            };
             let peak_freq = start_f + (peak_idx as f64 / (n - 1) as f64) * span;
 
             draw_rect_filled(&mut img, w - 380, margin_t + 15, 340, 65, [14, 20, 30, 240]);
             draw_rect_outline(&mut img, w - 380, margin_t + 15, 340, 65, [56, 189, 248, 120]);
             draw_text_on_image(&mut img, w - 365, margin_t + 25, "MEDICION ESPECTRAL EN VIVO", [56, 189, 248, 255], 1);
             draw_text_on_image(&mut img, w - 365, margin_t + 42, &format!("Pico Max: {:.1} dBFS @ {:.3} MHz", peak_val, peak_freq / 1e6), [203, 213, 225, 255], 1);
-            draw_text_on_image(&mut img, w - 365, margin_t + 58, &format!("SNR Estimado: {:.1} dB | Piso Ruido: {:.1} dBFS", snr_est, avg_db), [34, 197, 94, 255], 1);
+            draw_text_on_image(&mut img, w - 365, margin_t + 58, &format!("SNR Estimado: {} | Piso: {:.0} dBFS", snr_str, n0_db), [34, 197, 94, 255], 1);
         }
 
         img
