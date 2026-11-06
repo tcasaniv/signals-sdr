@@ -7,24 +7,46 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.4.5] - 2026-11-02
+## [0.4.5] - 2026-11-05
 
 ### Añadido (Features)
 - **Suite VSA para Diagrama de Constelación I/Q en el Instrumento Virtual**:
   - **Modo Símbolos VSA**: Decimación a la tasa de símbolos con selección flexible de **SPS** (*Samples Per Symbol*: 1, 2, 4, 8, 16) para visualizar los puntos de decisión limpios en lugar de transiciones intermedias sobremuestreadas.
   - **Alineación OQPSK (De-offset Q)**: Retardo automático de $T_{\text{sym}} / 2 = \text{SPS} / 2$ muestras en el canal $Q$, colapsando instantáneamente la nube de OQPSK (ej. Meteor LRPT 72k) en 4 atractores nítidos de decisión.
   - **Sintonización de Fase de Ojo y Botón Auto-Ojo**: Ajuste micrométrico de la fase de muestreo ($0 \dots \text{SPS}-1$) con botón para centrar automáticamente la muestra en la máxima apertura del ojo.
-  - **Desrotación Fina de Portadora**: Control angular de $0^\circ \dots 360^\circ$ para alinear la orientación de constelaciones digitales (BPSK, QPSK, 8PSK, QAM).
+  - **Desrotación Fina de Portadora**: Control angular continuo de $0^\circ \dots 360^\circ$ para alinear la orientación de constelaciones digitales (BPSK, QPSK, 8PSK, QAM).
+  - **Normas de Escala RF vs Grilla Simbólica**:
+    - *Norma de Potencia Unitaria RF ($E_s = 1.0$)*: Estándar de ingeniería de radiofrecuencia (CCSDS/SDR) con símbolos en $\pm 1/\sqrt{2}$ ($\pm 0.707$) sobre el círculo unitario $r=1.0$, aprovechando el 100% del rango dinámico del DAC sin saturación.
+    - *Norma de Cuadrícula Simbólica ($\pm 1.0$)*: Normalizada por $\sqrt{2}$ para que los centros de decisión coincidan con las marcas cartesianas teóricas.
+  - **Mediciones y Coordenadas Interactivas al Pasar el Cursor**: Cursor en cruz de alta precisión con cálculo matemático inverso del plano complejo: $I$, $Q$, magnitud de vector de símbolo $|s| = \sqrt{I^2 + Q^2}$, ángulo de fase $\theta = \operatorname{atan2}(Q, I)$ en grados, y nivel de señal relativo en decibelios ($20 \log_{10}|s|$ dBFS).
+- **Exportación de Informes y Capturas de Laboratorio en Alta Resolución (PNG)**:
+  - Exportación directa desde el Instrumento Virtual con renderizado anotado en resolución nativa 1920x1080.
+  - Encabezado técnico institucional con metadatos del transmisor, frecuencia portadora central, tasa de muestreo y fecha/hora.
+  - Parámetros de RF en vivo (SNR espectral, potencia de canal en dBFS, piso de ruido estimado) y configuración de constelación (Modo VSA, SPS, norma de potencia, rotación angular $\theta$).
 - **Herramientas Avanzadas de Acondicionamiento y Limpieza I/Q (Paso 2 - Generic IQ)**:
   - **Filtro FIR Pasa-Bajos Simétrico (Denoising)**: Filtro de fase lineal con ventana de Hann y frecuencia de corte ajustable para suprimir ruido fuera de banda sin distorsionar la fase de los símbolos.
   - **Corrección Automática de Desbalance de Ganancia y Ortogonalidad I/Q**: Compensación de relación de amplitudes y ortogonalización Gram-Schmidt para eliminar imágenes espectrales y elipticidad.
   - **Inversión Espectral (Invert I/Q / Conjugate)**: Inversión de signo en el canal $Q$ para corregir grabaciones SDR con banda lateral invertida.
   - **Control Automático de Ganancia (AGC)**: Normalización inteligente de envolvente ante variaciones dinámicas de potencia.
   - **Supresor de Ruido / Squelch**: Umbral de corte configurable en dBFS.
+  - **Bypass Automático y UI Didáctica**: Transparencia para señales sintéticas pre-generadas que no requieren acondicionamiento forzado.
 - **Portabilidad Out-of-the-Box y Desacoplamiento de SoapySDR en Windows**:
   - **Delay-Loading (`/DELAYLOAD:SoapySDR.dll`)**: Eliminada la dependencia estática al inicio de Windows. La aplicación abre instantáneamente en cualquier equipo con Windows sin requerir instalaciones previas de Radioconda o PothosSDR ni arrojar la ventana *"No se encontró SoapySDR.dll"*.
   - **Auto-detección Dinámica y Registro en Tiempo de Ejecución**: Escaneo silencioso al arrancar en ubicaciones estándar (Radioconda, PothosSDR, Conda) y registro automático en el cargador dinámico de Windows con `SetDllDirectoryW` y `PATH`.
+  - **Selector Manual de Entorno SoapySDR**: Banner intuitivo en la pestaña de Ajustes para alternar entre diferentes entornos instalados o forzar redetección con un clic.
   - **Scripts Asistentes de Soporte Multiplataforma**: Inclusión de `instalar-controladores-sdr.bat` en Windows y `instalar-dependencias.sh` en Linux/macOS dentro de los paquetes de distribución.
+
+### Corregido (Fixes)
+- **Diseño Responsivo Integral y Erradicación de Cortes Visuales en el Instrumento Virtual**:
+  - **Sub-barras Atómicas Contextuales**: Eliminado el quiebre vertical de caracteres en `dB Máx:` (`d\nB\nM\ná\nx\n:`) en las pestañas de Espectro RF y Cascada mediante una distribución en 2 filas semánticas `ui.horizontal` explícitas para pantallas móviles (< 620 px).
+  - **Prevención de Colisiones de Texto en Constelación I/Q**: En gráficos compactos (< 340 px), el distintivo superior izquierdo se sintetiza a `"RF"` (36 px) o `"Grilla"` (52 px) y la etiqueta del eje vertical se abrevia a `+Q`, manteniendo más de 65 px de margen libre y eliminando cualquier solapamiento.
+  - **Sub-barra de Constelación Cohesiva**: Sliders y etiquetas (`Fase θ`, `Puntos`) agrupados de manera atómica sin saltos de línea desalineados.
+  - **Barra de Reproducción en 3 Niveles Adaptativos**:
+    - `< 480 px` (Móvil Ultra-compacto): Fila 1 de transporte y tiempo compacto (`mm:ss / mm:ss`, eliminando truncamiento); Fila 2 con barra de progreso a ancho completo; Fila 3 con velocidad, FFT y botón PNG.
+    - `480 .. 820 px` (Tablet/Intermedio): 2 filas limpias con slider elástico.
+    - `≥ 820 px` (Escritorio): Fila única balanceada.
+  - **Altura Contenida del Gráfico (`plot_h`)**: Relación de aspecto acotada en móvil (máximo 260 px en espectro y 280 px en constelación) y reserva de margen vertical en escritorio, impidiendo que la barra de reproducción se sumerja o se oculte detrás de la barra de navegación.
+- **Supresión de Spam en la Consola**: Supresión de advertencias espurias `sdrplay_api_Open() failed` cuando el servicio de Windows de SDRplay no se encuentra activo.
 
 ---
 
