@@ -1,7 +1,7 @@
 # Signals SDR: Roadmap y Plan de Desarrollo
 
 > **Documento de referencia para desarrolladores, colaboradores y agentes de Inteligencia Artificial.**
-> Define la arquitectura, el estado de implementación actual (**v0.4.4**) y las próximas fases de desarrollo hacia nuevos protocolos satelitales e integraciones.
+> Define la arquitectura, el estado de implementación actual (**v0.4.5**) y las próximas fases de desarrollo hacia nuevos protocolos satelitales e integraciones.
 
 ---
 
@@ -23,7 +23,7 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
 
 ---
 
-## 2. Estado de Implementación (Versión v0.4.4 - Actual)
+## 2. Estado de Implementación (Versión v0.4.5 - Actual)
 
 ### 2.1. Arquitectura de UI/UX Unificada (Material 3 + Apple HIG)
 - **Framework:** `egui / eframe` en Rust puro a 60 FPS estables.
@@ -38,13 +38,15 @@ Signals SDR invierte el flujo: permite **generar transmisiones idénticas a las 
   - **Modo Móvil ($<$ 720 px):**
     - Barra superior táctil con botón de retorno asistido en flujo *Master-Detail*.
     - Barra inferior de navegación con indicadores de píldora M3 e iconos vectoriales.
+    - **Sub-barras Atómicas Contextuales:** Organización de opciones secundarias en filas semánticas independientes para pantallas estrechas (< 620 px), eliminando quiebres verticales de texto en `dB Máx:`.
+    - **Barra de Reproducción en 3 Niveles:** Adaptación específica en 3 niveles de ancho (< 480 px, 480 a 820 px, $\ge$ 820 px) con slider de scrubbing a ancho completo y tiempo compacto `mm:ss / mm:ss`.
 - **Iconografía Vectorial:** Ausencia total de emojis en la interfaz gráfica. Uso exclusivo de **Google Material Symbols & Icons** (`egui_icons` y [`crate::icons`]).
 - **Temas:** Modo Claro y Modo Oscuro persistentes con paleta tonal Material 3.
 
 ### 2.2. Flujo Didáctico de 4 Subpestañas por Pipeline
 Cada pipeline se divide transparentemente en 4 etapas pedagógicas:
 1. **Subpestaña 1 (Elegir fuente):** Carga de imágenes locales, descarga por URL, audios WAV/MP3 o archivos I/Q pregrabados.
-2. **Subpestaña 2 (Codificar / Modular):** Explicación visual paso a paso de cada fase interna de procesamiento, preprocesamiento de imagen y síntesis de modulación.
+2. **Subpestaña 2 (Codificar / Modular):** Explicación visual paso a paso de cada fase interna de procesamiento, preprocesamiento de imagen, síntesis de modulación y suite de acondicionamiento digital I/Q.
 3. **Subpestaña 3 (Efectos de canal):** Simulación de degradaciones de RF antes de la emisión.
 4. **Subpestaña 4 (Transmisión):** Transmisión con hardware SDR, servidor RTL-TCP, streaming UDP GNU Radio o guardado en archivo I/Q.
 
@@ -66,8 +68,15 @@ Cada pipeline se divide transparentemente en 4 etapas pedagógicas:
 - **Espectro RF (FFT):** Visualización de magnitud en dB con ventana configurable y retención de picos máximos (amarillo) y mínimos (magenta).
 - **Cascada Espectral (Waterfall):** Representación bidimensional tiempo-frecuencia con gradientes de color dinámicos.
 - **Dominio del Tiempo:** Osciloscopio en cuadratura para señales $I(t)$, $Q(t)$ y envolvente $|IQ|$ con controles de zoom y pan.
-- **Constelación I/Q:** Diagrama de plano complejo para analizar constelaciones digitales.
-- **Métricas de Señal:** Telemetría en vivo con cálculo de potencia pico (dBFS), RMS, factor de cresta (PAPR), desbalance DC y aislamiento de portadora.
+- **Diagrama de Constelación I/Q Avanzado:**
+  - **Modo Símbolos:** Decimación a la tasa de baudios con selección flexible de SPS (1, 2, 4, 8, 16) para visualizar los puntos de decisión limpios.
+  - **Alineación OQPSK ($Q = T_s/2$):** Compensación automática de medio símbolo en la rama de cuadratura para colapsar constelaciones OQPSK (ej. Meteor LRPT).
+  - **Sintonización de Fase y Auto Ojo:** Ajuste micrométrico de fase de reloj con botón para centrar automáticamente el instante de máxima apertura del ojo.
+  - **Desrotación Continua de Portadora:** Control angular de $0^\circ \dots 360^\circ$ para alinear la constelación.
+  - **Normas de Potencia RF vs Grilla:** Conmutación entre norma física unitaria ($E_s=1.0$) y cuadrícula simbólica teórica ($\pm 1.0$).
+  - **Inspección Interactiva:** Cursor en cruz con lectura en tiempo real del plano complejo ($I, Q, |s|, \theta, \text{dBFS}$).
+- **Telemetría y Métricas:** Cálculo en vivo de potencia pico (dBFS), RMS, factor de cresta (PAPR), desbalance DC y aislamiento de portadora.
+- **Exportación de Laboratorio en Alta Resolución (1080p PNG):** Guardado directo de gráficos anotados con encabezado institucional, parámetros de RF y configuración activa.
 
 ### 2.6. Transmisores Satelitales y Analógicos Disponibles
 1. **NOAA APT (Automatic Picture Transmission):** 137.100 / 137.9125 MHz, trama APT analógica (2080 px/línea), subportadora AM 2400 Hz, modulación FM 17 kHz.
@@ -76,14 +85,15 @@ Cada pipeline se divide transparentemente en 4 etapas pedagógicas:
 4. **Generic SSTV (Multiprotocolo):** 11 modos de radioaficionados (Martin 1/2, Scottie 1/2/DX, Robot 36/72, PD 120/180/290, BW 8/12).
 5. **Generic FM (Frecuencia Modulada):** Presets WFM (75 kHz), NFM (5 kHz), APT (17 kHz), pre-énfasis seleccionable (50 µs / 75 µs / plano) y offset IF.
 6. **Generic AM (Amplitud Modulada):** DSB-FC (con índice $m$), DSB-SC, SSB USB y SSB LSB mediante transformada analítica de Hilbert.
-7. **Generic I/Q (Gestor y Retransmisor I/Q):** Carga de archivos pregrabados, análisis espectral FFT, corrección de offset DC y rotación Doppler.
+7. **Generic I/Q (Gestor y Acondicionador I/Q):** Carga de archivos pregrabados, suite de acondicionamiento Paso 2 (filtro FIR pasa-bajos Hann, corrección de desbalance/ortogonalidad Gram-Schmidt, inversión espectral, AGC, squelch) y bypass didáctico.
 8. **NOAA HRPT Didáctico:** Banda L (1.7 GHz) con modulación digital BPSK Split-Phase-L (Manchester) a 665.4 kbps.
 
 ### 2.7. Destinos de Emisión y Formatos I/Q
 - **Hardware SDR:** Selector jerárquico de 2 etapas con Seify (HackRF, bladeRF, USRP, SoapySDR, Dummy).
+- **Portabilidad Windows con Delay-Loading:** Ejecución inmediata sin dependencias estáticas de SoapySDR y autodetección en tiempo de ejecución de Radioconda, PothosSDR y Conda.
 - **Streaming GNU Radio UDP:** Envío de paquetes I/Q en formatos `Float32`, `Complex32` e `Int16`.
 - **Formatos de Archivo I/Q:** WAV I/Q PCM 16 bits estéreo, RAW SC16_Q11 (bladeRF-cli), RAW SC16 completo, RAW int8 (hackrf_transfer), RAW float32 (GNU Radio / inspectrum) y WAV Audio Mono.
-- **Suite de Pruebas:** 32 pruebas automatizadas unitarias y de integración pasando al 100%.
+- **Suite de Pruebas:** 37 pruebas automatizadas unitarias, de exportación y de pipelines pasando al 100%.
 
 ---
 

@@ -1,10 +1,10 @@
 # Signals SDR
 
 [![Licencia: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Versión](https://img.shields.io/badge/version-0.4.4-green.svg)](Cargo.toml)
+[![Versión](https://img.shields.io/badge/version-0.4.5-green.svg)](Cargo.toml)
 [![Rust: 2021](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![UI: Material 3 / HIG](https://img.shields.io/badge/UI-Material_3_%2F_Apple_HIG-purple.svg)](docs/ARCHITECTURE.md)
-[![Tests: 32 passed](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)](tests/)
+[![Tests: 37 passed](https://img.shields.io/badge/tests-37%20passed-brightgreen.svg)](tests/)
 
 **Signals SDR** es una suite y entorno gráfico de generación, modulación, simulación de canal físico y transmisión de señales de radiofrecuencia (RF) y satelitales en tiempo real, desarrollada en Rust con `egui` y `eframe`.
 
@@ -17,6 +17,8 @@ El objetivo central de Signals SDR es proporcionar una plataforma de entrenamien
 - **Diseño Adaptativo y Responsivo (Google Material 3 + Apple HIG):**
   - **Escritorio ($\ge$ 720 px):** *Navigation Rail* lateral estrecho (72 px) con píldoras M3, selector de tema claro/oscuro, panel de catálogo deslizable y redimensionable libremente (220 a 450 px) con buscador en tiempo real y chips de categoría (`Todos`, `Satélites`, `SSTV`, `Analógicas`, `I/Q DSP`). Tarjetas de ajustes a ancho completo con chevrons vectoriales.
   - **Móvil ($<$ 720 px):** Barra superior táctil con navegación asistida *Master-Detail* y barra inferior (*Bottom Bar*) con indicadores de píldora activa.
+  - **Sub-barras Atómicas y Prevención de Cortes:** Sub-barras contextuales organizadas en filas semánticas explícitas que evitan quiebres de caracteres o desbordes en cualquier resolución.
+  - **Barra de Reproducción en 3 Niveles:** Adaptabilidad fluida para pantallas ultra-estrechas (< 480 px con slider a ancho completo y tiempo compacto `mm:ss / mm:ss`), intermedias (480 a 820 px) y escritorio ($\ge$ 820 px).
   - **Iconografía 100% Vectorial:** Ausencia absoluta de emojis en la interfaz gráfica; empleo exclusivo de Google Material Symbols & Icons (`egui_icons` y trazados vectoriales limpios).
 
 - **Flujo Didáctico Transparente de 4 Fases por Pipeline:**
@@ -35,10 +37,29 @@ El objetivo central de Signals SDR es proporcionar una plataforma de entrenamien
 - **Instrumento Virtual de Laboratorio (Panel Flexible Integrado):**
   - Renderizado directamente en el área de trabajo derecha (`CentralPanel`) sin modales flotantes invasivos que tapen los menús, con botón de cierre `[X]` para retornar al transmisor.
   - **Espectro RF (FFT):** Analizador de magnitud en dB con ventana configurable y retención de picos máximos y mínimos.
-  - **Cascada Espectral (Waterfall):** Representación 2D tiempo-frecuencia en falso color con 3 resoluciones de columna.
+  - **Cascada Espectral (Waterfall):** Representación 2D tiempo-frecuencia en falso color con múltiples resoluciones de columna.
   - **Dominio del Tiempo:** Osciloscopio en cuadratura para inspeccionar las señales $I(t)$, $Q(t)$ y su envolvente $|IQ|$.
-  - **Constelación I/Q:** Diagrama de plano complejo para analizar constelaciones digitales (OQPSK, BPSK, etc.).
+  - **Diagrama de Constelación I/Q Avanzado:**
+    - **Modo Símbolos:** Decimación a la tasa de símbolos con selección flexible de **SPS** (*Samples Per Symbol*: 1, 2, 4, 8, 16) para visualizar los atractores de decisión limpios.
+    - **Alineación OQPSK ($Q = T_s/2$):** Compensación automática de medio símbolo en la rama de cuadratura para colapsar constelaciones OQPSK (ej. Meteor LRPT).
+    - **Sintonización de Fase y Auto Ojo:** Ajuste micrométrico de fase de muestreo con botón de centrado automático en la máxima apertura del ojo.
+    - **Desrotación Continua de Portadora:** Control angular de $0^\circ \dots 360^\circ$ para alinear la constelación.
+    - **Normas de Potencia RF vs Grilla:** Conmutación entre norma física unitaria ($E_s=1.0$) y cuadrícula simbólica teórica ($\pm 1.0$).
+    - **Inspección Interactiva:** Cursor en cruz con lectura en tiempo real del plano complejo ($I, Q, |s|, \theta, \text{dBFS}$).
   - **Telemetría y Métricas:** Cálculo en vivo de potencia pico (dBFS), potencia RMS, factor de cresta (PAPR), desbalance DC y aislamiento de portadora.
+  - **Exportación de Laboratorio en Alta Resolución (1080p PNG):** Guardado directo de gráficos anotados con encabezado institucional, parámetros de RF y configuración activa.
+
+- **Herramientas de Acondicionamiento y Limpieza I/Q (Paso 2 - Generic IQ):**
+  - **Filtro FIR Pasa-Bajos Simétrico (Denoising):** Filtro de fase lineal con ventana de Hann y frecuencia de corte regulable.
+  - **Corrección de Desbalance de Ganancia y Ortogonalidad:** Compensación de amplitudes y ortogonalización Gram-Schmidt para suprimir imágenes espectrales.
+  - **Inversión Espectral:** Inversión de signo en $Q$ (conjugada compleja) para corregir señales con banda lateral invertida.
+  - **Control Automático de Ganancia (AGC) y Squelch:** Nivelación dinámica y supresión de ruido por umbral en dBFS.
+  - **Bypass Didáctico:** Modos simétricos `[ Sin procesamiento ]` y `[ Con procesamiento ]`.
+
+- **Portabilidad Out-of-the-Box y Desacoplamiento de SoapySDR en Windows:**
+  - **Delay-Loading (`/DELAYLOAD:SoapySDR.dll`):** Ejecución instantánea en cualquier equipo con Windows sin requerir instalación previa de controladores ni mostrar errores de DLL faltante.
+  - **Detección Dinámica en Tiempo de Ejecución:** Escaneo silencioso en Radioconda, PothosSDR y Conda con selector manual en Ajustes.
+  - **Scripts Asistentes:** Inclusión de scripts de instalación automatizada de drivers en Windows (`instalar-controladores-sdr.bat`) y Linux/macOS (`instalar-dependencias.sh`).
 
 - **Streaming de Red GNU Radio (UDP):**
   - Envío continuo de paquetes I/Q a través de sockets UDP hacia bloques *UDP Source* en GNU Radio Companion.
@@ -95,7 +116,7 @@ El objetivo central de Signals SDR es proporcionar una plataforma de entrenamien
 
 ### 7. Generic IQ (Gestor y Retransmisor I/Q)
 - **Fuente:** Archivos I/Q pregrabados (`.wav`, `.raw`, `.iq`, `.sc16`, `.bin`).
-- **Procesamiento:** Analizador de espectro FFT, osciloscopio, ganancia digital, rotación de portadora Doppler y cancelación de DC.
+- **Acondicionamiento y Limpieza (Paso 2):** Modo directo *"Sin procesamiento"* (bypass transparente) o modo *"Con procesamiento"* con filtro FIR pasa-bajos Hann (reducción de ruido), corrección de desbalance y ortogonalidad I/Q Gram-Schmidt, inversión espectral (conjugada I/Q), AGC y squelch en dBFS.
 - **Transmisión:** Retransmisión inmediata con hardware SDR, servidor RTL-TCP o transcodificación de formato.
 
 ### 8. NOAA HRPT (Didáctico)

@@ -52,7 +52,7 @@ Cada transmisor implementa un ciclo pedagógico transparente e interactivo:
 4. **Generic SSTV (`generic_sstv.rs`):** Soporte completo para 11 modos de radioaficionados: Martin 1/2, Scottie 1/2/DX, Robot 36/72, PD 120/180/290, Monocromo BW 8/12 con síntesis analógica de tonos VIS.
 5. **Generic FM (`generic_fm.rs`):** Broadcast comercial WFM (75 kHz), comunicaciones VHF/UHF NFM (5 kHz), filtro de pre-énfasis analógico de 50 µs / 75 µs y traslación IF.
 6. **Generic AM (`generic_am.rs`):** DSB-FC con índice $m$ regulable, DSB-SC y Banda Lateral Única (SSB USB / LSB) sintetizada mediante transformada analítica de Hilbert.
-7. **Generic I/Q (`generic_iq.rs`):** Gestor de grabaciones I/Q pregrabadas con análisis FFT, corrección de offset DC, rotación Doppler de portadora y retransmisión.
+7. **Generic I/Q (`generic_iq.rs`):** Gestor de grabaciones I/Q pregrabadas con análisis FFT, suite de acondicionamiento digital en Paso 2 (filtro FIR pasa-bajos Hann, corrección de desbalance y ortogonalidad Gram-Schmidt, inversión espectral I/Q, AGC y squelch) y bypass didáctico.
 8. **NOAA HRPT Didáctico (`hrpt.rs`):** Modulador digital BPSK y codificación Manchester Split-Phase-L a 665.4 kbps en banda L (1.7 GHz).
 
 ---
@@ -103,13 +103,21 @@ flowchart LR
 Se renderiza de manera nativa dentro del área de trabajo derecha (`CentralPanel`) ocupando el 100% del ancho y alto disponible, sin modales flotantes invasivos:
 - **Barra Superior Integrada:** Botones de cambio de pestaña con píldoras M3 y botón de cierre `[X]` (`icons::ICON_CLOSE`) que regresa instantáneamente a la configuración del transmisor.
 - **5 Modos de Análisis:**
-  1. *Espectro RF (FFT):* Transformada rápida de Fourier con retención de picos máximos y mínimos.
-  2. *Cascada (Waterfall):* Desplazamiento bidimensional en falso color con 3 resoluciones configurables.
-  3. *Dominio del Tiempo:* Osciloscopio en cuadratura para señales $I(t)$, $Q(t)$ y su envolvente $|IQ|$.
-  4. *Constelación I/Q:* Representación en plano complejo para evaluación de demodulación digital.
+  1. *Espectro RF (FFT):* Transformada rápida de Fourier con retención de picos máximos y mínimos, escalas dB configurables y sub-barra responsiva en 2 filas.
+  2. *Cascada (Waterfall):* Desplazamiento bidimensional en falso color con múltiples resoluciones configurables.
+  3. *Dominio del Tiempo:* Osciloscopio en cuadratura para señales $I(t)$, $Q(t)$ y su envolvente $|IQ|$ con control de ventana en muestras.
+  4. *Constelación I/Q Avanzada:* Modo Símbolos con decimación a tasa de baudios (SPS 1 a 16), compensación de retardo OQPSK ($T_s/2$), sintonización micrométrica con centrado automático `Auto Ojo`, desrotación angular continua de portadora $\theta$, conmutación de escala de potencia física unitaria RF ($E_s=1.0$) vs. grilla teórica ($\pm 1.0$), y cursor interactivo con lectura precisa del plano complejo ($I, Q, |s|, \theta, \text{dBFS}$).
   5. *Métricas y Telemetría:* Potencia pico (dBFS), RMS, factor de cresta PAPR, balance DC y aislamiento de portadora.
+- **Exportación de Laboratorio en Alta Resolución (1080p PNG):** Renderizado directo de informes anotados con encabezado institucional, parámetros de RF y metadatos de configuración en vivo.
+- **Diseño Responsivo Integral:** Sub-barras contextuales atómicas sin quiebre vertical en pantallas estrechas y barra de reproducción adaptativa en 3 niveles con slider a ancho completo en móviles.
 
 ---
+
+### 2.5. Portabilidad y Desacoplamiento de SoapySDR en Windows
+Para evitar errores de inicio en equipos Windows donde no existan instalaciones previas de controladores SDR:
+- **Delay-Loading (`/DELAYLOAD:SoapySDR.dll`):** Enlace dinámico retrasado mediante directivas del linker de MSVC, evitando la carga estática de `SoapySDR.dll` durante la inicialización del proceso.
+- **Escaneo Dinámico y Resolución en Runtime:** Búsqueda silenciosa en rutas conocidas de **Radioconda**, **PothosSDR** y entornos Conda, incorporando dinámicamente la carpeta de binarios al cargador de Windows (`SetDllDirectoryW` y actualización de variable `PATH`).
+- **Selector Manual y Estado:** Tarjeta interactiva en Ajustes con detección inmediata, conmutación entre entornos y supresión de advertencias espurias de controladores inactivos (ej. servicio SDRplay).
 
 ## 3. Modalidades de Ejecución y Despliegue
 
